@@ -13,7 +13,7 @@ Napari plugin for spatial transcriptomics data analysis
 
 ----------------------------------
 
-This [napari] plugin was generated with [Cookiecutter] using [@napari]'s [cookiecutter-napari-plugin] template.
+This [napari] plugin was generated with [Cookiecutter] using [napari]'s [cookiecutter-napari-plugin] template.
 
 <!--
 Don't miss the full getting started guide to set up your new package:
@@ -25,7 +25,7 @@ https://napari.org/plugins/index.html
 
 ## Setting up a development environment
 
-First clone the GitHub repo and set it as the current directory
+First clone the GitHub repo and set it as the current directory:
 
 ```bash
 git clone https://github.com/saeyslab/napari-spongepy.git
