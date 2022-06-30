@@ -28,4 +28,5 @@ dependencies:
     - cellpose==2.0.5
     - pre-commit
     - tox
+    - mypy
     - git+https://github.com/biomicrodev/pybasic.git@e4c48496ddceb0041878c29f75dc4ef304f38b09
