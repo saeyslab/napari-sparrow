@@ -1,7 +1,6 @@
-# import numpy as np
+from skimage.data import cell
 
-# from napari_spongepy import ExampleQWidget, example_magic_widget
-
+from napari_spongepy import preprocess_widget, segmentation_widget
 
 # # make_napari_viewer is a pytest fixture that returns a napari viewer object
 # # capsys is a pytest fixture that captures stdout and stderr output streams
@@ -21,16 +20,33 @@
 #     assert captured.out == "napari has 1 layers\n"
 
 
-# def test_example_magic_widget(make_napari_viewer, capsys):
-#     viewer = make_napari_viewer()
-#     layer = viewer.add_image(np.random.random((100, 100)))
+def test_preprocess_widget(make_napari_viewer, capsys):
+    viewer = make_napari_viewer()
+    viewer.add_image(cell())
 
-#     # this time, our widget will be a MagicFactory or FunctionGui instance
-#     my_widget = example_magic_widget()
+    # this time, our widget will be a MagicFactory or FunctionGui instance
+    my_widget = preprocess_widget()
 
-#     # if we "call" this object, it'll execute our function
-#     my_widget(viewer.layers[0])
+    # if we "call" this object, it'll execute our function
+    my_widget(viewer.layers[0])
 
-#     # read captured output and check that it's as we expected
-#     captured = capsys.readouterr()
-#     assert captured.out == f"you have selected {layer}\n"
+    # read captured output and check that it's as we expected
+    captured = capsys.readouterr()
+    assert (
+        captured.out == "About to preprocess Image; tophat_size=45 contrast_clip=2.5\n"
+    )
+
+
+def test_segmentation_widget(make_napari_viewer, capsys):
+    viewer = make_napari_viewer()
+    viewer.add_image(cell())
+
+    # this time, our widget will be a MagicFactory or FunctionGui instance
+    my_widget = segmentation_widget()
+
+    # if we "call" this object, it'll execute our function
+    my_widget(viewer.layers[0])
+
+    # read captured output and check that it's as we expected
+    captured = capsys.readouterr()
+    assert captured.out == "About to segment None using Cellpose; use_gpu=True\n"
