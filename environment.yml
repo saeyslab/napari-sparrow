@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python=3.10
   - ipykernel
-  - pytorch==1.13.0
+  - pytorch=1.13
   # enable for NVIDIA GPUs
   # - cudatoolkit=11.3
   - napari
