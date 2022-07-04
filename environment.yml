@@ -1,32 +1,38 @@
 name: napari-spongepy
 channels:
-  - pytorch
+  - pytorch-nightly
   - conda-forge
   - defaults
 dependencies:
-  - pip
   - python=3.10
-  - cudatoolkit=11.3.1=h59b6b97_2
-  - pytorch=1.12.0=py3.10_cuda11.3_cudnn8_0
+  - ipykernel
+  - pytorch==1.13.0
+  # enable for NVIDIA GPUs
+  # - cudatoolkit=11.3
+  - napari
+  - pandas==1.4.2
+  - numpy==1.21.6
+  - scikit-image==0.19.2
+  - seaborn==0.11.2
+  - matplotlib==3.5.2
+  - scipy==1.8.0
+  - jupyterlab==3.4.0
+  - ipywidgets==7.7.0
+  - anndata==0.8.0
+  - tqdm==4.64.0
+  - opencv==4.5.5
+  - modestimage==0.2
+  - widgetsnbextension==3.6.0
+  # scanpy
+  - scanpy==1.9.1
+  - python-igraph
+  - leidenalg
+  # dev tools
+  - pre-commit
+  - tox
+  - mypy
+  - pip
   - pip:
-    - napari[all]==0.4.15
-    - pandas==1.4.2
-    - numpy==1.21.6
-    - scikit-image==0.19.2
-    - seaborn==0.11.2
-    - squidpy[interactive]==1.2.0
-    - scanpy[leiden]==1.9.1
-    - anndata==0.8.0
-    - tqdm==4.64.0
-    - ModestImage==0.2
-    - opencv-python==4.5.5.64
-    - matplotlib==3.5.2
-    - scipy==1.8.0
-    - jupyterlab==3.4.0
-    - ipywidgets==7.7.0
-    - widgetsnbextension==3.6.0
+    - squidpy==1.2.0
     - cellpose==2.0.5
-    - pre-commit
-    - tox
-    - mypy
     - git+https://github.com/biomicrodev/pybasic.git@e4c48496ddceb0041878c29f75dc4ef304f38b09

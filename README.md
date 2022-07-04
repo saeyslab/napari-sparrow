@@ -47,7 +47,7 @@ pip install -e .
 
 You can then run the plugin by first starting napari, and starting the plugin from napari's menu bar: `napari > Plugins > napari-spongepy`.
 
-This development environment was tested on Windows 11.
+This development environment was tested on Windows 11 with a NVIDIA GPU and MacOS 12.3 with a M1 Pro.
 
 ## License
 
