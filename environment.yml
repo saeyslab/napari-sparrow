@@ -1,15 +1,15 @@
 name: napari-spongepy
 channels:
-  - pytorch-nightly
+  - pytorch
   - conda-forge
   - defaults
 dependencies:
   - python=3.10
-  - ipykernel
-  - pytorch=1.13
-  # enable for NVIDIA GPUs
-  # - cudatoolkit=11.3
-  - napari
+  - ipykernel=6.15.0
+  - pytorch=1.12
+  # disable for non-CUDA GPUs
+  - cudatoolkit=11.3
+  - napari=0.4.16
   - pandas==1.4.2
   - numpy==1.21.6
   - scikit-image==0.19.2
