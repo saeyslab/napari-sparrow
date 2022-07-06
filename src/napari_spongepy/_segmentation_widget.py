@@ -53,7 +53,7 @@ def segmentation_widget(
     flow_threshold: float = 0.6,
     diameter: int = 55,
     mask_threshold: int = 0,
-):
+) -> None:
 
     print(f"About to segment {image} using Cellpose; use_gpu={use_gpu}")
     if image is None:

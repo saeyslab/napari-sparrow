@@ -33,7 +33,7 @@ def test_preprocess_widget(make_napari_viewer, capsys):
     # read captured output and check that it's as we expected
     captured = capsys.readouterr()
     assert (
-        captured.out == "About to preprocess Image; tophat_size=45 contrast_clip=2.5\n"
+        captured.out == "About to preprocess None; tophat_size=45 contrast_clip=2.5\n"
     )
 
 
