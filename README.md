@@ -42,12 +42,23 @@ conda activate napari-spongepy
 Finally do a local install of the napari plugin:
 
 ```
-pip install -e .
+pip install -e '.[testing]'
 ```
 
 You can then run the plugin by first starting napari, and starting the plugin from napari's menu bar: `napari > Plugins > napari-spongepy`.
 
 This development environment was tested on Windows 11 and CentOS 7 with a NVIDIA GPU and MacOS 12.3 with an M1 Pro.
+
+Install a pre-commit hook to run all configured checks in `.pre-commit-config.yaml`:
+```
+pre-commit install
+pre-commit run --all-files
+```
+
+Run the tests in `src/_tests`:
+```
+pytest
+```
 
 ## License
 
