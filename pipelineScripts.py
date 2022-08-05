@@ -140,7 +140,7 @@ def segmentation(
         channels=channels,
         min_size=min_size,
         flow_threshold=flow_threshold,
-        mask_threshold=mask_threshold,
+        cellprob_threshold=mask_threshold,
     )
     masksI = np.ma.masked_where(masks == 0, masks)
     Imasked = np.ma.masked_where(I < 500, I)

@@ -18,22 +18,13 @@ log = utils.get_pylogger(__name__)
 root = pyrootutils.setup_root(__file__, dotenv=True, pythonpath=True)
 
 
-def parse_subset(subset):
-    """
-    e.g $ python src/segment.py subset=\'100,100\'
-    >>> parse_subset('100,100')
-    (slice(0, 100, 1), slice(0, 100, 1))
-    """
-    return tuple(slice(0, int(x), 1) for x in subset.split(","))
-
-
 @hydra.main(
     version_base="1.2", config_path=root / "configs", config_name="segment.yaml"
 )
 def main(cfg: DictConfig) -> None:
     subset = cfg.subset
     if subset:
-        subset = parse_subset(subset)
+        subset = utils.parse_subset(subset)
         log.info(f"Subset is {subset}")
     # imports can be nested inside @hydra.main to optimize tab completion
     # https://github.com/facebookresearch/hydra/issues/934
