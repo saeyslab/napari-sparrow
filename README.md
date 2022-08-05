@@ -32,20 +32,48 @@ git clone https://github.com/saeyslab/napari-spongepy.git
 cd napari-spongepy
 ```
 
-Then set up a conda virtual environment:
+Then set up a conda virtual environment and install the plugin:
 
 ```bash
 conda env create -f environment.yml
 conda activate napari-spongepy
-```
-
-Finally do a local install of the napari plugin:
-
-```
 pip install -e '.[testing]'
 ```
 
-You can then run the plugin by first starting napari, and starting the plugin from napari's menu bar: `napari > Plugins > napari-spongepy`.
+## Usage
+
+### napari
+You can run the plugin by first starting napari, and starting the plugin from napari's menu bar: `napari > Plugins > napari-spongepy`.
+
+You can also use the napari CLI:
+```
+napari path/to/image --with napari-sponge-py Segment
+```
+
+### Jupyter notebooks
+
+Check the notebooks in `experiments`, they also can import the Hydra configs.
+
+### Hydra CLI
+
+Run experiments from the CLI using [Hydra](https://hydra.cc).
+```
+python src/segment.py --help
+```
+
+Run a watershed segmentation on a small amount of test data with:
+```
+python src/segment.py subset=\'100,100\' +segmentation=watershed
+```
+In the log you will see the location of the experiment folder, with the input parameters, logs and output files.
+
+Run both a watershed and a cellpose segmentation on a small amount of test data with:
+```
+python src/segment.py subset=\'100,100\' +segmentation={watershed,cellpose} --multirun
+```
+
+
+## Development
 
 This development environment was tested on Windows 11 and CentOS 7 with a NVIDIA GPU and MacOS 12.3 with an M1 Pro.
 
@@ -60,6 +88,14 @@ Run the tests in `src/_tests`:
 pytest
 ```
 
+Do a type test:
+```
+mypy --ignore-missing-imports src/
+```
+
+## References
+
+- https://github.com/ashleve/lightning-hydra-template
 ## License
 
 Distributed under the terms of the [BSD-3] license,

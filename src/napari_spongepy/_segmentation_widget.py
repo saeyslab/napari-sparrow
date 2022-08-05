@@ -8,6 +8,7 @@ Setting "Enable async tiling" is needed to see intermediate results.
 Setting "Render Images async" is needed to remove jank from rendering.
 > However, this messes with the cache and needlessly does segmentation on movement
 """
+import dask.array as da
 import napari
 import napari.layers
 import napari.types
@@ -148,33 +149,3 @@ def segmentation_widget(
     #     lambda label_img: viewer.add_labels(label_img, name="Segmentation")
     # )
     worker.start()
-
-
-if __name__ == "__main__":
-    import dask
-
-    dask.config.set({"optimization.fuse.active": False})
-    dask.config.set(scheduler="threads")
-    import dask.array as da
-    import napari
-    import numpy as np
-
-    dask_temp_s0 = da.random.randint(
-        low=0,
-        high=1000,
-        size=(1024 * 4, 1024 * 4, 1024 * 4),
-        chunks=(64 * 4, 64 * 4, 64 * 4),
-        dtype=np.uint16,
-    )
-    dask_temp_s1 = da.random.randint(
-        low=0, high=1000, size=(1024, 1024, 1024), chunks=(64, 64, 64), dtype=np.uint16
-    )
-
-    viewer = napari.Viewer()
-    layer = viewer.add_image(
-        data=[dask_temp_s0, dask_temp_s1], multiscale=True, contrast_limits=[0, 1000]
-    )
-    with layer.dask_optimized_slicing() as (_, cache):
-        # viewer.window.add_dock_widget(segmentation_widget)
-        napari.run()
-        print(f"len:{len(cache.cache.heap.heap)}")
