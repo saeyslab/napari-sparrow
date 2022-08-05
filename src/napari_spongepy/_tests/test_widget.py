@@ -37,7 +37,7 @@ def test_preprocess_widget(make_napari_viewer, capsys):
     )
 
 
-def test_segmentation_widget(make_napari_viewer, capsys):
+def test_segmentation_widget(make_napari_viewer, caplog):
     viewer = make_napari_viewer()
     viewer.add_image(cell())
 
@@ -47,6 +47,5 @@ def test_segmentation_widget(make_napari_viewer, capsys):
     # if we "call" this object, it'll execute our function
     my_widget(viewer.layers[0])
 
-    # read captured output and check that it's as we expected
-    captured = capsys.readouterr()
-    assert captured.out == "About to segment None using Cellpose; use_gpu=True\n"
+    # read captured logging and check that it's as we expected
+    assert "About to segment" in caplog.text
