@@ -1,6 +1,7 @@
 # this file acts as a robust starting point for launching hydra runs and multiruns
 # can be run from any place
 
+
 import hydra
 import numpy as np
 import pyrootutils
@@ -102,7 +103,7 @@ def main(cfg: DictConfig) -> None:
         method = hydra.utils.instantiate(cfg.segmentation)
 
     worker = _segmentation_worker(
-        cfg.dataset.image,
+        img,
         method=method,
         subset=subset,
         # small chunks needed if subset is used
@@ -110,9 +111,11 @@ def main(cfg: DictConfig) -> None:
     log.info("Start segmentation")
     [masks, _] = worker.work()
     log.info(masks.shape)
+    # polygons = mask_to_polygons_layer(masks)
+    if cfg.paths.masks:
+        log.info(f"Writing masks to {cfg.paths.masks}")
+        np.save(cfg.paths.masks, masks)
     return
-    polygons = mask_to_polygons_layer(masks)
-    np.save(cfg.paths.output_dir + "masks", masks)
     df = pl.allocate_genes_quick(cfg.dataset.coords, masks)
 
     coordinates = (
@@ -128,8 +131,8 @@ def main(cfg: DictConfig) -> None:
     # polygonsF=polygons[np.isin(polygons.index.values,list(map(int,adata.obs.index.values)))]
     # polygonsF.index=list(map(str,polygonsF.index))
     # adata.obsm['polygons']=polygonsF
-    adata = pl.create_adata_quick(df, img, polygons)
-    adata = pl.preprocessAdata(adata, masks)
+    # adata = pl.create_adata_quick(df, img, polygons)
+    # adata = pl.preprocessAdata(adata, masks)
 
 
 if __name__ == "__main__":
