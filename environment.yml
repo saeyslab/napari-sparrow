@@ -23,6 +23,10 @@ dependencies:
   - opencv==4.5.5
   - modestimage==0.2
   - widgetsnbextension==3.6.0
+  # polygons
+  - geopandas
+  - rasterio
+  - shapely
   # scanpy
   - scanpy==1.9.1
   - python-igraph

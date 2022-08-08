@@ -1,0 +1,3 @@
+data_dir: ${paths.data_dir}/vizgen/
+dtype: xarray
+coords: null

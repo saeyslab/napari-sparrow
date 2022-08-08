@@ -16,3 +16,6 @@ output_dir: ${hydra:runtime.output_dir}
 
 # path to working directory
 work_dir: ${hydra:runtime.cwd}
+
+# default to null for all output paths
+masks: null
