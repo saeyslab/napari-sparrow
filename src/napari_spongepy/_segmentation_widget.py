@@ -8,6 +8,7 @@ Setting "Enable async tiling" is needed to see intermediate results.
 Setting "Render Images async" is needed to remove jank from rendering.
 > However, this messes with the cache and needlessly does segmentation on movement
 """
+
 import dask.array as da
 import napari
 import napari.layers
@@ -52,11 +53,19 @@ def create_cellpose_method(
     return cellpose_method
 
 
-def ic_to_da(ic, label="image", drop_dims=["z", "channels"]):
+def ic_to_da(
+    ic, label="image", drop_dims=["z", "channels"], reduce_z=None, reduce_c=None
+):
     """
-    ImageContainer defaults to (x, y, z, channels), most of the time we need just (x, y)
+    Convert ImageContainer to dask array.
+    ImageContainer defaults to (x, y, z, channels (c if using xarray format)), most of the time we need just (x, y)
+    The c channel will be named c:0 after segmentation.
     """
-    return ic[label].squeeze(dim=drop_dims).data
+    if reduce_z or reduce_c:
+        # TODO solve c:0 output when doing .isel(z=reduce_z, c=reduce_c)
+        return ic[label].isel({"z": reduce_z, "c:0": 0}).data
+    else:
+        return ic[label].squeeze(dim=drop_dims).data
 
 
 def toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold):
@@ -78,17 +87,20 @@ def toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold):
 
 @thread_worker
 def _segmentation_worker(
-    img: np.ndarray,
+    ic: np.ndarray | ImageContainer,
     method: str,
     subset=None,
     chunks="auto",
+    reduce_z=None,
+    reduce_c=None,
     # if async interactive works: smaller chunks for faster segmentation computation
     # chunks = (500, 500, 1, 1),
 ) -> list[np.ndarray]:
 
     label_image = "image"
     label_segmentation = "segment_watershed"
-    ic = ImageContainer(img, label=label_image, chunks=chunks)
+    if not isinstance(ic, ImageContainer):
+        ic = ImageContainer(ic, label=label_image, chunks=chunks)
     segment(
         ic,
         layer="image",
@@ -97,7 +109,7 @@ def _segmentation_worker(
         lazy=True,
         chunks=chunks,
     )
-    s = ic_to_da(ic, "segment_watershed")
+    s = ic_to_da(ic, "segment_watershed", reduce_c=reduce_c, reduce_z=reduce_z)
     if subset:
         s = s[subset]
 

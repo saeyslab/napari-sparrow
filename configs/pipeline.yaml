@@ -17,6 +17,8 @@ defaults:
   # config for hyperparameter optimization
   - hparams_search: null
 
+  - viz/default
+
   # optional local config for machine/user specific settings
   # it's optional since it doesn't need to exist and is excluded from version control
   - optional local: default.yaml
