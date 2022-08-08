@@ -32,10 +32,14 @@ git clone https://github.com/saeyslab/napari-spongepy.git
 cd napari-spongepy
 ```
 
-Then set up a conda virtual environment and install the plugin:
+Then set up a conda virtual environment and install the plugin. For GPU support other than CUDA, comment out the `cudatoolkit` line in `environment.yml` and follow the [PyTorch](https://pytorch.org/get-started/locally/) instructions.
 
 ```bash
+# or Conda
 conda env create -f environment.yml
+# or Mamba
+mamba env update -f environment.yml --prune
+
 conda activate napari-spongepy
 pip install -e '.[testing]'
 ```
