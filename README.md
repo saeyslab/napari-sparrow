@@ -40,6 +40,14 @@ conda activate napari-spongepy
 pip install -e '.[testing]'
 ```
 
+Use a local data folder at `data/` or point to a different location by overwriting `paths.data_dir` using the CLI (`... paths.data_dir=/srv/scratch/data/spatial/`) or using an untracked local config at `configs/local/default.yaml`:
+```yaml
+# @package _global_
+
+paths:
+  data_dir: /srv/scratch/data/spatial/
+```
+
 ## Usage
 
 ### napari
