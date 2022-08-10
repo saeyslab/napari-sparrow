@@ -59,7 +59,7 @@ You can run the plugin by first starting napari, and starting the plugin from na
 
 You can also use the napari CLI:
 ```
-napari path/to/image --with napari-sponge-py Segment
+napari path/to/image --with napari-spongepy Segment
 ```
 
 ### Jupyter notebooks
