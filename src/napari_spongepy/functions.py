@@ -30,14 +30,12 @@ def BasiCCorrection(path_image=None, img=None):
     tiles = []
     for i in range(0, int(img.shape[0] / 2144)):  # over the rows
         for j in range(0, int(img.shape[1] / 2144)):
-            temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
+            temp = img[i * 2144: (i + 1) * 2144, j * 2144: (j + 1) * 2144]
             tiles.append(temp)
     # measure the filters
     flatfield = pybasic.basic(tiles, darkfield=False, verbosity=False)
 
-    tiles_corrected = pybasic.correct_illumination(
-        images_list=tiles, flatfield=flatfield[0]
-    )  # , darkfield = darkfield)
+    tiles_corrected = pybasic.correct_illumination(images_list=tiles, flatfield=flatfield[0])  # darkfield = darkfield)
     plt.imshow(flatfield[0], cmap="gray")
     plt.title("correction performed per tile")
     # stitch the tiles back together
@@ -45,9 +43,7 @@ def BasiCCorrection(path_image=None, img=None):
     k = 0
     for i in range(0, int(img.shape[0] / 2144)):  # over the rows
         for j in range(0, int(img.shape[1] / 2144)):
-            i_new[
-                i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144
-            ] = tiles_corrected[k]
+            i_new[i * 2144: (i + 1) * 2144, j * 2144: (j + 1) * 2144] = tiles_corrected[k]
             k = k + 1
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
@@ -60,7 +56,7 @@ def BasiCCorrection(path_image=None, img=None):
 
 
 def preprocessImage(
-    img=None, path_image=None, contrast_clip=2.5, size_tophat=None, small_size_vis=None
+        img=None, path_image=None, contrast_clip=2.5, size_tophat=None, small_size_vis=None
 ):
     "This function performs the prprocessing of an image. If the path_image i provided, the image is read from the path."
     "If the image img itself is provided, this image will be used."
@@ -103,15 +99,15 @@ def preprocessImage(
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
         ax[0].imshow(
             i_orig[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
+            small_size_vis[0]: small_size_vis[1],
+            small_size_vis[2]: small_size_vis[3],
             ],
             cmap="gray",
         )
         ax[1].imshow(
             i[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
+            small_size_vis[0]: small_size_vis[1],
+            small_size_vis[2]: small_size_vis[3],
             ],
             cmap="gray",
         )
@@ -120,15 +116,15 @@ def preprocessImage(
 
 
 def segmentation(
-    img,
-    device="cpu",
-    min_size=80,
-    flow_threshold=0.6,
-    diameter=55,
-    mask_threshold=0,
-    small_size_vis=None,
-    model_type="nuclei",
-    channels=np.array([0, 0]),
+        img,
+        device="cpu",
+        min_size=80,
+        flow_threshold=0.6,
+        diameter=55,
+        mask_threshold=0,
+        small_size_vis=None,
+        model_type="nuclei",
+        channels=np.array([0, 0]),
 ):
     "This function segments the data, using the cellpose algorithm, and plots the outcome"
     "img is the input image, showing the DAPI Staining, you can define your device by setting the device parameter"
@@ -175,23 +171,23 @@ def segmentation(
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
         ax[0].imshow(
             img[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
+            small_size_vis[0]: small_size_vis[1],
+            small_size_vis[2]: small_size_vis[3],
             ],
             cmap="gray",
         )
 
         ax[1].imshow(
             img[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
+            small_size_vis[0]: small_size_vis[1],
+            small_size_vis[2]: small_size_vis[3],
             ],
             cmap="gray",
         )
         ax[1].imshow(
             mask_i[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
+            small_size_vis[0]: small_size_vis[1],
+            small_size_vis[2]: small_size_vis[3],
             ],
             cmap="jet",
         )
@@ -222,9 +218,9 @@ def mask_to_polygons_layer(mask):
     all_polygons = []
     all_values = []
     for shape, value in features.shapes(
-        mask.astype(np.int16),
-        mask=(mask > 0),
-        transform=rasterio.Affine(1.0, 0, 0, 0, 1.0, 0),
+            mask.astype(np.int16),
+            mask=(mask > 0),
+            transform=rasterio.Affine(1.0, 0, 0, 0, 1.0, 0),
     ):
         all_polygons.append(shapely.geometry.shape(shape))
         all_values.append(int(value))
@@ -489,7 +485,7 @@ def score_genes_liver(adata, path_marker_genes, row_norm=False):
 
 
 def clustercleanliness(
-    adata, img, celltypes, crop_coord=[0, 2000, 0, 2000], liver=False
+        adata, img, celltypes, crop_coord=[0, 2000, 0, 2000], liver=False
 ):
     # The coloring doesn't work yet for non-liver samples, but is easily adaptable, by just not defining a colormap
     # anywhere
@@ -568,9 +564,9 @@ def clustercleanliness(
 
     stacked = (
         adata.obs.groupby(["leiden", "maxScores"], as_index=False)
-        .size()
-        .pivot("leiden", "maxScores")
-        .fillna(0)
+            .size()
+            .pivot("leiden", "maxScores")
+            .fillna(0)
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
     stacked_norm.columns = list(adata.obs.maxScores.cat.categories)
