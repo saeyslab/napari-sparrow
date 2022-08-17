@@ -126,12 +126,16 @@ def segmentation(I,device='cpu',min_size=80,flow_threshold=0.6,diameter=55,mask_
     "When an RGB image is given a input, the R channel is expected to have the nuclei, and the blue channel the membranes"
     "When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei"
     t0=time.time()
-    device = torch.device(device) #GPU 4 is your GPU
-    torch.cuda.set_device(device)
-    model = models.Cellpose(gpu=device, model_type=model_type)
-    print(torch.cuda.current_device())
+    if device=='cpu':   
+        model = models.Cellpose(gpu=False, model_type=model_type)
+        
+    else:    
+        device = torch.device(device) #GPU 4 is your GPU
+        torch.cuda.set_device(device)
+        model = models.Cellpose(gpu=device, model_type=model_type)
+        print(torch.cuda.current_device())
+        torch.cuda.set_device(device)
     channels=channels
-    torch.cuda.set_device(device)
     masks, flows, styles, diams = model.eval(I,diameter=diameter,channels=channels,min_size=min_size,flow_threshold=flow_threshold,mask_threshold=mask_threshold)
     masksI = np.ma.masked_where(masks == 0, masks)
     Imasked=np.ma.masked_where(I < 500 , I)
@@ -275,7 +279,7 @@ def plot_shapes(adata,column=None,cmap='magma',alpha=0.5,crd=None):
         ax.set_ylim(crd[2], crd[3])
     #ax[1].imshow(I,cmap='gray',)
     
-def preprocessAdata(adata,mask,Nuc_size_norm=True):
+def preprocessAdata(adata,mask,Nuc_size_norm=True,n_comps=50):
     
 
     sc.pp.calculate_qc_metrics(adata, inplace=True,percent_top=[2,5])
@@ -301,7 +305,7 @@ def preprocessAdata(adata,mask,Nuc_size_norm=True):
     else:
         sc.pp.normalize_total(adata)
         sc.pp.log1p(adata)
-    sc.tl.pca(adata, svd_solver='arpack',n_comps=50)
+    sc.tl.pca(adata, svd_solver='arpack',n_comps=n_comps)
     sc.pl.pca(adata, color='total_counts')  
     #sc.pl.pca_variance_ratio(adata,n_pcs=50) #lets take 6,10 or 12
     adata.obsm['polygons']=geopandas.GeoDataFrame(adata.obsm['polygons'],geometry=adata.obsm['polygons'].geometry)
@@ -327,12 +331,12 @@ def filter_on_size(adata,min_size=100,max_size=100000):
     print(str(filtered)+' cells were filtered out based on size.')
     return adata
 
-def preprocess3(adata,pcs,neighbors,spot_size=70):
+def preprocess3(adata,pcs,neighbors,spot_size=70,cluster_resolution=0.8):
     
     sc.pp.neighbors(adata, n_neighbors=neighbors, n_pcs=pcs)
     sc.tl.umap(adata)
     #sc.pl.umap(adata, color=['Folr2','Glul','Sox9','Cd9']) #total counts doesn't matter that much
-    sc.tl.leiden(adata,resolution=0.8)
+    sc.tl.leiden(adata,resolution=cluster_resolution)
     sc.pl.umap(adata, color=['leiden'])
     sc.tl.rank_genes_groups(adata, 'leiden', method='wilcoxon')
     sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
