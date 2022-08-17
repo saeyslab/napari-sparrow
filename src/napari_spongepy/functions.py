@@ -14,10 +14,10 @@ import rasterio
 import scanpy as sc
 import seaborn as sns
 import shapely
-import skimage.feature as features
+import skimage.feature as feature
 import torch
 from anndata import AnnData
-from cellpose import io, models
+from cellpose import models
 from rasterio import features
 from scipy import ndimage
 from skimage import io
@@ -154,7 +154,7 @@ def segmentation(
         mask_threshold=mask_threshold,
     )
     mask_i = np.ma.masked_where(masks == 0, masks)
-    Imasked = np.ma.masked_where(img < 500, img)
+    # i_masked = np.ma.masked_where(img < 500, img)
     # create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
     # polygons["border"] = polygons.geometry.map(is_in_border)
@@ -243,7 +243,7 @@ def linewidth(r):
     return 1 if r else 0.5
 
 
-def is_in_border(r):
+def is_in_border(r, h, w, border_margin):
     r = r.centroid
     if (r.x - border_margin < 0) or (r.x + border_margin > h):
         return True
