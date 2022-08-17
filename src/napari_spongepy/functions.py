@@ -1,5 +1,6 @@
 # %load_ext autoreload
 # %autoreload 2
+from re import S
 import time
 
 # %matplotlib widget
