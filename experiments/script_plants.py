@@ -126,12 +126,16 @@ def segmentation(I,device='cpu',min_size=80,flow_threshold=0.6,diameter=55,mask_
     "When an RGB image is given a input, the R channel is expected to have the nuclei, and the blue channel the membranes"
     "When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei"
     t0=time.time()
-    device = torch.device(device) #GPU 4 is your GPU
-    torch.cuda.set_device(device)
-    model = models.Cellpose(gpu=device, model_type=model_type)
-    print(torch.cuda.current_device())
+    if device=='cpu':   
+        model = models.Cellpose(gpu=False, model_type=model_type)
+        
+    else:    
+        device = torch.device(device) #GPU 4 is your GPU
+        torch.cuda.set_device(device)
+        model = models.Cellpose(gpu=device, model_type=model_type)
+        print(torch.cuda.current_device())
+        torch.cuda.set_device(device)
     channels=channels
-    torch.cuda.set_device(device)
     masks, flows, styles, diams = model.eval(I,diameter=diameter,channels=channels,min_size=min_size,flow_threshold=flow_threshold,mask_threshold=mask_threshold)
     masksI = np.ma.masked_where(masks == 0, masks)
     Imasked=np.ma.masked_where(I < 500 , I)
