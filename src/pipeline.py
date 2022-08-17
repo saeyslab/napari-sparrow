@@ -77,9 +77,8 @@ def mask_to_polygons_layer(mask):
 def main(cfg: DictConfig) -> None:
 
     # preprocessing
-    from squidpy.im import ImageContainer
-
     import pipelineScripts as pl
+    from squidpy.im import ImageContainer
 
     ic, img = None, None
 
