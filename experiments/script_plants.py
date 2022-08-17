@@ -279,7 +279,7 @@ def plot_shapes(adata,column=None,cmap='magma',alpha=0.5,crd=None):
         ax.set_ylim(crd[2], crd[3])
     #ax[1].imshow(I,cmap='gray',)
     
-def preprocessAdata(adata,mask,Nuc_size_norm=True):
+def preprocessAdata(adata,mask,Nuc_size_norm=True,n_comps=50):
     
 
     sc.pp.calculate_qc_metrics(adata, inplace=True,percent_top=[2,5])
@@ -305,7 +305,7 @@ def preprocessAdata(adata,mask,Nuc_size_norm=True):
     else:
         sc.pp.normalize_total(adata)
         sc.pp.log1p(adata)
-    sc.tl.pca(adata, svd_solver='arpack',n_comps=50)
+    sc.tl.pca(adata, svd_solver='arpack',n_comps=n_comps)
     sc.pl.pca(adata, color='total_counts')  
     #sc.pl.pca_variance_ratio(adata,n_pcs=50) #lets take 6,10 or 12
     adata.obsm['polygons']=geopandas.GeoDataFrame(adata.obsm['polygons'],geometry=adata.obsm['polygons'].geometry)
@@ -331,12 +331,12 @@ def filter_on_size(adata,min_size=100,max_size=100000):
     print(str(filtered)+' cells were filtered out based on size.')
     return adata
 
-def preprocess3(adata,pcs,neighbors,spot_size=70):
+def preprocess3(adata,pcs,neighbors,spot_size=70,cluster_resolution=0.8):
     
     sc.pp.neighbors(adata, n_neighbors=neighbors, n_pcs=pcs)
     sc.tl.umap(adata)
     #sc.pl.umap(adata, color=['Folr2','Glul','Sox9','Cd9']) #total counts doesn't matter that much
-    sc.tl.leiden(adata,resolution=0.8)
+    sc.tl.leiden(adata,resolution=cluster_resolution)
     sc.pl.umap(adata, color=['leiden'])
     sc.tl.rank_genes_groups(adata, 'leiden', method='wilcoxon')
     sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
