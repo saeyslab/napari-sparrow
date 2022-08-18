@@ -39,4 +39,4 @@ dependencies:
   - pip:
     - squidpy==1.2.0
     - cellpose==2.0.5
-    - git+https://github.com/peng-lab/PyBaSiC.git
+    - basicpy==1.0.0
