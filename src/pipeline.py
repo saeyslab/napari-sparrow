@@ -3,7 +3,6 @@
 
 
 import hydra
-import numpy as np
 import pyrootutils
 from omegaconf import DictConfig
 
@@ -78,6 +77,7 @@ def main(cfg: DictConfig) -> None:
 
     import pipelineScripts as pl
     from napari_spongepy import utils
+    import numpy as np
 
     log = utils.get_pylogger(__name__)
 
