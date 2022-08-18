@@ -1,7 +1,6 @@
 # %load_ext autoreload
 # %autoreload 2
-from re import S
-import time
+from typing import List, Tuple, Optional
 
 # %matplotlib widget
 import cv2
@@ -23,7 +22,11 @@ from scipy import ndimage
 from skimage import io
 
 
-def BasiCCorrection(path_image=None, img=None):
+def BasiCCorrection(
+    path_image: str = None, img: np.ndarray = None
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    "This function corrects for the tiling effect that occurs in RESOLVE data"
+
     if img is None:
         img = io.imread(path_image)
 
@@ -35,12 +38,10 @@ def BasiCCorrection(path_image=None, img=None):
             tiles.append(temp)
     # measure the filters
     flatfield = pybasic.basic(tiles, darkfield=False, verbosity=False)
-
     tiles_corrected = pybasic.correct_illumination(
         images_list=tiles, flatfield=flatfield[0]
     )  # darkfield = darkfield)
-    plt.imshow(flatfield[0], cmap="gray")
-    plt.title("correction performed per tile")
+
     # stitch the tiles back together
     i_new = np.zeros(img.shape)
     k = 0
@@ -51,28 +52,36 @@ def BasiCCorrection(path_image=None, img=None):
             ] = tiles_corrected[k]
             k = k + 1
 
-    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    ax[0].imshow(i_new, cmap="gray")
-    ax[0].set_title("corrected image")
-    ax[1].imshow(img, cmap="gray")
-    ax[1].set_title("original image")
+    return i_new.astype(np.uint16), flatfield, img
 
-    return i_new.astype(np.uint16)
+
+def BasiCCorrectionPlot(img: np.ndarray, flatfield, img_orig: np.ndarray) -> None:
+    plt.imshow(flatfield[0], cmap="gray")
+    plt.title("correction performed per tile")
+
+    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+    ax[0].imshow(img, cmap="gray")
+    ax[0].set_title("corrected image")
+    ax[1].imshow(img_orig, cmap="gray")
+    ax[1].set_title("original image")
 
 
 def preprocessImage(
-    img=None, path_image=None, contrast_clip=2.5, size_tophat=None, small_size_vis=None
-):
+    img: np.ndarray = None,
+    path_image: str = None,
+    contrast_clip: float = 2.5,
+    size_tophat: int = None,
+) -> Tuple[np.ndarray, np.ndarray]:
     "This function performs the prprocessing of an image. If the path_image i provided, the image is read from the path."
     "If the image img itself is provided, this image will be used."
     "Contrast_clip indiactes the input to the create_CLAHE function for histogram equalization"
     "size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is executes. The recommendable size is 45?-."
     "Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better."
-    t0 = time.time()
+
     # Read in image
     if img is None:
         img = io.imread(path_image)
-    i_orig = img
+    img_orig = img
 
     # mask black lines
     mask_lines = np.where(img == 0)  # find the location of the lines
@@ -81,56 +90,64 @@ def preprocessImage(
 
     # perform inpainting
     res_ns = cv2.inpaint(img, mask, 55, cv2.INPAINT_NS)
-    i = res_ns
+    img = res_ns
 
     # tophat filter
     if size_tophat is not None:
-        minimum_t = ndimage.minimum_filter(i, size_tophat)
+        minimum_t = ndimage.minimum_filter(img, size_tophat)
         max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
-        orig_sub_min = i - max_of_min_t
-        i = orig_sub_min
+        orig_sub_min = img - max_of_min_t
+        img = orig_sub_min
 
     # enhance contrast
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
-    i = clahe.apply(i)
+    img = clahe.apply(img)
 
+    return img, img_orig
+
+
+def preprocessImagePlot(
+    img: np.ndarray,
+    img_orig: np.ndarray,
+    small_size_vis: List[int] = None,
+) -> None:
     # plot_result
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    ax[0].imshow(i_orig, cmap="gray")
-    ax[1].imshow(i, cmap="gray")
+    ax[0].imshow(img_orig, cmap="gray")
+    ax[1].imshow(img, cmap="gray")
 
     # plot small part of image
     if small_size_vis is not None:
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
         ax[0].imshow(
-            i_orig[
+            img_orig[
                 small_size_vis[0] : small_size_vis[1],
                 small_size_vis[2] : small_size_vis[3],
             ],
             cmap="gray",
         )
         ax[1].imshow(
-            i[
+            img[
                 small_size_vis[0] : small_size_vis[1],
                 small_size_vis[2] : small_size_vis[3],
             ],
             cmap="gray",
         )
-    print(time.time() - t0)
-    return i
 
 
 def segmentation(
-    img,
-    device="cpu",
-    min_size=80,
-    flow_threshold=0.6,
-    diameter=55,
-    mask_threshold=0,
-    small_size_vis=None,
-    model_type="nuclei",
-    channels=np.array([0, 0]),
-):
+    img: np.ndarray,
+    device: str = "cpu",
+    min_size: int = 80,
+    flow_threshold: float = 0.6,
+    diameter: int = 55,
+    mask_threshold: int = 0,
+    small_size_vis: List[int] = None,
+    model_type: str = "nuclei",
+    channels: np.ndarray = np.array([0, 0]),
+) -> Tuple[
+    np.ndarray, np.ndarray, np.ndarray, Optional[List[int]], geopandas.GeoDataFrame
+]:
     "This function segments the data, using the cellpose algorithm, and plots the outcome"
     "img is the input image, showing the DAPI Staining, you can define your device by setting the device parameter"
     "min_size indicates the minimal amount of pixels in a mask (I assume)"
@@ -140,23 +157,23 @@ def segmentation(
     "mask_threshold indicates how many of the possible masks are kept. MAking it smaller (up to -6), will give you more masks, bigger is less masks. "
     "When an RGB image is given a input, the R channel is expected to have the nuclei, and the blue channel the membranes"
     "When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei"
-    t0 = time.time()
-    device = torch.device(device)  # GPU 4 is your GPU
+
+    device = torch.cuda.device(device)  # GPU 4 is your GPU
     torch.cuda.set_device(device)
     model = models.Cellpose(gpu=device, model_type=model_type)
-    print(torch.cuda.current_device())
-    channels = channels
     torch.cuda.set_device(device)
-    masks, flows, styles, diams = model.eval(
+
+    masks, _, _, _ = model.eval(
         img,
         diameter=diameter,
         channels=channels,
         min_size=min_size,
         flow_threshold=flow_threshold,
-        mask_threshold=mask_threshold,
+        cellprob_threshold=mask_threshold,
     )
     mask_i = np.ma.masked_where(masks == 0, masks)
     # i_masked = np.ma.masked_where(img < 500, img)
+
     # create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
     # polygons["border"] = polygons.geometry.map(is_in_border)
@@ -164,15 +181,22 @@ def segmentation(
     polygons["linewidth"] = polygons.geometry.map(linewidth)
     polygons["color"] = polygons.geometry.map(color)
     polygons["cells"] = polygons.index
-
     polygons = polygons.dissolve(by="cells")
 
-    # visualization
+    return masks, mask_i, channels, small_size_vis, polygons
+
+
+def segmentationPlot(
+    img: np.ndarray,
+    mask_i: np.ndarray,
+    channels: np.ndarray,
+    small_size_vis: List[int],
+    polygons: geopandas.GeoDataFrame,
+) -> None:
     if sum(channels) != 0:
         img = img[0, :, :]  # select correct image
 
     if small_size_vis is not None:
-
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
         ax[0].imshow(
             img[
@@ -214,11 +238,9 @@ def segmentation(
         )
         # ax[1].imshow(masksI,cmap='jet')
         plt.show()
-    print(time.time() - t0)
-    return masks
 
 
-def mask_to_polygons_layer(mask):
+def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
     # https://rocreguant.com/convert-a-mask-into-a-polygon-for-images-using-shapely-and-rasterio/1786/
     all_polygons = []
     all_values = []
@@ -233,15 +255,15 @@ def mask_to_polygons_layer(mask):
     return geopandas.GeoDataFrame(dict(geometry=all_polygons), index=all_values)
 
 
-def color(r):
+def color(_) -> matplotlib.colors.Colormap:
     return plt.get_cmap("Set1")(np.random.choice(np.arange(0, 18)))
 
 
-def border_color(r):
+def border_color(r: bool) -> matplotlib.colors.Colormap:
     return plt.get_cmap("tab10")(3) if r else (1, 1, 1, 1)
 
 
-def linewidth(r):
+def linewidth(r: bool) -> float:
     return 1 if r else 0.5
 
 
@@ -254,7 +276,10 @@ def is_in_border(r, h, w, border_margin):
     return False
 
 
-def create_adata_quick(path, img, masks, library_id="melanoma"):
+def create_adata_quick(
+    path: str, img: np.ndarray, masks: np.ndarray, library_id: str = "melanoma"
+) -> AnnData:
+
     # create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
     # polygons["border"] = polygons.geometry.map(is_in_border)
@@ -262,7 +287,6 @@ def create_adata_quick(path, img, masks, library_id="melanoma"):
     polygons["linewidth"] = polygons.geometry.map(linewidth)
     polygons["color"] = polygons.geometry.map(color)
     polygons["cells"] = polygons.index
-
     polygons = polygons.dissolve(by="cells")
 
     # allocate the transcripts
@@ -289,7 +313,6 @@ def create_adata_quick(path, img, masks, library_id="melanoma"):
 
     # add the figure to the anndata
     spatial_key = "spatial"
-    library_id = library_id
     adata.uns[spatial_key] = {library_id: {}}
     adata.uns[spatial_key][library_id]["images"] = {}
     adata.uns[spatial_key][library_id]["images"] = {"hires": img}
@@ -298,15 +321,19 @@ def create_adata_quick(path, img, masks, library_id="melanoma"):
         "spot_diameter_fullres": 75,
     }
 
-    plot_shapes(adata)
-
     return adata
 
 
-def plot_shapes(adata, column=None, cmap="magma", alpha=0.5, crd=None):
-    # This function plots the anndata on the shapes of the cells, but it does not do it smartly.
-    if column is not None:
+def plot_shapes(
+    adata: AnnData,
+    column: str = None,
+    cmap: str = "magma",
+    alpha: float = 0.5,
+    crd: List[int] = None,
+) -> None:
+    "This function plots the anndata on the shapes of the cells, but it does not do it smartly."
 
+    if column is not None:
         if column + "_colors" in adata.uns:
             print("using the colormap defined in the anndata object")
             cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
@@ -357,18 +384,18 @@ def plot_shapes(adata, column=None, cmap="magma", alpha=0.5, crd=None):
     # ax[1].imshow(I,cmap='gray',)
 
 
-def preprocessAdata(adata, mask, nuc_size_norm=True, n_comps=50):
+def preprocessAdata(
+    adata: AnnData, mask: np.ndarray, nuc_size_norm: bool = True, n_comps: int = 50
+) -> Tuple[AnnData, AnnData]:
     sc.pp.calculate_qc_metrics(adata, inplace=True, percent_top=[2, 5])
-    fig, axs = plt.subplots(1, 2, figsize=(15, 4))
-    sns.distplot(adata.obs["total_counts"], kde=False, ax=axs[0])
-    sns.distplot(adata.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
+    adata_orig = adata
     sc.pp.filter_cells(adata, min_counts=10)
     sc.pp.filter_genes(adata, min_cells=5)
     adata.raw = adata
 
     # nucleusSizeNormalization
     if nuc_size_norm:
-        unique, counts = np.unique(mask, return_counts=True)
+        _, counts = np.unique(mask, return_counts=True)
         nucleus_size = []
         for i in adata.obs.index:
             nucleus_size.append(counts[int(i)])
@@ -387,13 +414,23 @@ def preprocessAdata(adata, mask, nuc_size_norm=True, n_comps=50):
     adata.obsm["polygons"] = geopandas.GeoDataFrame(
         adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
     )
+
+    return adata, adata_orig
+
+
+def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData) -> None:
+    _, axs = plt.subplots(1, 2, figsize=(15, 4))
+    sns.distplot(adata_orig.obs["total_counts"], kde=False, ax=axs[0])
+    sns.distplot(adata_orig.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
+
     plt.scatter(adata.obs["nucleusSize"], adata.obs["total_counts"])
     plt.title = "cellsize vs cellcount"
     plt.show()
-    return adata
 
 
-def filter_on_size(adata, min_size=100, max_size=100000):
+def filter_on_size(
+    adata: AnnData, min_size: int = 100, max_size: int = 100000
+) -> Tuple[AnnData, int]:
     start = adata.shape[0]
     adata.obsm["polygons"]["X"] = adata.obsm["polygons"].centroid.x
     adata.obsm["polygons"]["Y"] = adata.obsm["polygons"].centroid.y
@@ -410,12 +447,17 @@ def filter_on_size(adata, min_size=100, max_size=100000):
         adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
     )
     filtered = start - adata.shape[0]
-    plot_shapes(adata, column="distance")
-    print(str(filtered) + " cells were filtered out based on size.")
-    return adata
+
+    return adata, filtered
 
 
-def preprocess3(adata, pcs, neighbors, spot_size=70, cluster_resolution=0.8):
+def preprocess3(
+    adata: AnnData,
+    pcs: int,
+    neighbors: int,
+    spot_size: int = 70,
+    cluster_resolution: float = 0.8,
+) -> Tuple[AnnData, pd.DataFrame]:
     sc.pp.neighbors(adata, n_neighbors=neighbors, n_pcs=pcs)
     sc.tl.umap(adata)
     # sc.pl.umap(adata, color=['Folr2','Glul','Sox9','Cd9']) #total counts doesn't matter that much
@@ -424,11 +466,12 @@ def preprocess3(adata, pcs, neighbors, spot_size=70, cluster_resolution=0.8):
     sc.tl.rank_genes_groups(adata, "leiden", method="wilcoxon")
     sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
 
-    plot_shapes(adata, column="leiden")
     return adata
 
 
-def score_genes_liver(adata, path_marker_genes, row_norm=False):
+def scoreGenesLiver(
+    adata: AnnData, path_marker_genes: str, row_norm: bool = False
+) -> Tuple[dict, pd.DataFrame]:
     df_markers = pd.read_csv(path_marker_genes, index_col=0)
     df_markers.columns = df_markers.columns.str.replace("Tot_Score_", "")
     df_markers.columns = df_markers.columns.str.replace("uppfer", "upffer")
@@ -441,8 +484,8 @@ def score_genes_liver(adata, path_marker_genes, row_norm=False):
                 # print(df_markers.index[row])
         genes_dict[i] = genes
 
-    for i in genes_dict:
-        sc.tl.score_genes(adata, genes_dict[i], score_name=i)
+    for item in genes_dict.items():
+        sc.tl.score_genes(adata, item, score_name=df_markers[-1])
 
     # scoresper_cluster = adata.obs[[col for col in adata.obs if col.startswith('Tot')]] #very specific to this dataset
     scoresper_cluster = adata.obs[
@@ -464,19 +507,22 @@ def score_genes_liver(adata, path_marker_genes, row_norm=False):
     adata.obs["Cleanliness"] = scores.values
     adata.obs["maxScores"] = scoresper_cluster.idxmax(axis=1)
 
+    return genes_dict, scoresper_cluster
+
+
+def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None:
     sc.pl.umap(adata, color=["Cleanliness", "maxScores"])
     sc.pl.umap(adata, color=["leiden", "maxScores"])
-
     # fig,ax =plt.subplots(1,1,figsize=(20,10))
-    # sc.pl.spatial(adata,color='maxScores',spot_size=70,show=False,cmap='magma',alpha=1,title='AnnotationScores',ax=ax)
-    plot_shapes(adata, column="maxScores")
 
+    # sc.pl.spatial(adata,color='maxScores',spot_size=70,show=False,cmap='magma',alpha=1,title='AnnotationScores',ax=ax)
     # fig,ax =plt.subplots(1,1,figsize=(20,10)) sc.pl.spatial(adata,color='Cleanliness',spot_size=70,show=False,
     # cmap='magma',alpha=1,title='Cleanliness of data',ax=ax)
+
+    plot_shapes(adata, column="maxScores")
     plot_shapes(adata, column="Cleanliness")
 
     sc.pl.heatmap(adata, var_names=scoresper_cluster.columns.values, groupby="leiden")
-
     sc.pl.heatmap(
         adata[
             adata.obs.leiden.isin(
@@ -486,12 +532,15 @@ def score_genes_liver(adata, path_marker_genes, row_norm=False):
         var_names=scoresper_cluster.columns.values,
         groupby="leiden",
     )
-    return genes_dict
 
 
 def clustercleanliness(
-    adata, img, celltypes, crop_coord=[0, 2000, 0, 2000], liver=False
-):
+    adata: AnnData,
+    img: np.ndarray,
+    celltypes: np.ndarray,
+    crop_coord: List[int] = [0, 2000, 0, 2000],
+    liver: bool = False,
+) -> None:
     # The coloring doesn't work yet for non-liver samples, but is easily adaptable, by just not defining a colormap
     # anywhere
     adata.obs["maxScores"] = adata.obs[
@@ -507,18 +556,18 @@ def clustercleanliness(
         adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(
             ["Other_ImmuneCells"]
         )
-        for i in range(0, len(adata.obs.maxScores)):
-            if adata.obs.maxScores[i] in other_immune_cells:
+        for i, val in enumerate(adata.obs.maxScores):
+            if val in other_immune_cells:
                 adata.obs.maxScores[i] = "Other_ImmuneCells"
-
         adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(["vein_EC45"])
-        for i in range(0, len(adata.obs.maxScores)):
-            if adata.obs.maxScores[i] in vein:
-                adata.obs.maxScores[i] = "vein_EC45"
 
+        for i, val in enumerate(adata.obs.maxScores):
+            if val in vein:
+                adata.obs.maxScores[i] = "vein_EC45"
         adata.obs.maxScoresSave = adata.obs.maxScoresSave.cat.add_categories(
             ["vein_EC45"]
         )
+
         for i in range(0, len(adata.obs.maxScores)):
             if adata.obs.maxScoresSave[i] in vein:
                 adata.obs.maxScoresSave[i] = "vein_EC45"
@@ -575,13 +624,13 @@ def clustercleanliness(
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
     stacked_norm.columns = list(adata.obs.maxScores.cat.categories)
-    f, ax = plt.subplots(1, 1, figsize=(10, 5))
+    fig, ax = plt.subplots(1, 1, figsize=(10, 5))
     if liver:
         stacked_norm.plot(
-            kind="bar", stacked=True, ax=f.gca(), color=color_dict
+            kind="bar", stacked=True, ax=fig.gca(), color=color_dict
         )  # .legend(loc='lower left')
     else:
-        stacked_norm.plot(kind="bar", stacked=True, ax=f.gca())
+        stacked_norm.plot(kind="bar", stacked=True, ax=fig.gca())
         # ax.axis('off')
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -596,7 +645,7 @@ def clustercleanliness(
     plot_shapes(adata, column="maxScores", alpha=0.8)
     plot_shapes(adata, column="maxScores", crd=crop_coord, alpha=0.8)
 
-    fig, ax = plt.subplots(1, 1, figsize=(15, 10))
+    _, ax = plt.subplots(1, 1, figsize=(15, 10))
     sc.pl.umap(adata, color=["maxScores"], ax=ax, size=60, show=False)
     ax.axis("off")
     # plt.title('UMAP colored by annotation based on celltype ',fontsize='xx-large')
