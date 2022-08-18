@@ -3,13 +3,9 @@
 
 
 import hydra
-import numpy as np
 import pyrootutils
 from omegaconf import DictConfig
 
-from napari_spongepy import utils
-
-log = utils.get_pylogger(__name__)
 
 # project root setup
 # searches for root indicators in parent dirs, like ".git", "pyproject.toml", etc.
@@ -80,6 +76,10 @@ def main(cfg: DictConfig) -> None:
     from squidpy.im import ImageContainer
 
     import pipelineScripts as pl
+    from napari_spongepy import utils
+    import numpy as np
+
+    log = utils.get_pylogger(__name__)
 
     ic, img = None, None
 
