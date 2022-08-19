@@ -73,7 +73,7 @@ def mask_to_polygons_layer(mask):
 def main(cfg: DictConfig) -> None:
 
     # preprocessing
-    import pipelineScripts as pl
+    from napari_spongepy import functions as fc
     from squidpy.im import ImageContainer
     from napari_spongepy import utils
     import numpy as np
@@ -112,10 +112,9 @@ def main(cfg: DictConfig) -> None:
     else:
         crd = [4500, 4600, 6500, 6700]
         log.info("Start preprocessing")
-        img = pl.preprocessImage(
+        img, _ = fc.preprocessImage(
             path_image=cfg.dataset.image,
             size_tophat=45,
-            small_size_vis=crd,
             contrast_clip=3.5,
         )
         # masks=pl.segmentation(img,device='mps',mask_threshold=-1,small_size_vis=crd,flow_threshold=0.7,min_size=1000)
@@ -161,7 +160,7 @@ def main(cfg: DictConfig) -> None:
             viewer.add_labels(masks)
             napari.run()
     return
-    df = pl.allocate_genes_quick(cfg.dataset.coords, masks)
+    df = fc.allocate_genes_quick(cfg.dataset.coords, masks)
 
     coordinates = (
         df.groupby(["cells"]).mean().iloc[:, [0, 1]]
