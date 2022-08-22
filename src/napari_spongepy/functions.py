@@ -38,7 +38,7 @@ def BasiCCorrection(
             tiles.append(temp)
     # measure the filters
     tiles = np.array(tiles)
-    basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10)
+    basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="gpu")
     basic.fit(tiles)
     flatfield = basic.flatfield
     tiles_corrected = basic.transform(tiles)
@@ -57,7 +57,7 @@ def BasiCCorrection(
 
 
 def BasiCCorrectionPlot(img: np.ndarray, flatfield, img_orig: np.ndarray) -> None:
-    plt.imshow(flatfield[0], cmap="gray")
+    plt.imshow(flatfield, cmap="gray")
     plt.title("correction performed per tile")
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
