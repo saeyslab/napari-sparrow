@@ -9,7 +9,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pybasic
+from basicpy import BaSiC
 import rasterio
 import scanpy as sc
 import seaborn as sns
@@ -37,10 +37,11 @@ def BasiCCorrection(
             temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
             tiles.append(temp)
     # measure the filters
-    flatfield = pybasic.basic(tiles, darkfield=False, verbosity=False)
-    tiles_corrected = pybasic.correct_illumination(
-        images_list=tiles, flatfield=flatfield[0]
-    )  # darkfield = darkfield)
+    tiles = np.array(tiles)
+    basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10)
+    basic.fit(tiles)
+    flatfield = basic.flatfield
+    tiles_corrected = basic.transform(tiles)
 
     # stitch the tiles back together
     i_new = np.zeros(img.shape)
