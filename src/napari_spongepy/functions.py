@@ -485,8 +485,8 @@ def scoreGenesLiver(
                 # print(df_markers.index[row])
         genes_dict[i] = genes
 
-    for item in genes_dict.items():
-        sc.tl.score_genes(adata, item, score_name=df_markers[-1])
+    for key, value in genes_dict.items():
+        sc.tl.score_genes(adata, value, score_name=key)
 
     # scoresper_cluster = adata.obs[[col for col in adata.obs if col.startswith('Tot')]] #very specific to this dataset
     scoresper_cluster = adata.obs[
