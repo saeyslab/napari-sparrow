@@ -1,0 +1,4 @@
+data_dir: ${paths.data_dir}/resolve_plant/
+dtype: tiff
+image: ${dataset.data_dir}/Composite_slideC1_2.tif
+coords: ${dataset.data_dir}/C1_slide2_CalcoF_Results.txt
