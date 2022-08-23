@@ -5,7 +5,7 @@ channels:
   - defaults
 dependencies:
   - python=3.10
-  - ipykernel=6.15.0
+  - ipykernel=6.9.1
   - pytorch=1.12
   # disable for non-CUDA GPUs
   - cudatoolkit=11.3
