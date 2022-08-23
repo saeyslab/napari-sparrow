@@ -8,7 +8,7 @@ from omegaconf import DictConfig, open_dict
 @pytest.fixture(scope="package")
 def cfg_pipeline_global() -> DictConfig:
     with initialize(version_base="1.2", config_path="../../../configs"):
-        cfg = compose(config_name="pipeline", overrides=["+dataset=resolve", "subset=\'100,100\'"])
+        cfg = compose(config_name="pipeline", overrides=["+dataset=resolve"])
 
     return cfg
 

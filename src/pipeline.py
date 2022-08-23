@@ -120,6 +120,8 @@ def main(cfg: DictConfig) -> None:
         # masks=pl.segmentation(img,device='mps',mask_threshold=-1,small_size_vis=crd,flow_threshold=0.7,min_size=1000)
 
         subset = cfg.subset
+        print("This is the cfg subset:")
+        print(cfg.subset)
         if subset:
             subset = utils.parse_subset(subset)
             log.info(f"Subset is {subset}")

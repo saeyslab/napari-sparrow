@@ -1,0 +1,101 @@
+[I 2022-08-23 10:53:47.845 ServerApp] jupyterlab | extension was successfully linked.
+[I 2022-08-23 10:53:47.858 ServerApp] nbclassic | extension was successfully linked.
+[I 2022-08-23 10:53:47.861 ServerApp] Writing Jupyter server cookie secret to /home/koends/.local/share/jupyter/runtime/jupyter_cookie_secret
+[I 2022-08-23 10:53:48.101 ServerApp] notebook_shim | extension was successfully linked.
+[I 2022-08-23 10:53:48.139 ServerApp] notebook_shim | extension was successfully loaded.
+[I 2022-08-23 10:53:48.141 LabApp] JupyterLab extension loaded from /home/koends/.conda/envs/napari-spongepy/lib/python3.10/site-packages/jupyterlab
+[I 2022-08-23 10:53:48.142 LabApp] JupyterLab application directory is /home/koends/.conda/envs/napari-spongepy/share/jupyter/lab
+[I 2022-08-23 10:53:48.149 ServerApp] jupyterlab | extension was successfully loaded.
+[I 2022-08-23 10:53:48.157 ServerApp] nbclassic | extension was successfully loaded.
+[I 2022-08-23 10:53:48.157 ServerApp] The port 8888 is already in use, trying another port.
+[I 2022-08-23 10:53:48.158 ServerApp] The port 8889 is already in use, trying another port.
+[I 2022-08-23 10:53:48.158 ServerApp] The port 8890 is already in use, trying another port.
+[I 2022-08-23 10:53:48.159 ServerApp] The port 8891 is already in use, trying another port.
+[I 2022-08-23 10:53:48.160 ServerApp] Serving notebooks from local directory: /srv/scratch/koends/napari-spongepy
+[I 2022-08-23 10:53:48.160 ServerApp] Jupyter Server 1.18.1 is running at:
+[I 2022-08-23 10:53:48.160 ServerApp] http://localhost:8892/lab?token=765d97cfdf872edb5799ded4b4abd6e591f6c1f590bbbea7
+[I 2022-08-23 10:53:48.160 ServerApp]  or http://127.0.0.1:8892/lab?token=765d97cfdf872edb5799ded4b4abd6e591f6c1f590bbbea7
+[I 2022-08-23 10:53:48.160 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[C 2022-08-23 10:53:48.165 ServerApp] 
+    
+    To access the server, open this file in a browser:
+        file:///home/koends/.local/share/jupyter/runtime/jpserver-96582-open.html
+    Or copy and paste one of these URLs:
+        http://localhost:8892/lab?token=765d97cfdf872edb5799ded4b4abd6e591f6c1f590bbbea7
+     or http://127.0.0.1:8892/lab?token=765d97cfdf872edb5799ded4b4abd6e591f6c1f590bbbea7
+[I 2022-08-23 11:41:32.457 ServerApp] 302 GET /?token=765d97cfdf872edb5799ded4b4abd6e591f6c1f590bbbea7 (::1) 1.17ms
+[W 2022-08-23 11:41:37.015 LabApp] Could not determine jupyterlab build status without nodejs
+[W 2022-08-23 11:42:19.854 ServerApp] Notebook experiments/script_plant_spongepy.ipynb is not trusted
+[I 2022-08-23 11:42:21.885 ServerApp] Kernel started: 33acf184-40e2-4612-b8a8-573ae9ec458d
+[IPKernelApp] ERROR | No such comm target registered: jupyter.widget.control
+[IPKernelApp] WARNING | No such comm: 936225ae-3293-45be-ab19-f72c845c72d2
+[I 2022-08-23 11:42:39.846 ServerApp] Kernel started: 0006f03b-6fe0-4f4d-a94d-f16acfc4cfd1
+[I 2022-08-23 11:42:39.847 ServerApp] Kernel shutdown: 33acf184-40e2-4612-b8a8-573ae9ec458d
+[IPKernelApp] ERROR | No such comm target registered: jupyter.widget.control
+[IPKernelApp] WARNING | No such comm: 4c1379ca-d27e-4118-8a87-777406cfc2c1
+[W 2022-08-23 11:45:20.813 ServerApp] Notebook experiments/script_plant_spongepy.ipynb is not trusted
+[W 2022-08-23 11:47:50.379 ServerApp] Notebook experiments/script_liver_spongepy.ipynb is not trusted
+[I 2022-08-23 11:47:53.820 ServerApp] Kernel started: 07dd4a27-30e2-4359-9c02-ec8929aeb333
+[IPKernelApp] ERROR | No such comm target registered: jupyter.widget.control
+[IPKernelApp] WARNING | No such comm: d2287fb6-0113-47ee-8917-2d3fa36d3e24
+[I 2022-08-23 11:48:58.163 ServerApp] Starting buffering for 07dd4a27-30e2-4359-9c02-ec8929aeb333:cafe9c72-08e8-491c-99a6-7f6935132eaa
+[W 2022-08-23 11:49:00.800 ServerApp] Notebook experiments/script_liver_spongepy.ipynb is not trusted
+Exception in callback Task.task_wakeup(<Future finis...bb3"\r\n\r\n'>)
+handle: <Handle Task.task_wakeup(<Future finis...bb3"\r\n\r\n'>)>
+Traceback (most recent call last):
+  File "/home/koends/.conda/envs/napari-spongepy/lib/python3.10/asyncio/events.py", line 80, in _run
+    self._context.run(self._callback, *self._args)
+RuntimeError: Cannot enter into task <Task pending name='Task-1' coro=<HTTP1ServerConnection._server_request_loop() running at /home/koends/.conda/envs/napari-spongepy/lib/python3.10/site-packages/tornado/http1connection.py:825> wait_for=<Future finished result=b'GET /api/co...6bb3"\r\n\r\n'> cb=[IOLoop.add_future.<locals>.<lambda>() at /home/koends/.conda/envs/napari-spongepy/lib/python3.10/site-packages/tornado/ioloop.py:687]> while another task <Task pending name='Task-516' coro=<PeriodicCallback._run() running at /home/koends/.conda/envs/napari-spongepy/lib/python3.10/site-packages/tornado/ioloop.py:921> cb=[IOLoop.add_future.<locals>.<lambda>() at /home/koends/.conda/envs/napari-spongepy/lib/python3.10/site-packages/tornado/ioloop.py:694]> is being executed.
+[IPKernelApp] ERROR | No such comm target registered: jupyter.widget.control
+[IPKernelApp] WARNING | No such comm: 692b2530-261f-45c3-913b-126f7169f09e
+[I 2022-08-23 11:51:04.727 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[I 2022-08-23 11:55:06.537 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[I 2022-08-23 12:27:42.317 ServerApp] Starting buffering for 07dd4a27-30e2-4359-9c02-ec8929aeb333:900c62cc-30d3-4a4c-a4c1-f16a03811f93
+[I 2022-08-23 12:27:42.319 ServerApp] Starting buffering for 0006f03b-6fe0-4f4d-a94d-f16acfc4cfd1:6af8bdaa-2380-487b-8430-41c6b3369f64
+[C 2022-08-23 13:04:51.996 ServerApp] received signal 15, stopping
+[I 2022-08-23 13:04:51.999 ServerApp] Shutting down 3 extensions
+[I 2022-08-23 13:04:52.001 ServerApp] Shutting down 2 kernels
+[I 2022-08-23 13:04:52.003 ServerApp] Discarding 154 buffered messages for 07dd4a27-30e2-4359-9c02-ec8929aeb333:900c62cc-30d3-4a4c-a4c1-f16a03811f93
+[I 2022-08-23 13:04:52.004 ServerApp] Kernel shutdown: 07dd4a27-30e2-4359-9c02-ec8929aeb333
+[I 2022-08-23 13:04:52.005 ServerApp] Kernel shutdown: 0006f03b-6fe0-4f4d-a94d-f16acfc4cfd1
+[I 2022-08-23 13:04:55.224 ServerApp] Shutting down 0 terminals
+[I 2022-08-23 13:05:29.185 ServerApp] jupyterlab | extension was successfully linked.
+[I 2022-08-23 13:05:29.196 ServerApp] nbclassic | extension was successfully linked.
+[I 2022-08-23 13:05:29.416 ServerApp] notebook_shim | extension was successfully linked.
+[I 2022-08-23 13:05:29.456 ServerApp] notebook_shim | extension was successfully loaded.
+[I 2022-08-23 13:05:29.459 LabApp] JupyterLab extension loaded from /home/koends/.conda/envs/napari-spongepy/lib/python3.10/site-packages/jupyterlab
+[I 2022-08-23 13:05:29.459 LabApp] JupyterLab application directory is /home/koends/.conda/envs/napari-spongepy/share/jupyter/lab
+[I 2022-08-23 13:05:29.468 ServerApp] jupyterlab | extension was successfully loaded.
+[I 2022-08-23 13:05:29.476 ServerApp] nbclassic | extension was successfully loaded.
+[I 2022-08-23 13:05:29.477 ServerApp] Serving notebooks from local directory: /srv/scratch/koends/napari-spongepy
+[I 2022-08-23 13:05:29.477 ServerApp] Jupyter Server 1.18.1 is running at:
+[I 2022-08-23 13:05:29.477 ServerApp] http://localhost:8888/lab?token=75e5cba15ba2e7e6006acfd017305bd58e2238e707194516
+[I 2022-08-23 13:05:29.477 ServerApp]  or http://127.0.0.1:8888/lab?token=75e5cba15ba2e7e6006acfd017305bd58e2238e707194516
+[I 2022-08-23 13:05:29.477 ServerApp] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[C 2022-08-23 13:05:29.483 ServerApp] 
+    
+    To access the server, open this file in a browser:
+        file:///home/koends/.local/share/jupyter/runtime/jpserver-128300-open.html
+    Or copy and paste one of these URLs:
+        http://localhost:8888/lab?token=75e5cba15ba2e7e6006acfd017305bd58e2238e707194516
+     or http://127.0.0.1:8888/lab?token=75e5cba15ba2e7e6006acfd017305bd58e2238e707194516
+[I 2022-08-23 13:06:02.463 ServerApp] 302 GET /?token=75e5cba15ba2e7e6006acfd017305bd58e2238e707194516 (::1) 1.35ms
+[W 2022-08-23 13:06:05.314 LabApp] Could not determine jupyterlab build status without nodejs
+[I 2022-08-23 13:06:07.810 ServerApp] Kernel started: 9d4952d8-1119-410c-80ef-ce375f4b3f89
+[IPKernelApp] ERROR | No such comm target registered: jupyter.widget.control
+[IPKernelApp] WARNING | No such comm: 3a1a1968-901a-4110-951c-0bb68068f0df
+[I 2022-08-23 13:08:08.710 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[W 2022-08-23 13:08:38.885 ServerApp] Notebook experiments/script_plant_spongepy.ipynb is not trusted
+[I 2022-08-23 13:08:42.076 ServerApp] Kernel started: 8266574f-732f-4875-be43-55ce60b4dc58
+[IPKernelApp] ERROR | No such comm target registered: jupyter.widget.control
+[IPKernelApp] WARNING | No such comm: 1206c0c0-b9ac-41e5-a565-c24d26e74767
+[I 2022-08-23 13:10:43.034 ServerApp] Saving file at /experiments/script_plant_spongepy.ipynb
+[I 2022-08-23 13:12:11.124 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[I 2022-08-23 13:12:44.123 ServerApp] Saving file at /experiments/script_plant_spongepy.ipynb
+[I 2022-08-23 13:14:12.020 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[I 2022-08-23 13:14:47.226 ServerApp] Saving file at /experiments/script_plant_spongepy.ipynb
+[I 2022-08-23 13:16:16.688 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[I 2022-08-23 13:18:24.170 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[I 2022-08-23 13:20:32.219 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[I 2022-08-23 13:34:27.831 ServerApp] Saving file at /experiments/script_liver_spongepy.ipynb
+[I 2022-08-23 13:34:30.648 ServerApp] Saving file at /experiments/script_plant_spongepy.ipynb

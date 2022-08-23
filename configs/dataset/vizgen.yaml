@@ -1,3 +1,3 @@
-data_dir: ${paths.data_dir}/vizgen/
+data_dir: ${paths.data_dir}/vizgen_liver/
 dtype: xarray
 coords: null
