@@ -95,7 +95,7 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-Run the tests in `src/_tests`:
+Run the tests in the root of the project:
 ```
 pytest
 ```

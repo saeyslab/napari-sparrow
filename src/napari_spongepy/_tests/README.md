@@ -7,3 +7,4 @@ The commandline arguments read -n=auto for parallel testing and --nbmake for tes
 
 ### Executing the tests
 You can run the test by executing the command ```pytest``` in the root of the project.
+In order to get detail eror readings and logs of the test, execute ```pytest -rx```.
