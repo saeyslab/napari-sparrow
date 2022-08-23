@@ -110,7 +110,6 @@ def main(cfg: DictConfig) -> None:
             # small chunks needed if subset is used
         )
     else:
-        crd = [4500, 4600, 6500, 6700]
         log.info("Start preprocessing")
         img, _ = fc.preprocessImage(
             path_image=cfg.dataset.image,
