@@ -1,6 +1,6 @@
 # %load_ext autoreload
 # %autoreload 2
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 # %matplotlib widget
 import cv2
@@ -9,13 +9,13 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from basicpy import BaSiC
 import rasterio
 import scanpy as sc
 import seaborn as sns
 import shapely
 import torch
 from anndata import AnnData
+from basicpy import BaSiC
 from cellpose import models
 from rasterio import features
 from scipy import ndimage

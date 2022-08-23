@@ -6,7 +6,6 @@ import hydra
 import pyrootutils
 from omegaconf import DictConfig
 
-
 # project root setup
 # searches for root indicators in parent dirs, like ".git", "pyproject.toml", etc.
 # sets PROJECT_ROOT environment variable (used in `configs/paths/default.yaml`)
@@ -73,10 +72,11 @@ def mask_to_polygons_layer(mask):
 def main(cfg: DictConfig) -> None:
 
     # preprocessing
-    from napari_spongepy import functions as fc
-    from squidpy.im import ImageContainer
-    from napari_spongepy import utils
     import numpy as np
+    from squidpy.im import ImageContainer
+
+    from napari_spongepy import functions as fc
+    from napari_spongepy import utils
 
     log = utils.get_pylogger(__name__)
 
