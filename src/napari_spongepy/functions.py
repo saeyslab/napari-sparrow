@@ -1,6 +1,6 @@
 # %load_ext autoreload
 # %autoreload 2
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 # %matplotlib widget
 import cv2
@@ -9,13 +9,13 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pybasic
 import rasterio
 import scanpy as sc
 import seaborn as sns
 import shapely
 import torch
 from anndata import AnnData
+from basicpy import BaSiC
 from cellpose import models
 from rasterio import features
 from scipy import ndimage
@@ -37,10 +37,11 @@ def BasiCCorrection(
             temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
             tiles.append(temp)
     # measure the filters
-    flatfield = pybasic.basic(tiles, darkfield=False, verbosity=False)
-    tiles_corrected = pybasic.correct_illumination(
-        images_list=tiles, flatfield=flatfield[0]
-    )  # darkfield = darkfield)
+    tiles = np.array(tiles)
+    basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="gpu")
+    basic.fit(tiles)
+    flatfield = basic.flatfield
+    tiles_corrected = basic.transform(tiles)
 
     # stitch the tiles back together
     i_new = np.zeros(img.shape)
@@ -56,7 +57,7 @@ def BasiCCorrection(
 
 
 def BasiCCorrectionPlot(img: np.ndarray, flatfield, img_orig: np.ndarray) -> None:
-    plt.imshow(flatfield[0], cmap="gray")
+    plt.imshow(flatfield, cmap="gray")
     plt.title("correction performed per tile")
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
@@ -484,8 +485,8 @@ def scoreGenesLiver(
                 # print(df_markers.index[row])
         genes_dict[i] = genes
 
-    for item in genes_dict.items():
-        sc.tl.score_genes(adata, item, score_name=df_markers[-1])
+    for key, value in genes_dict.items():
+        sc.tl.score_genes(adata, value, score_name=key)
 
     # scoresper_cluster = adata.obs[[col for col in adata.obs if col.startswith('Tot')]] #very specific to this dataset
     scoresper_cluster = adata.obs[
