@@ -134,7 +134,7 @@ Debug in VS Code using a [Remote Attach](https://code.visualstudio.com/docs/pyth
 ```
 
 ```
-python -m debugpy --listen 5678 src/pipeline.py
+LOGLEVEL=DEBUG python -m debugpy --listen 5678 src/pipeline.py
 ```
 
 ## References
