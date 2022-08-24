@@ -1,2 +1,4 @@
 # output file names
 masks: ${paths.output_dir}/masks.npy
+geojson: ${paths.output_dir}/adata.geojson
+h5ad: ${paths.output_dir}/adata.h5ad

@@ -452,7 +452,7 @@ def filter_on_size(
     return adata, filtered
 
 
-def preprocess3(
+def clustering(
     adata: AnnData,
     pcs: int,
     neighbors: int,
