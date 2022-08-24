@@ -1,6 +1,6 @@
 """
 Napari widget for cell segmentation of
-preprocessed (Resolve) spatial transcriptomics
+cleaned (Resolve) spatial transcriptomics
 microscopy images with nuclear stains.
 Segmentation is performed with Squidpy ImageContainer and segment.
 Setting "Enable async tiling" is needed to see intermediate results.

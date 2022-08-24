@@ -41,7 +41,7 @@ COLOR_CYCLE2 = (
 @magic_factory(
     call_button="Visualize", density_radius_micrometer={"min": 0.1, "max": 10.0}
 )
-def transcripts_widget(
+def allocate_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
     transcripts_file: pathlib.Path = pathlib.Path(""),

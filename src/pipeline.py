@@ -93,7 +93,7 @@ def main(cfg: DictConfig) -> None:
             log.info(f"Subset is {subset}")
         # imports can be nested inside @hydra.main to optimize tab completion
         # https://github.com/facebookresearch/hydra/issues/934
-        from napari_spongepy._segmentation_widget import _segmentation_worker
+        from napari_spongepy._segment_widget import _segmentation_worker
 
         if cfg.segmentation.get("method"):
             method = cfg.segmentation.method
@@ -125,7 +125,7 @@ def main(cfg: DictConfig) -> None:
             log.info(f"Subset is {subset}")
         # imports can be nested inside @hydra.main to optimize tab completion
         # https://github.com/facebookresearch/hydra/issues/934
-        from napari_spongepy._segmentation_widget import _segmentation_worker
+        from napari_spongepy._segment_widget import _segmentation_worker
 
         if cfg.segmentation.get("method"):
             method = cfg.segmentation.method
