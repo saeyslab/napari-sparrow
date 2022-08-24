@@ -2,6 +2,8 @@
 # can be run from any place
 
 
+from typing import Any
+
 import hydra
 import pyrootutils
 from omegaconf import DictConfig
@@ -22,20 +24,21 @@ def main(cfg: DictConfig) -> None:
     from napari_spongepy import pipeline_functions as pf
 
     # The pipeline consist of 5 steps:
+    results: dict[str, Any] = {}
     # Clean
-    cfg = pf.clean(cfg)
+    cfg, results = pf.clean(cfg, results)
 
     # Segment
-    cfg = pf.segment(cfg)
+    cfg, results = pf.segment(cfg, results)
 
     # Allocate
-    cfg = pf.allocate(cfg)
+    cfg, results = pf.allocate(cfg, results)
 
     # Annotate
-    cfg = pf.annotate(cfg)
+    cfg, results = pf.annotate(cfg, results)
 
     # Visualize
-    cfg = pf.visualize(cfg)
+    cfg, results = pf.visualize(cfg, results)
 
     return
 

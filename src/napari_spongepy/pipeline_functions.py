@@ -9,7 +9,7 @@ from napari_spongepy import utils
 log = utils.get_pylogger(__name__)
 
 
-def clean(cfg: DictConfig) -> DictConfig:
+def clean(cfg: DictConfig, results: dict) -> DictConfig:
     # Perform BaSiCCorrection
     img, _, _ = fc.BasiCCorrection(path_image=cfg.dataset.image)
 
@@ -19,12 +19,13 @@ def clean(cfg: DictConfig) -> DictConfig:
         size_tophat=cfg.preprocess.size_tophat,
         contrast_clip=cfg.preprocess.contrast_clip,
     )
-    cfg.result.preprocessimg = img
+    results = {"preprocessimg": img}
+    # cfg.result.preprocessimg = img
 
-    return cfg
+    return cfg, results
 
 
-def segment(cfg: DictConfig) -> DictConfig:
+def segment(cfg: DictConfig, results: dict) -> DictConfig:
     import numpy as np
     from squidpy.im import ImageContainer
 
@@ -56,7 +57,7 @@ def segment(cfg: DictConfig) -> DictConfig:
             # small chunks needed if subset is used
         )
     else:
-        img = cfg.result.preprocessimg
+        img = results["preprocessimg"]
         worker = _segmentation_worker(
             img,
             method=method,
@@ -71,33 +72,33 @@ def segment(cfg: DictConfig) -> DictConfig:
     if cfg.paths.masks:
         log.info(f"Writing masks to {cfg.paths.masks}")
         np.save(cfg.paths.masks, masks)
-    cfg.result.segmentationmasks = masks
+    results["segmentationmasks"] = masks
 
-    return cfg
+    return cfg, results
 
 
-def allocate(cfg: DictConfig) -> DictConfig:
-    masks = cfg.result.segmentationmasks
-    adata = fc.create_adata_quick(cfg.dataset.coords, cfg.result.preprocessimg, masks)
+def allocate(cfg: DictConfig, results: dict) -> DictConfig:
+    masks = results["segmentationmasks"]
+    adata = fc.create_adata_quick(cfg.dataset.coords, results["preprocessimg"], masks)
     adata, _ = fc.preprocessAdata(adata, masks)
     adata, _ = fc.filter_on_size(adata, min_size=500)
     fc.clustering(adata, 17, 35)
 
-    cfg.result.adata = adata
+    results["adata"] = adata
 
-    return cfg
+    return cfg, results
 
 
-def annotate(cfg: DictConfig) -> DictConfig:
-    adata = cfg.result.adata
+def annotate(cfg: DictConfig, results: dict) -> DictConfig:
+    adata = results["adata"]
     _, _ = fc.scoreGenesLiver(adata, cfg.dataset.markers)
-    cfg.result.adata = adata
+    results["adata"] = adata
 
-    return cfg
+    return cfg, results
 
 
-def visualize(cfg: DictConfig) -> DictConfig:
-    adata = cfg.result.adata
+def visualize(cfg: DictConfig, results: dict) -> DictConfig:
+    adata = results["adata"]
 
     adata.raw.var.index.names = ["genes"]
     adata.var.index.names = ["genes"]
