@@ -159,10 +159,7 @@ def segmentation(
     "When an RGB image is given a input, the R channel is expected to have the nuclei, and the blue channel the membranes"
     "When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei"
 
-    device = torch.cuda.device(device)  # GPU 4 is your GPU
-    torch.cuda.set_device(device)
-    model = models.Cellpose(gpu=device, model_type=model_type)
-    torch.cuda.set_device(device)
+    model = models.Cellpose(model_type=model_type, device=torch.device(device))
 
     masks, _, _, _ = model.eval(
         img,
