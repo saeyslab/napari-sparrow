@@ -9,6 +9,9 @@ Setting "Render Images async" is needed to remove jank from rendering.
 > However, this messes with the cache and needlessly does segmentation on movement
 """
 
+from enum import Enum
+from typing import Callable
+
 import dask.array as da
 import napari
 import napari.layers
@@ -25,48 +28,31 @@ from napari_spongepy import get_ic
 log = utils.get_pylogger(__name__)
 
 
+class SegmentationOption(Enum):
+    watershed = "watershed"
+    cellpose = "cellpose"
+    # log = "log"
+    # dog = "dog"
+    # doh = "doh"
+
+
 @tz.curry
-def create_cellpose_method(
-    use_gpu,
-    min_size: int,
-    flow_threshold: float,
-    diameter: int,
-    mask_threshold: int,
-):
+def create_cellpose_method(use_gpu):
     from cellpose import models
 
-    channels = np.array([0, 0])
+    # Needs to be recreated, else AttributeError: 'CPnet' object has no attribute 'diam_mean'
+    model = models.Cellpose(gpu=use_gpu, model_type="nuclei")
 
-    def cellpose_method(img):
-        # Needs to be recreated, else AttributeError: 'CPnet' object has no attribute 'diam_mean'
+    def cellpose_method(img, fn_kwargs: dict):
         log.info(f"segmenting {img.shape}")
-        model = models.Cellpose(gpu=use_gpu, model_type="nuclei")
         masks, _, _, _ = model.eval(
             img,
-            diameter=diameter,
-            channels=channels,
-            min_size=min_size,
-            flow_threshold=flow_threshold,
-            cellprob_threshold=mask_threshold,
+            channels=[0, 0],
+            **fn_kwargs,
         )
         return masks
 
     return cellpose_method
-
-
-def ic_to_da(
-    ic, label="image", drop_dims=["z", "channels"], reduce_z=None, reduce_c=None
-):
-    """
-    Convert ImageContainer to dask array.
-    ImageContainer defaults to (x, y, z, channels (c if using xarray format)), most of the time we need just (x, y)
-    The c channel will be named c:0 after segmentation.
-    """
-    if reduce_z or reduce_c:
-        # TODO solve c:0 output when doing .isel(z=reduce_z, c=reduce_c)
-        return ic[label].isel({"z": reduce_z, "c:0": 0}).data
-    else:
-        return ic[label].squeeze(dim=drop_dims).data
 
 
 def toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold):
@@ -89,13 +75,13 @@ def toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold):
 @thread_worker
 def _segmentation_worker(
     ic: np.ndarray | ImageContainer,
-    method: str,
+    method: Callable | str,
     subset=None,
-    chunks="auto",
     reduce_z=None,
     reduce_c=None,
+    fn_kwargs=None,
     # if async interactive works: smaller chunks for faster segmentation computation
-    # chunks = (500, 500, 1, 1),
+    chunks=(1000, 1000, 1, 1),
 ) -> list[np.ndarray]:
 
     label_image = "image"
@@ -109,8 +95,9 @@ def _segmentation_worker(
         layer_added=label_segmentation,
         lazy=True,
         chunks=chunks,
+        fn_kwargs=fn_kwargs,
     )
-    s = ic_to_da(ic, "segment_watershed", reduce_c=reduce_c, reduce_z=reduce_z)
+    s = utils.ic_to_da(ic, "segment_watershed", reduce_c=reduce_c, reduce_z=reduce_z)
     if subset:
         s = s[subset]
 
@@ -124,37 +111,56 @@ def _segmentation_worker(
 def segmentation_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
-    method: str = "watershed",
+    method: SegmentationOption = SegmentationOption.watershed,
     use_gpu: bool = False,
     min_size: int = 80,
     flow_threshold: float = 0.6,
     diameter: int = 55,
-    mask_threshold: int = 0,
+    cellprob_threshold: int = 0,
+    thresh: int = 10_000,
+    geq: bool = True,
 ) -> None:
 
     log.info(f"About to segment {image} using {method}; use_gpu={use_gpu}")
     if image is None:
         return
-
-    if method == "cellpose":
-        method = create_cellpose_method(
-            use_gpu=use_gpu,
-            min_size=min_size,
-            flow_threshold=flow_threshold,
-            diameter=diameter,
-            mask_threshold=mask_threshold,
-        )
-
-    worker = _segmentation_worker(image.data, method)
+    if method == SegmentationOption.cellpose:
+        method_fn = create_cellpose_method(use_gpu)
+        fn_kwargs = {
+            "min_size": min_size,
+            "flow_threshold": flow_threshold,
+            "diameter": diameter,
+            "cellprob_threshold": cellprob_threshold,
+            "resample": False,
+        }
+    else:
+        method_fn = method.value
+        fn_kwargs = {
+            "thresh": thresh,
+            "geq": geq,
+        }
+    worker = _segmentation_worker(image.data, method_fn, fn_kwargs=fn_kwargs)
+    log.info("Worker created")
 
     layer_name = "Segmentation"
 
     def add_labels(img):
-        viewer.add_image(img, visible=False, name=layer_name)
-        f = toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold=0.9)
-        viewer.camera.events.zoom.connect(f)
+        try:
+            # if the layer exists, update its data
+            layer = viewer.layers[layer_name]
+            viewer.layers.remove(layer)
+
+            # layer.data = img
+            log.info(f"Refreshing {layer_name}")
+            # layer.refresh()
+        except KeyError:
+            # otherwise add it to the viewer
+            log.info(f"Adding {layer_name}")
+        viewer.add_labels(img, visible=True, name=layer_name)
+        # f = toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold=0.9)
+        # viewer.camera.events.zoom.connect(f)
         # execute f to emulate zoom event and set visiblity correct
-        f(None)
+        # f(None)
         return viewer
 
     worker.returned.connect(add_labels)
