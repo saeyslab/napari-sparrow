@@ -14,7 +14,6 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
     # Image subset for realtime checking
     subset = cfg.subset
     if subset:
-        print("SUBSET")
         subset = utils.parse_subset(subset)
         log.info(f"Subset is {subset}")
         img = io.imread(cfg.dataset.image)[subset]
@@ -83,6 +82,8 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
 def allocate(cfg: DictConfig, results: dict) -> DictConfig:
     masks = results["segmentationmasks"]
     img = results["preprocessimg"]
+
+    log.info(f"path is {cfg.dataset.coords}")
     adata = fc.create_adata_quick(cfg.dataset.coords, img, masks)
     adata, _ = fc.preprocessAdata(adata, masks)
     adata, _ = fc.filter_on_size(adata, min_size=500)
