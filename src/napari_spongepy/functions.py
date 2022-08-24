@@ -296,8 +296,16 @@ def create_adata_quick(
 
     # allocate the transcripts
     df = pd.read_csv(path, delimiter="\t", header=None)
+    # print(df.info)
+    print(masks.shape)
+    print(type(df[1].values))
+    print(type(df[1].values[df[1] < masks.shape[0]]))
+    print(df[0].values)
+    print(df[0].values[df[0] < masks.shape[1]])
     df = df[(df[1] < masks.shape[0]) & (df[0] < masks.shape[1])]
-    df["cells"] = masks[df[1].values, df[0].values]
+    df["cells"] = masks[
+        df[1].values[df[1] < masks.shape[0]], df[0].values[df[0] < masks.shape[1]]
+    ]
     coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
     # calculate the mean of the transcripts for every cell. Now based on transcripts, better on masks?
     # based on masks is present in the adata.obsm
