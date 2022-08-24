@@ -2,6 +2,7 @@ import hydra
 import pandas as pd
 import squidpy as sq
 from omegaconf import DictConfig
+from skimage import io
 
 from napari_spongepy import functions as fc
 from napari_spongepy import utils
@@ -10,8 +11,18 @@ log = utils.get_pylogger(__name__)
 
 
 def clean(cfg: DictConfig, results: dict) -> DictConfig:
+    # Image subset for realtime checking
+    subset = cfg.subset
+    if subset:
+        print("SUBSET")
+        subset = utils.parse_subset(subset)
+        log.info(f"Subset is {subset}")
+        img = io.imread(cfg.dataset.image)[subset]
+    else:
+        img = io.imread(cfg.dataset.image)
+
     # Perform BaSiCCorrection
-    img, _, _ = fc.BasiCCorrection(path_image=cfg.dataset.image, device=cfg.device)
+    img, _, _ = fc.BasiCCorrection(img=img, device=cfg.device)
 
     # Preprocess Image
     img, _ = fc.preprocessImage(
@@ -29,13 +40,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
     import numpy as np
     from squidpy.im import ImageContainer
 
-    from napari_spongepy import utils
     from napari_spongepy._segmentation_widget import _segmentation_worker
-
-    subset = cfg.subset
-    if subset:
-        subset = utils.parse_subset(subset)
-        log.info(f"Subset is {subset}")
 
     if cfg.segmentation.get("method"):
         method = cfg.segmentation.method
@@ -50,7 +55,6 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
         worker = _segmentation_worker(
             ic,
             method=method,
-            subset=subset,
             # TODO smarter selection of the z projection method
             reduce_z=3,
             reduce_c=3,
@@ -61,7 +65,6 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
         worker = _segmentation_worker(
             img,
             method=method,
-            subset=subset,
             # small chunks needed if subset is used
         )
 

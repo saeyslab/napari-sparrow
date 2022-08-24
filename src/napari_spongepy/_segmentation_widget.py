@@ -75,7 +75,6 @@ def toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold):
 def _segmentation_worker(
     ic: np.ndarray | ImageContainer,
     method: Callable | str,
-    subset=None,
     reduce_z=None,
     reduce_c=None,
     fn_kwargs=None,
@@ -97,8 +96,6 @@ def _segmentation_worker(
         fn_kwargs=fn_kwargs,
     )
     s = utils.ic_to_da(ic, "segment_watershed", reduce_c=reduce_c, reduce_z=reduce_z)
-    if subset:
-        s = s[subset]
 
     # make a dummy lower-res array to trigger multi-scale rendering
     dummy_s = da.zeros(tuple(np.array(s.shape) // 2)).astype(np.uint8)
