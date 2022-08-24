@@ -11,7 +11,7 @@ log = utils.get_pylogger(__name__)
 
 def clean(cfg: DictConfig) -> DictConfig:
     # Perform BaSiCCorrection
-    img, _, _ = fc.BasiCCorrection(img=cfg.dataset.image)
+    img, _, _ = fc.BasiCCorrection(path_image=cfg.dataset.image)
 
     # Preprocess Image
     img, _ = fc.preprocessImage(
