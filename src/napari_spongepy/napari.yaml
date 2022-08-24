@@ -2,6 +2,9 @@ name: napari-spongepy
 display_name: napari spongepy
 contributions:
   commands:
+    - id: napari-spongepy.wizard_widget
+      python_name: napari_spongepy._wizard_widget:wizard_widget
+      title: Wizard
     - id: napari-spongepy.preprocess_widget
       python_name: napari_spongepy._preprocess_widget:preprocess_widget
       title: Preprocessing
@@ -13,6 +16,8 @@ contributions:
       title: Transcripts
   widgets:
     # display_name is the name shown in the napari menu
+    - command: napari-spongepy.wizard_widget
+      display_name: Wizard
     - command: napari-spongepy.preprocess_widget
       display_name: Preprocess
     - command: napari-spongepy.segmentation_widget
