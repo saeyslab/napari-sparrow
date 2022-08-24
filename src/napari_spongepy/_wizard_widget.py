@@ -25,7 +25,7 @@ current_widget = None
 )
 def wizard_widget(
     viewer: Viewer,
-    step=lambda: preprocess_widget,
+    step,
 ) -> None:
     if not step:
         return
