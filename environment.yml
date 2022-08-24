@@ -33,6 +33,7 @@ dependencies:
   - leidenalg
   # dev tools
   - pre-commit
+  - pytest
   - tox
   - mypy
   - pip
