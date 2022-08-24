@@ -22,12 +22,13 @@ def get_choices(prop_dropdown):
     return [
         # Use lambdas so that the function is only called when the step is changed and can be removed safely.
         # TODO run call at startup so first widget loads immediately instead of empty option.
-        ("Start Here", None),
-        ("Clean", lambda: clean_widget),
-        ("Segment", lambda: segmentation_widget),
-        ("Allocate", lambda: allocate_widget),
-        ("Annotate", lambda: annotate_widget),
-        ("Visualize", lambda: visualize_widget),
+        # TODO use Enums
+        ("#0 Load", None),
+        ("#1 Clean", lambda: clean_widget),
+        ("#2 Segment", lambda: segmentation_widget),
+        ("#3 Allocate", lambda: allocate_widget),
+        ("#4 Annotate", lambda: annotate_widget),
+        ("#4 Visualize", lambda: visualize_widget),
     ]
 
 
@@ -39,6 +40,10 @@ def wizard_widget(
     viewer: Viewer,
     step,
 ) -> None:
+    """
+    Napari widget for managing the other widgets and giving a general overview of the workflow.
+    TODO add next step button
+    """
     log.debug(step)
     global current_widget
     if current_widget:
