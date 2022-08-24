@@ -14,7 +14,11 @@ def clean(cfg: DictConfig) -> DictConfig:
     img, _, _ = fc.BasiCCorrection(img=cfg.dataset.image)
 
     # Preprocess Image
-    img, _ = fc.preprocessImage(img=img, size_tophat=45, contrast_clip=3.5)
+    img, _ = fc.preprocessImage(
+        img=img,
+        size_tophat=cfg.preprocess.size_tophat,
+        contrast_clip=cfg.preprocess.contrast_clip,
+    )
     cfg.result.preprocessimg = img
 
     return cfg
@@ -25,26 +29,22 @@ def segment(cfg: DictConfig) -> DictConfig:
     from squidpy.im import ImageContainer
 
     from napari_spongepy import utils
+    from napari_spongepy._segmentation_widget import _segmentation_worker
 
-    ic, img = None, None
+    subset = cfg.subset
+    if subset:
+        subset = utils.parse_subset(subset)
+        log.info(f"Subset is {subset}")
+
+    if cfg.segmentation.get("method"):
+        method = cfg.segmentation.method
+    else:
+        method = hydra.utils.instantiate(cfg.segmentation)
 
     if cfg.dataset.dtype == "xarray":
         # TODO support preprocessing for zarr datasets
         ic = ImageContainer(cfg.dataset.data_dir)
         print(ic)
-
-        subset = cfg.subset
-        if subset:
-            subset = utils.parse_subset(subset)
-            log.info(f"Subset is {subset}")
-        # imports can be nested inside @hydra.main to optimize tab completion
-        # https://github.com/facebookresearch/hydra/issues/934
-        from napari_spongepy._segmentation_widget import _segmentation_worker
-
-        if cfg.segmentation.get("method"):
-            method = cfg.segmentation.method
-        else:
-            method = hydra.utils.instantiate(cfg.segmentation)
 
         worker = _segmentation_worker(
             ic,
@@ -56,39 +56,18 @@ def segment(cfg: DictConfig) -> DictConfig:
             # small chunks needed if subset is used
         )
     else:
-        # crd = [4500, 4600, 6500, 6700]
-        log.info("Start preprocessing")
-        img, _ = fc.preprocessImage(
-            path_image=cfg.dataset.image,
-            size_tophat=45,
-            contrast_clip=3.5,
-        )
-        # masks=pl.segmentation(img,device='mps',mask_threshold=-1,small_size_vis=crd,flow_threshold=0.7,min_size=1000)
-
-        subset = cfg.subset
-        if subset:
-            subset = utils.parse_subset(subset)
-            log.info(f"Subset is {subset}")
-        # imports can be nested inside @hydra.main to optimize tab completion
-        # https://github.com/facebookresearch/hydra/issues/934
-        from napari_spongepy._segmentation_widget import _segmentation_worker
-
-        if cfg.segmentation.get("method"):
-            method = cfg.segmentation.method
-        else:
-            method = hydra.utils.instantiate(cfg.segmentation)
-
+        img = cfg.result.preprocessimg
         worker = _segmentation_worker(
             img,
             method=method,
             subset=subset,
             # small chunks needed if subset is used
         )
+
     log.info("Start segmentation")
     [masks, _] = worker.work()
     log.info(masks.shape)
 
-    # polygons = mask_to_polygons_layer(masks)
     if cfg.paths.masks:
         log.info(f"Writing masks to {cfg.paths.masks}")
         np.save(cfg.paths.masks, masks)
