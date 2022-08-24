@@ -36,11 +36,11 @@ class SegmentationOption(Enum):
 
 
 @tz.curry
-def create_cellpose_method(use_gpu):
+def create_cellpose_method(device: str):
     from cellpose import models
 
     # Needs to be recreated, else AttributeError: 'CPnet' object has no attribute 'diam_mean'
-    model = models.Cellpose(gpu=use_gpu, model_type="nuclei")
+    model = models.Cellpose(device=device, model_type="nuclei")
 
     def cellpose_method(img, fn_kwargs: dict):
         log.info(f"segmenting {img.shape}")
@@ -111,7 +111,7 @@ def segmentation_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
     method: SegmentationOption = SegmentationOption.watershed,
-    use_gpu: bool = False,
+    device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
     diameter: int = 55,
@@ -120,11 +120,11 @@ def segmentation_widget(
     geq: bool = True,
 ) -> None:
 
-    log.info(f"About to segment {image} using {method}; use_gpu={use_gpu}")
+    log.info(f"About to segment {image} using {method}; device={device}")
     if image is None:
         return
     if method == SegmentationOption.cellpose:
-        method_fn = create_cellpose_method(use_gpu)
+        method_fn = create_cellpose_method(device)
         fn_kwargs = {
             "min_size": min_size,
             "flow_threshold": flow_threshold,

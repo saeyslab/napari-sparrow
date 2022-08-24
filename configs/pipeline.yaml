@@ -8,6 +8,7 @@ defaults:
   - segmentation/watershed
   - paths/default
   - extras/default
+  - preprocess/default
   - hydra/default
 
   # experiment configs allow for version control of specific hyperparameters
@@ -28,6 +29,11 @@ defaults:
 
 # set to index to subset the data
 subset: []
+
+device: "cuda:0"
+
+# Result dict
+result: null
 
 # task name, determines output directory path
 task_name: "segment"

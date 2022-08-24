@@ -19,3 +19,5 @@ work_dir: ${hydra:runtime.cwd}
 
 # default to null for all output paths
 masks: null
+geojson: null
+h5ad: null

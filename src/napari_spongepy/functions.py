@@ -23,7 +23,7 @@ from skimage import io
 
 
 def BasiCCorrection(
-    path_image: str = None, img: np.ndarray = None
+    path_image: str = None, img: np.ndarray = None, device: str = "cpu"
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     "This function corrects for the tiling effect that occurs in RESOLVE data"
 
@@ -36,6 +36,10 @@ def BasiCCorrection(
         for j in range(0, int(img.shape[1] / 2144)):
             temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
             tiles.append(temp)
+
+    device = torch.device(device)
+    torch.cuda.set_device(device)
+
     # measure the filters
     tiles = np.array(tiles)
     basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="gpu")
@@ -159,7 +163,10 @@ def segmentation(
     "When an RGB image is given a input, the R channel is expected to have the nuclei, and the blue channel the membranes"
     "When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei"
 
-    model = models.Cellpose(model_type=model_type, device=torch.device(device))
+    device = torch.cuda.device(device)  # GPU 4 is your GPU
+    torch.cuda.set_device(device)
+    model = models.Cellpose(gpu=device, model_type=model_type)
+    torch.cuda.set_device(device)
 
     masks, _, _, _ = model.eval(
         img,
@@ -449,7 +456,7 @@ def filter_on_size(
     return adata, filtered
 
 
-def preprocess3(
+def clustering(
     adata: AnnData,
     pcs: int,
     neighbors: int,
