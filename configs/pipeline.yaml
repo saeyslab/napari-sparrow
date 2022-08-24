@@ -30,6 +30,8 @@ defaults:
 # set to index to subset the data
 subset: []
 
+device: "cuda:0"
+
 # Result dict
 result: null
 

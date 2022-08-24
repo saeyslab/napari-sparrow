@@ -11,7 +11,7 @@ log = utils.get_pylogger(__name__)
 
 def clean(cfg: DictConfig, results: dict) -> DictConfig:
     # Perform BaSiCCorrection
-    img, _, _ = fc.BasiCCorrection(path_image=cfg.dataset.image)
+    img, _, _ = fc.BasiCCorrection(path_image=cfg.dataset.image, device=cfg.device)
 
     # Preprocess Image
     img, _ = fc.preprocessImage(
@@ -79,7 +79,8 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
 
 def allocate(cfg: DictConfig, results: dict) -> DictConfig:
     masks = results["segmentationmasks"]
-    adata = fc.create_adata_quick(cfg.dataset.coords, results["preprocessimg"], masks)
+    img = results["preprocessimg"]
+    adata = fc.create_adata_quick(cfg.dataset.coords, img, masks)
     adata, _ = fc.preprocessAdata(adata, masks)
     adata, _ = fc.filter_on_size(adata, min_size=500)
     fc.clustering(adata, 17, 35)
