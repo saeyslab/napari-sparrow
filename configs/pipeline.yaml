@@ -8,6 +8,7 @@ defaults:
   - segmentation/watershed
   - paths/default
   - extras/default
+  - preprocess/default
   - hydra/default
 
   # experiment configs allow for version control of specific hyperparameters
