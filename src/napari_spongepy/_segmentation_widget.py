@@ -23,7 +23,6 @@ from napari.qt.threading import thread_worker
 from squidpy.im import ImageContainer, segment
 
 import napari_spongepy.utils as utils
-from napari_spongepy import get_ic
 
 log = utils.get_pylogger(__name__)
 
@@ -87,7 +86,7 @@ def _segmentation_worker(
     label_image = "image"
     label_segmentation = "segment_watershed"
     if not isinstance(ic, ImageContainer):
-        ic = get_ic(img=ic, label=label_image, chunks=chunks)
+        ic = utils.get_ic(img=ic, label=label_image, chunks=chunks)
     segment(
         ic,
         layer="image",
