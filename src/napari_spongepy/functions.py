@@ -23,7 +23,7 @@ from skimage import io
 
 
 def BasiCCorrection(
-    path_image: str = None, img: np.ndarray = None
+    path_image: str = None, img: np.ndarray = None, device: str = "cpu"
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     "This function corrects for the tiling effect that occurs in RESOLVE data"
 
@@ -36,6 +36,10 @@ def BasiCCorrection(
         for j in range(0, int(img.shape[1] / 2144)):
             temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
             tiles.append(temp)
+
+    device = torch.device(device)
+    torch.cuda.set_device(device)
+
     # measure the filters
     tiles = np.array(tiles)
     basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="gpu")
