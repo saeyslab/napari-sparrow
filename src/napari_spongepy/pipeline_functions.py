@@ -30,7 +30,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
     from squidpy.im import ImageContainer
 
     from napari_spongepy import utils
-    from napari_spongepy._segmentation_widget import _segmentation_worker
+    from napari_spongepy.widgets.segmentation_widget import _segmentation_worker
 
     subset = cfg.subset
     if subset:

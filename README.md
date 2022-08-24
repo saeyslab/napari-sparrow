@@ -70,18 +70,18 @@ Check the notebooks in `experiments`, they also can import the Hydra configs.
 
 Run experiments from the CLI using [Hydra](https://hydra.cc).
 ```
-python src/segment.py --help
+python src/pipeline.py --help
 ```
 
 Run a watershed segmentation on a small amount of test data with:
 ```
-python src/segment.py subset=\'100,100\' +segmentation=watershed
+python src/pipeline.py subset=\'100,100\' +segmentation=watershed
 ```
 In the log you will see the location of the experiment folder, with the input parameters, logs and output files.
 
 Run both a watershed and a cellpose segmentation on a small amount of test data with:
 ```
-python src/segment.py subset=\'100,100\' +segmentation={watershed,cellpose} --multirun
+python src/pipeline.py subset=\'100,100\' +segmentation={watershed,cellpose} --multirun
 ```
 
 
