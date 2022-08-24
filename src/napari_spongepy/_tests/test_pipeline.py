@@ -1,4 +1,4 @@
-from pipeline import main
+from napari_spongepy.pipeline import main
 
 
 def test_pipeline(cfg_pipeline):

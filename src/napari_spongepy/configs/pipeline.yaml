@@ -44,3 +44,11 @@ task_name: "segment"
 # appending lists from command line is currently not supported :(
 # https://github.com/facebookresearch/hydra/issues/1547
 tags: ["dev"]
+
+hydra:
+  searchpath:
+    # add local configs to search path
+    -  file://${oc.env:PWD}/configs
+    # You can also use file based schema:
+    # - file:///etc/my_app
+    # - file://${oc.env:HOME}/.my_app
