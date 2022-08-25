@@ -1,4 +1,3 @@
-import hydra
 import pandas as pd
 import squidpy as sq
 from omegaconf import DictConfig
@@ -21,7 +20,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
         img = io.imread(cfg.dataset.image)
 
     # Perform BaSiCCorrection
-    img, _, _ = fc.BasiCCorrection(img=img, device="gpu")
+    img, _, _ = fc.BasiCCorrection(img=img, device="cpu")
 
     # Preprocess Image
     img, _ = fc.preprocessImage(
@@ -30,57 +29,23 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
         contrast_clip=cfg.preprocess.contrast_clip,
     )
     results = {"preprocessimg": img}
-    # cfg.result.preprocessimg = img
 
     return cfg, results
 
 
 def segment(cfg: DictConfig, results: dict) -> DictConfig:
     import numpy as np
-    from squidpy.im import ImageContainer
 
-    from napari_spongepy.widgets._segment_widget import _segmentation_worker
+    img = results["preprocessimg"]
 
-    if cfg.segmentation.get("method"):
-        method = cfg.segmentation.method
-        print(method)
-    else:
-        fn_kwargs = {
-            "min_size": cfg.segmentation.min_size,
-            "flow_threshold": cfg.segmentation.flow_threshold,
-            "diameter": cfg.segmentation.diameter,
-            "cellprob_threshold": cfg.segmentation.cellprob_threshold,
-            "resample": False,
-        }
-        method = hydra.utils.instantiate(
-            {"_target_": cfg.segmentation._target_}, cfg.segmentation.device
-        )
-
-    if cfg.dataset.dtype == "xarray":
-        # TODO support preprocessing for zarr datasets
-        ic = ImageContainer(cfg.dataset.data_dir)
-        print(ic)
-
-        worker = _segmentation_worker(
-            ic,
-            method=method,
-            # TODO smarter selection of the z projection method
-            reduce_z=3,
-            reduce_c=3,
-            # small chunks needed if subset is used
-        )
-    else:
-        img = results["preprocessimg"]
-        worker = _segmentation_worker(
-            img,
-            method=method,
-            fn_kwargs=fn_kwargs
-            # small chunks needed if subset is used
-        )
-
-    log.info("Start segmentation")
-    [masks, _] = worker.work()
-    log.info(masks.shape)
+    masks, _, _, _, _ = fc.segmentation(
+        img,
+        cfg.segmentation.device,
+        cfg.segmentation.min_size,
+        cfg.segmentation.flow_threshold,
+        cfg.segmentation.diameter,
+        cfg.segmentation.cellprob_threshold,
+    )
 
     if cfg.paths.masks:
         log.info(f"Writing masks to {cfg.paths.masks}")
