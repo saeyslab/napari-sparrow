@@ -39,7 +39,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
     import numpy as np
     from squidpy.im import ImageContainer
 
-    from napari_spongepy._segmentation_widget import _segmentation_worker
+    from napari_spongepy.widgets._segment_widget import _segmentation_worker
 
     if cfg.segmentation.get("method"):
         method = cfg.segmentation.method
