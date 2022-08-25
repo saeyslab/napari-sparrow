@@ -62,22 +62,41 @@ def _clean_worker(
     clean image in a thread worker
     """
 
-    ic = ImageContainer(ic, layer="image")
-    ic = ic.apply(
+    ic = utils.get_ic(ic, layer=utils.IMAGE)
+    new_ic = ic.apply(
         func=method,
-        layer="image",
-        new_layer="cleaned",
+        layer=utils.IMAGE,
+        new_layer=utils.CLEAN,
         lazy=True,
+        copy=True,
         chunks=chunks,
         fn_kwargs=fn_kwargs,
     )
-    ic["cleaned"].data
-    s = utils.ic_to_da(ic, "cleaned", reduce_c=reduce_c, reduce_z=reduce_z)
-
+    ic.add_img(new_ic, layer=utils.CLEAN, lazy=True)
+    s = utils.ic_to_da(ic, utils.CLEAN, reduce_c=reduce_c, reduce_z=reduce_z)
     # make a dummy lower-res array to trigger multi-scale rendering
     # dummy_s = da.zeros(tuple(np.array(s.shape) // 2)).astype(np.uint8)
     # ss = [s, dummy_s]
     return s
+
+
+# def layer_options(gui) -> list[tuple[str, Any]]:
+#     # `gui` will be the combobox instance... if you want, you can traverse
+#     # the widget parent chain to find the viewer and do whatever you want.
+#     # but here, we just return a simple list of strings that we want
+#     # the combobox to show
+#     from napari.utils._magicgui import get_layers_data
+
+#     layers_data = get_layers_data(gui)
+
+#     try:
+#         index = [x[0] for x in layers_data].index(utils.CLEAN)
+#     except ValueError:
+#         index = None
+#     if index:
+#         l = layers_data.pop(index)
+#         return l + layers_data
+#     return layers_data
 
 
 @magic_factory(call_button="clean")
@@ -99,7 +118,7 @@ def clean_widget(
     }
 
     worker = _clean_worker(image.data, method=cleanImage, fn_kwargs=fn_kwargs)
-    worker.returned.connect(lambda data: add_image(data, "cleaned"))
+    worker.returned.connect(lambda data: add_image(data, utils.CLEAN))
     worker.start()
     log.info("Worker created")
 
@@ -120,6 +139,7 @@ def clean_widget(
         # viewer.camera.events.zoom.connect(f)
         # execute f to emulate zoom event and set visiblity correct
         # f(None)
+        log.debug(print(utils.get_ic()))
         return viewer
 
 
@@ -127,19 +147,19 @@ if __name__ == "__main__":
     from skimage import io
 
     img = io.imread("data/resolve_liver/20272_slide1_A1-1_DAPI.tiff")
-    ic = ImageContainer(img, layer="image")
+    ic = ImageContainer(img, layer=utils.CLEAN)
     fn_kwargs = {
         "contrast_clip": 45,
         "size_tophat": 2.5,
     }
     ic = ic.apply(
         func=cleanImage,
-        layer="image",
-        new_layer="cleaned",
+        layer=utils.IMAGE,
+        new_layer=utils.CLEAN,
         lazy=False,
         chunks="auto",
         fn_kwargs=fn_kwargs,
     )
-    ic["cleaned"].data
-    s = utils.ic_to_da(ic, "cleaned", reduce_c=False, reduce_z=False)
+    ic[utils.CLEAN].data
+    s = utils.ic_to_da(ic, utils.CLEAN, reduce_c=False, reduce_z=False)
     s
