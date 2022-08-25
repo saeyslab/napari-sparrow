@@ -75,13 +75,13 @@ spongepy --help
 
 Run a watershed segmentation on a small amount of test data with:
 ```
-spongepy subset=\'100,100\' +segmentation=watershed
+python src/segment.py subset=\'0:100,0:100\' +segmentation=watershed
 ```
 In the log you will see the location of the experiment folder, with the input parameters, logs and output files.
 
 Run both a watershed and a cellpose segmentation on a small amount of test data with:
 ```
-spongepy subset=\'100,100\' +segmentation={watershed,cellpose} --multirun
+python src/segment.py subset=\'0:100,0:100\' +segmentation={watershed,cellpose} --multirun
 ```
 
 
