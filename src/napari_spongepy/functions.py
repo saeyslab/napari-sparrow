@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 
 # %matplotlib widget
 import cv2
+import dask.array as da
 import geopandas
 import matplotlib
 import matplotlib.pyplot as plt
@@ -296,16 +297,13 @@ def create_adata_quick(
 
     # allocate the transcripts
     df = pd.read_csv(path, delimiter="\t", header=None)
-    # print(df.info)
-    print(masks.shape)
-    print(type(df[1].values))
-    print(type(df[1].values[df[1] < masks.shape[0]]))
-    print(df[0].values)
-    print(df[0].values[df[0] < masks.shape[1]])
     df = df[(df[1] < masks.shape[0]) & (df[0] < masks.shape[1])]
-    df["cells"] = masks[
-        df[1].values[df[1] < masks.shape[0]], df[0].values[df[0] < masks.shape[1]]
-    ]
+    if isinstance(masks, da.Array):
+        masks = masks.compute()
+        print(masks)
+
+    df["cells"] = masks[df[1].values, df[0].values]
+    print(df["cells"])
     coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
     # calculate the mean of the transcripts for every cell. Now based on transcripts, better on masks?
     # based on masks is present in the adata.obsm
@@ -408,7 +406,10 @@ def preprocessAdata(
 
     # nucleusSizeNormalization
     if nuc_size_norm:
+        # mask = mask.compute()
+        print(mask)
         _, counts = np.unique(mask, return_counts=True)
+        print(counts)
         nucleus_size = []
         for i in adata.obs.index:
             nucleus_size.append(counts[int(i)])
