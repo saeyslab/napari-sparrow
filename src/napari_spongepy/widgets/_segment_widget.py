@@ -18,6 +18,7 @@ import napari.layers
 import napari.types
 import numpy as np
 import toolz as tz
+import torch
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from squidpy.im import ImageContainer, segment
@@ -40,7 +41,7 @@ def create_cellpose_method(device: str):
     from cellpose import models
 
     # Needs to be recreated, else AttributeError: 'CPnet' object has no attribute 'diam_mean'
-    model = models.Cellpose(device=device, model_type="nuclei")
+    model = models.Cellpose(device=torch.device(device), model_type="nuclei")
 
     def cellpose_method(img, fn_kwargs: dict):
         log.info(f"segmenting {img.shape}")

@@ -21,7 +21,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
         img = io.imread(cfg.dataset.image)
 
     # Perform BaSiCCorrection
-    img, _, _ = fc.BasiCCorrection(img=img, device=cfg.device)
+    img, _, _ = fc.BasiCCorrection(img=img, device="gpu")
 
     # Preprocess Image
     img, _ = fc.preprocessImage(
@@ -43,8 +43,18 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
 
     if cfg.segmentation.get("method"):
         method = cfg.segmentation.method
+        print(method)
     else:
-        method = hydra.utils.instantiate(cfg.segmentation)
+        fn_kwargs = {
+            "min_size": cfg.segmentation.min_size,
+            "flow_threshold": cfg.segmentation.flow_threshold,
+            "diameter": cfg.segmentation.diameter,
+            "cellprob_threshold": cfg.segmentation.cellprob_threshold,
+            "resample": False,
+        }
+        method = hydra.utils.instantiate(
+            {"_target_": cfg.segmentation._target_}, cfg.segmentation.device
+        )
 
     if cfg.dataset.dtype == "xarray":
         # TODO support preprocessing for zarr datasets
@@ -64,6 +74,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
         worker = _segmentation_worker(
             img,
             method=method,
+            fn_kwargs=fn_kwargs
             # small chunks needed if subset is used
         )
 

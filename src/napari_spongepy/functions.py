@@ -38,8 +38,8 @@ def BasiCCorrection(
             temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
             tiles.append(temp)
 
-    device = torch.device(device)
-    torch.cuda.set_device(device)
+    # device = torch.device(device)
+    # torch.cuda.set_device(device)
 
     # measure the filters
     tiles = np.array(tiles)

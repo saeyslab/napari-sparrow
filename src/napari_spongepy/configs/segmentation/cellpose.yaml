@@ -1,6 +1,6 @@
 _target_: napari_spongepy.widgets._segment_widget.create_cellpose_method
-use_gpu: False
+device: "cuda:4"
 min_size: 80
 flow_threshold: 0.6
 diameter:  55
-mask_threshold:  0
+cellprob_threshold:  0
