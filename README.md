@@ -70,18 +70,18 @@ Check the notebooks in `experiments`, they also can import the Hydra configs.
 
 Run experiments from the CLI using [Hydra](https://hydra.cc).
 ```
-python src/segment.py --help
+spongepy --help
 ```
 
 Run a watershed segmentation on a small amount of test data with:
 ```
-python src/segment.py subset=\'100,100\' +segmentation=watershed
+python src/segment.py subset=\'0:100,0:100\' +segmentation=watershed
 ```
 In the log you will see the location of the experiment folder, with the input parameters, logs and output files.
 
 Run both a watershed and a cellpose segmentation on a small amount of test data with:
 ```
-python src/segment.py subset=\'100,100\' +segmentation={watershed,cellpose} --multirun
+python src/segment.py subset=\'0:100,0:100\' +segmentation={watershed,cellpose} --multirun
 ```
 
 
@@ -134,7 +134,7 @@ Debug in VS Code using a [Remote Attach](https://code.visualstudio.com/docs/pyth
 ```
 
 ```
-python -m debugpy --listen 5678 src/pipeline.py
+LOGLEVEL=DEBUG python -m debugpy --listen 5678 src/pipeline.py
 ```
 
 ## References

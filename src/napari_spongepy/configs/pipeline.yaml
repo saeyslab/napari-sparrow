@@ -4,10 +4,11 @@
 # order of defaults determines the order in which configs override each other
 defaults:
   - _self_
-  - dataset/resolve
-  - segmentation/watershed
+  - dataset/resolve_liver
+  - segmentation/cellpose
   - paths/default
   - extras/default
+  - preprocess/default
   - hydra/default
 
   # experiment configs allow for version control of specific hyperparameters
@@ -16,6 +17,8 @@ defaults:
 
   # config for hyperparameter optimization
   - hparams_search: null
+
+  - viz/default
 
   # optional local config for machine/user specific settings
   # it's optional since it doesn't need to exist and is excluded from version control
@@ -27,6 +30,11 @@ defaults:
 # set to index to subset the data
 subset: []
 
+device: "cuda:0"
+
+# Result dict
+result: null
+
 # task name, determines output directory path
 task_name: "segment"
 
@@ -36,3 +44,11 @@ task_name: "segment"
 # appending lists from command line is currently not supported :(
 # https://github.com/facebookresearch/hydra/issues/1547
 tags: ["dev"]
+
+hydra:
+  searchpath:
+    # add local configs to search path
+    -  file://${oc.env:PWD}/configs
+    # You can also use file based schema:
+    # - file:///etc/my_app
+    # - file://${oc.env:HOME}/.my_app
