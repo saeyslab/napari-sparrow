@@ -11,18 +11,17 @@ import napari.layers
 import napari.types
 import napari.utils
 import numpy as np
-from basicpy import BaSiC
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
-from squidpy.im import ImageContainer
 
 import napari_spongepy.utils as utils
-from napari_spongepy.functions import preprocessImage
 
 log = utils.get_pylogger(__name__)
 
 
 def BasiCCorrection(img: np.ndarray) -> np.ndarray:
+    from basicpy import BaSiC
+
     "This function corrects for the tiling effect that occurs in RESOLVE data"
     basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="cpu")
     basic.fit(img)
@@ -35,6 +34,7 @@ def cleanImage(
     contrast_clip: float = 2.5,
     size_tophat: int = None,
 ) -> np.ndarray:
+    from napari_spongepy.functions import preprocessImage
 
     img = np.squeeze(img)
 
@@ -48,7 +48,7 @@ def cleanImage(
     progress=True
 )  # TODO: show string with description of current step in the napari progress bar
 def _clean_worker(
-    ic: np.ndarray | ImageContainer,
+    img: np.ndarray,
     method: Callable,
     subset=None,
     fn_kwargs=None,
@@ -62,7 +62,7 @@ def _clean_worker(
     clean image in a thread worker
     """
 
-    ic = utils.get_ic(ic, layer=utils.IMAGE)
+    ic = utils.get_ic(img, layer=utils.IMAGE)
     new_ic = ic.apply(
         func=method,
         layer=utils.IMAGE,
@@ -145,6 +145,7 @@ def clean_widget(
 
 if __name__ == "__main__":
     from skimage import io
+    from squidpy.im import ImageContainer
 
     img = io.imread("data/resolve_liver/20272_slide1_A1-1_DAPI.tiff")
     ic = ImageContainer(img, layer=utils.CLEAN)
