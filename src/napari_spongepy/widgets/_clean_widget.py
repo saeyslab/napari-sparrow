@@ -115,9 +115,7 @@ def clean_widget(
         except KeyError:
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
-        viewer.add_image(
-            img, name=layer_name, contrast_limits=image.contrast_limits_range
-        )
+        viewer.add_image(img, name=layer_name)
         # f = toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold=0.9)
         # viewer.camera.events.zoom.connect(f)
         # execute f to emulate zoom event and set visiblity correct
