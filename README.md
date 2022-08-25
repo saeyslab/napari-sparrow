@@ -70,7 +70,7 @@ Check the notebooks in `experiments`, they also can import the Hydra configs.
 
 Run experiments from the CLI using [Hydra](https://hydra.cc).
 ```
-python src/segment.py --help
+spongepy --help
 ```
 
 Run a watershed segmentation on a small amount of test data with:
@@ -134,7 +134,7 @@ Debug in VS Code using a [Remote Attach](https://code.visualstudio.com/docs/pyth
 ```
 
 ```
-python -m debugpy --listen 5678 src/pipeline.py
+LOGLEVEL=DEBUG python -m debugpy --listen 5678 src/pipeline.py
 ```
 
 ## References

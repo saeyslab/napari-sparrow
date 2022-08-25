@@ -1,6 +1,6 @@
 def parse_subset(subset):
     """
-    e.g $ python src/segment.py subset=\'0:100,0:100\'
+    e.g $ spongepy subset=\'0:100,0:100\'
     >>> parse_subset('0:100,0:100')
     (slice(0, 100, 1), slice(0, 100, 1))
     """

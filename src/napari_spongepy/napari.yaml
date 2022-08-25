@@ -2,25 +2,35 @@ name: napari-spongepy
 display_name: napari spongepy
 contributions:
   commands:
-    - id: napari-spongepy.wizard_widget
-      python_name: napari_spongepy._wizard_widget:wizard_widget
+    - id: napari-spongepy.widgets.wizard_widget
+      python_name: napari_spongepy.widgets._wizard_widget:wizard_widget
       title: Wizard
-    - id: napari-spongepy.preprocess_widget
-      python_name: napari_spongepy._preprocess_widget:preprocess_widget
-      title: Preprocessing
-    - id: napari-spongepy.segmentation_widget
-      python_name: napari_spongepy._segmentation_widget:segmentation_widget
-      title: Segmentation
-    - id: napari-spongepy.transcripts_widget
-      python_name: napari_spongepy._transcripts_widget:transcripts_widget
-      title: Transcripts
+    - id: napari-spongepy.widgets.clean_widget
+      python_name: napari_spongepy.widgets._clean_widget:clean_widget
+      title: Cleaning
+    - id: napari-spongepy.widgets.segment_widget
+      python_name: napari_spongepy.widgets._segment_widget:segment_widget
+      title: Segment
+    - id: napari-spongepy.widgets.allocate_widget
+      python_name: napari_spongepy.widgets._allocate_widget:allocate_widget
+      title: Allocate
+    - id: napari-spongepy.widgets.annotate_widget
+      python_name: napari_spongepy.widgets._annotate_widget:annotate_widget
+      title: Annotate
+    - id: napari-spongepy.widgets.visualize_widget
+      python_name: napari_spongepy.widgets._visualize_widget:visualize_widget
+      title: Visualize
   widgets:
     # display_name is the name shown in the napari menu
-    - command: napari-spongepy.wizard_widget
+    - command: napari-spongepy.widgets.wizard_widget
       display_name: Wizard
-    - command: napari-spongepy.preprocess_widget
-      display_name: Preprocess
-    - command: napari-spongepy.segmentation_widget
+    - command: napari-spongepy.widgets.clean_widget
+      display_name: Clean
+    - command: napari-spongepy.widgets.segment_widget
       display_name: Segment
-    - command: napari-spongepy.transcripts_widget
-      display_name: Visualize Transcripts
+    - command: napari-spongepy.widgets.allocate_widget
+      display_name: Allocate
+    - command: napari-spongepy.widgets.annotate_widget
+      display_name: Annotate
+    - command: napari-spongepy.widgets.visualize_widget
+      display_name: Visualize
