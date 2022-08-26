@@ -8,3 +8,13 @@ line-length = 88
 [tool.isort]
 profile = "black"
 line_length = 88
+
+[tool.pytest.ini_options]
+minversion = 6.0
+# show extra info for all except passes, low verbosity, auto parallel and no warnings
+addopts = "-ra -q -n=auto --disable-warnings"
+testpaths = [
+    "src/napari_spongepy/_tests",
+    "experiments/script_liver_spongepy.ipynb",
+    "experiments/script_plant_spongepy.ipynb",
+]
