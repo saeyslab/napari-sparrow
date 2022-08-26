@@ -1,4 +1,4 @@
-# path to working directory
+# path to original working directory the app was executed from
 work_dir: ${hydra:runtime.cwd}
 
 # path to data directory

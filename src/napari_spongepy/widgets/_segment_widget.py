@@ -81,16 +81,16 @@ def _segmentation_worker(
     fn_kwargs=None,
     # if async interactive works: smaller chunks for faster segmentation computation
     chunks=(1000, 1000, 1, 1),
+    label_image=utils.CLEAN,
+    label_segmentation=utils.SEGMENT,
 ) -> list[np.ndarray]:
 
-    label_image = "image"
-    label_segmentation = "segment_watershed"
     if not isinstance(ic, ImageContainer):
-        ic = utils.get_ic(img=ic, label=label_image, chunks=chunks)
+        ic = utils.get_ic(img=ic, layer=label_image, chunks=chunks)
     segment(
         ic,
-        layer="image",
         method=method,
+        layer=label_image,
         layer_added=label_segmentation,
         lazy=True,
         chunks=chunks,
@@ -105,7 +105,7 @@ def _segmentation_worker(
 
 
 @magic_factory(call_button="Segment")
-def segmentation_widget(
+def segment_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
     method: SegmentationOption = SegmentationOption.watershed,
@@ -136,10 +136,12 @@ def segmentation_widget(
             "thresh": thresh,
             "geq": geq,
         }
-    worker = _segmentation_worker(image.data, method_fn, fn_kwargs=fn_kwargs)
+    worker = _segmentation_worker(
+        image.data, method_fn, fn_kwargs=fn_kwargs, label_image=image.name
+    )
     log.info("Worker created")
 
-    layer_name = "Segmentation"
+    layer_name = utils.SEGMENT
 
     def add_labels(img):
         try:
@@ -158,6 +160,7 @@ def segmentation_widget(
         # viewer.camera.events.zoom.connect(f)
         # execute f to emulate zoom event and set visiblity correct
         # f(None)
+        log.debug(print(utils.get_ic()))
         return viewer
 
     worker.returned.connect(add_labels)
