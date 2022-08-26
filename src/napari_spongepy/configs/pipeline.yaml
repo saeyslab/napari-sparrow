@@ -9,7 +9,7 @@ defaults:
   - paths/default
   - paths/output
   - extras/default
-  - preprocess/default
+  - clean/default
   - hydra/default
 
   # experiment configs allow for version control of specific hyperparameters

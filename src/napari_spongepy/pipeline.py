@@ -18,16 +18,16 @@ def main(cfg: DictConfig) -> None:
     cfg, results = pf.clean(cfg, results)
 
     # Segment
-    cfg, results = pf.segment(cfg, results)
+    # cfg, results = pf.segment(cfg, results)
 
     # Allocate
-    cfg, results = pf.allocate(cfg, results)
+    # cfg, results = pf.allocate(cfg, results)
 
     # Annotate
-    cfg, results = pf.annotate(cfg, results)
+    # cfg, results = pf.annotate(cfg, results)
 
     # Visualize
-    cfg, results = pf.visualize(cfg, results)
+    # cfg, results = pf.visualize(cfg, results)
 
     return
 

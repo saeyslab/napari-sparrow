@@ -1,0 +1,4 @@
+# Device is either cpu or cuda:[int] for gpu devices
+device: "cuda:4"
+size_tophat: 45
+contrast_clip: 3.5

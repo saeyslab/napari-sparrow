@@ -11,22 +11,21 @@ log = utils.get_pylogger(__name__)
 
 def clean(cfg: DictConfig, results: dict) -> DictConfig:
     # Image subset for realtime checking
-    subset = cfg.subset
-    if subset:
-        subset = utils.parse_subset(subset)
+    if cfg.subset:
+        subset = utils.parse_subset(cfg.subset)
         log.info(f"Subset is {subset}")
         img = io.imread(cfg.dataset.image)[subset]
     else:
         img = io.imread(cfg.dataset.image)
 
     # Perform BaSiCCorrection
-    img, _, _ = fc.BasiCCorrection(img=img, device=cfg.device)
+    img, _, _ = fc.BasiCCorrection(img=img, device=cfg.clean.device)
 
     # Preprocess Image
     img, _ = fc.preprocessImage(
         img=img,
-        size_tophat=cfg.preprocess.size_tophat,
-        contrast_clip=cfg.preprocess.contrast_clip,
+        size_tophat=cfg.clean.size_tophat,
+        contrast_clip=cfg.clean.contrast_clip,
     )
     results = {"preprocessimg": img}
 

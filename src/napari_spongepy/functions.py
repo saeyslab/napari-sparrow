@@ -20,17 +20,12 @@ from basicpy import BaSiC
 from cellpose import models
 from rasterio import features
 from scipy import ndimage
-from skimage import io
 
 
 def BasiCCorrection(
-    path_image: str = None, img: np.ndarray = None, device: str = "cpu"
+    img: np.ndarray, device: str = "cpu"
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     "This function corrects for the tiling effect that occurs in RESOLVE data"
-
-    if img is None:
-        img = io.imread(path_image)
-
     # create the tiles
     tiles = []
     for i in range(0, int(img.shape[0] / 2144)):  # over the rows
@@ -39,8 +34,11 @@ def BasiCCorrection(
             tiles.append(temp)
 
     # measure the filters
+    device = torch.device(device)
+    torch.cuda.set_device(device)
+
     tiles = np.array(tiles)
-    basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="gpu")
+    basic = BaSiC(epsilon=1e-06, device="cpu" if device == "cpu" else "gpu")
 
     device = torch.device(device)
     torch.cuda.set_device(device)
@@ -64,18 +62,17 @@ def BasiCCorrection(
 
 def BasiCCorrectionPlot(img: np.ndarray, flatfield, img_orig: np.ndarray) -> None:
     plt.imshow(flatfield, cmap="gray")
-    plt.title("correction performed per tile")
+    plt.title("Correction performed per tile")
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
     ax[0].imshow(img, cmap="gray")
-    ax[0].set_title("corrected image")
+    ax[0].set_title("Corrected image")
     ax[1].imshow(img_orig, cmap="gray")
-    ax[1].set_title("original image")
+    ax[1].set_title("Original image")
 
 
 def preprocessImage(
-    img: np.ndarray = None,
-    path_image: str = None,
+    img: np.ndarray,
     contrast_clip: float = 2.5,
     size_tophat: int = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
@@ -85,9 +82,6 @@ def preprocessImage(
     "size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is executes. The recommendable size is 45?-."
     "Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better."
 
-    # Read in image
-    if img is None:
-        img = io.imread(path_image)
     img_orig = img
 
     # mask black lines
