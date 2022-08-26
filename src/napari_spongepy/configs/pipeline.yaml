@@ -7,7 +7,6 @@ defaults:
   - dataset/resolve_liver
   - segmentation/cellpose
   - paths/default
-  - paths/output
   - extras/default
   - clean/default
   - hydra/default
@@ -31,7 +30,7 @@ defaults:
 # set to index to subset the data
 subset: []
 
-device: "cuda:4"
+device: "cpu"
 
 # Result dict
 result: null

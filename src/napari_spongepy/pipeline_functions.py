@@ -20,7 +20,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
 
     # Perform BaSiCCorrection
     if cfg.clean.basic_correction:
-        img, _ = fc.BasiCCorrection(img=img, device=cfg.clean.device)
+        img, _ = fc.BasiCCorrection(img=img, device=cfg.device)
 
     # Preprocess Image
     img = fc.preprocessImage(
@@ -40,7 +40,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
 
     masks, _, _, _, _ = fc.segmentation(
         img,
-        cfg.segmentation.device,
+        cfg.device,
         cfg.segmentation.min_size,
         cfg.segmentation.flow_threshold,
         cfg.segmentation.diameter,
