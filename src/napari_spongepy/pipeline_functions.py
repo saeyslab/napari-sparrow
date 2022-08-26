@@ -23,7 +23,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
         img, _ = fc.BasiCCorrection(img=img, device=cfg.clean.device)
 
     # Preprocess Image
-    img, _ = fc.preprocessImage(
+    img = fc.preprocessImage(
         img=img,
         size_tophat=cfg.clean.size_tophat,
         contrast_clip=cfg.clean.contrast_clip,

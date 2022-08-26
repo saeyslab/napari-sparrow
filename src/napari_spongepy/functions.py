@@ -74,36 +74,27 @@ def preprocessImage(
     img: np.ndarray,
     contrast_clip: float = 2.5,
     size_tophat: int = None,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray:
     "This function performs the prprocessing of an image. If the path_image i provided, the image is read from the path."
     "If the image img itself is provided, this image will be used."
     "Contrast_clip indiactes the input to the create_CLAHE function for histogram equalization"
     "size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is executes. The recommendable size is 45?-."
     "Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better."
 
-    img_orig = img
-
-    # mask black lines
-    mask_lines = np.where(img == 0)  # find the location of the lines
-    mask = np.zeros(img.shape, dtype=np.uint8)
-    mask[mask_lines[0], mask_lines[1]] = 1  # put one values in the correct position
-
     # perform inpainting
-    res_ns = cv2.inpaint(img, mask, 55, cv2.INPAINT_NS)
-    img = res_ns
+    img = cv2.inpaint(img, (img == 0).astype(np.uint8), 55, cv2.INPAINT_NS)
 
     # tophat filter
     if size_tophat is not None:
         minimum_t = ndimage.minimum_filter(img, size_tophat)
         max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
-        orig_sub_min = img - max_of_min_t
-        img = orig_sub_min
+        img -= max_of_min_t
 
     # enhance contrast
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
     img = clahe.apply(img)
 
-    return img, img_orig
+    return img
 
 
 def preprocessImagePlot(
@@ -113,26 +104,30 @@ def preprocessImagePlot(
 ) -> None:
     # plot_result
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    ax[0].imshow(img_orig, cmap="gray")
-    ax[1].imshow(img, cmap="gray")
+    ax[0].imshow(img, cmap="gray")
+    ax[0].set_title("Corrected image")
+    ax[1].imshow(img_orig, cmap="gray")
+    ax[1].set_title("Original image")
 
     # plot small part of image
     if small_size_vis is not None:
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
         ax[0].imshow(
-            img_orig[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
-            ],
-            cmap="gray",
-        )
-        ax[1].imshow(
             img[
                 small_size_vis[0] : small_size_vis[1],
                 small_size_vis[2] : small_size_vis[3],
             ],
             cmap="gray",
         )
+        ax[0].set_title("Corrected image")
+        ax[1].imshow(
+            img_orig[
+                small_size_vis[0] : small_size_vis[1],
+                small_size_vis[2] : small_size_vis[3],
+            ],
+            cmap="gray",
+        )
+        ax[1].set_title("Original image")
 
 
 def segmentation(
