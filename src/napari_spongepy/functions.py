@@ -24,20 +24,21 @@ from scipy import ndimage
 
 def BasiCCorrection(
     img: np.ndarray, device: str = "cpu"
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray]:
     "This function corrects for the tiling effect that occurs in RESOLVE data"
     # create the tiles
-    tiles = []
-    for i in range(0, int(img.shape[0] / 2144)):  # over the rows
-        for j in range(0, int(img.shape[1] / 2144)):
-            temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
-            tiles.append(temp)
+    tiles = np.array(
+        [
+            img[i : i + 2144, j : j + 2144]
+            for i in range(0, img.shape[0], 2144)
+            for j in range(0, img.shape[1], 2144)
+        ]
+    )
 
     # measure the filters
     device = torch.device(device)
     torch.cuda.set_device(device)
 
-    tiles = np.array(tiles)
     basic = BaSiC(epsilon=1e-06, device="cpu" if device == "cpu" else "gpu")
 
     device = torch.device(device)
@@ -48,16 +49,14 @@ def BasiCCorrection(
     tiles_corrected = basic.transform(tiles)
 
     # stitch the tiles back together
-    i_new = np.zeros(img.shape)
-    k = 0
-    for i in range(0, int(img.shape[0] / 2144)):  # over the rows
-        for j in range(0, int(img.shape[1] / 2144)):
-            i_new[
-                i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144
-            ] = tiles_corrected[k]
-            k = k + 1
+    i_new = np.block(
+        [
+            list(tiles_corrected[i : i + (img.shape[1] // 2144)])
+            for i in range(0, len(tiles_corrected), img.shape[1] // 2144)
+        ]
+    )
 
-    return i_new.astype(np.uint16), flatfield, img
+    return i_new.astype(np.uint16), flatfield
 
 
 def BasiCCorrectionPlot(img: np.ndarray, flatfield, img_orig: np.ndarray) -> None:

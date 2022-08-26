@@ -19,7 +19,8 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
         img = io.imread(cfg.dataset.image)
 
     # Perform BaSiCCorrection
-    img, _, _ = fc.BasiCCorrection(img=img, device=cfg.clean.device)
+    if cfg.clean.basic_correction:
+        img, _ = fc.BasiCCorrection(img=img, device=cfg.clean.device)
 
     # Preprocess Image
     img, _ = fc.preprocessImage(
