@@ -20,7 +20,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
         img = io.imread(cfg.dataset.image)
 
     # Perform BaSiCCorrection
-    img, _, _ = fc.BasiCCorrection(img=img, device="cpu")
+    img, _, _ = fc.BasiCCorrection(img=img, device=cfg.device)
 
     # Preprocess Image
     img, _ = fc.preprocessImage(
@@ -72,14 +72,28 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
 
 def annotate(cfg: DictConfig, results: dict) -> DictConfig:
     adata = results["adata"]
-    _, _ = fc.scoreGenesLiver(adata, cfg.dataset.markers)
+    mg_dict, _ = fc.scoreGenesLiver(adata, cfg.dataset.markers)
     results["adata"] = adata
+    results["mg_dict"] = mg_dict
 
     return cfg, results
 
 
 def visualize(cfg: DictConfig, results: dict) -> DictConfig:
     adata = results["adata"]
+    img = results["preprocessimg"]
+    mg_dict = results["mg_dict"]
+    crd = [2000, 4000, 3000, 5000]
+
+    adata.obs["Hep"] = (adata.obs["Hepatocytes"] > 5.6).astype(int)
+
+    for i in range(0, len(adata.obs)):
+        if adata.obs["Hepatocytes"].iloc[i] < 5.6:
+            adata.obs["Hepatocytes"].iloc[i] = adata.obs["Hepatocytes"].iloc[i] / 7
+
+    fc.clustercleanliness(
+        adata, img, genes=list(mg_dict.keys()), crop_coord=crd, liver=True
+    )
 
     adata.raw.var.index.names = ["genes"]
     adata.var.index.names = ["genes"]
@@ -87,7 +101,6 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
 
     sq.gr.spatial_neighbors(adata, coord_type="generic")
     sq.gr.nhood_enrichment(adata, cluster_key="maxScores")
-    sq.pl.nhood_enrichment(adata, cluster_key="maxScores", method="ward")
 
     del adata.obsm["polygons"]["color"]
     adata.obsm["polygons"]["geometry"].to_file(cfg.paths.geojson, driver="GeoJSON")
@@ -101,4 +114,6 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
     )
     adata.write(cfg.paths.h5ad)
 
-    return cfg
+    log.info("Pipeline finished")
+
+    return cfg, results

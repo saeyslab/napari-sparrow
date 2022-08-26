@@ -2,7 +2,7 @@
 work_dir: ${hydra:runtime.cwd}
 
 # path to data directory
-data_dir: ${paths.work_dir}/data/
+data_dir: ${paths.work_dir}/data
 
 # path to logging directory
 log_dir: ${paths.work_dir}/logs/
@@ -13,6 +13,6 @@ log_dir: ${paths.work_dir}/logs/
 output_dir: ${hydra:runtime.output_dir}
 
 # default to null for all output paths
-masks: null
-geojson: null
-h5ad: null
+# masks: null
+# geojson: null
+# h5ad: null

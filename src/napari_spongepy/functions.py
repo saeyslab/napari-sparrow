@@ -38,12 +38,13 @@ def BasiCCorrection(
             temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
             tiles.append(temp)
 
-    # device = torch.device(device)
-    # torch.cuda.set_device(device)
-
     # measure the filters
     tiles = np.array(tiles)
     basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="gpu")
+
+    device = torch.device(device)
+    torch.cuda.set_device(device)
+
     basic.fit(tiles)
     flatfield = basic.flatfield
     tiles_corrected = basic.transform(tiles)
@@ -299,7 +300,7 @@ def create_adata_quick(
         masks = masks.compute()
 
     df["cells"] = masks[df[1].values, df[0].values]
-    print(df["cells"])
+    print(df)
     coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
     # calculate the mean of the transcripts for every cell. Now based on transcripts, better on masks?
     # based on masks is present in the adata.obsm
@@ -544,10 +545,12 @@ def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None
 def clustercleanliness(
     adata: AnnData,
     img: np.ndarray,
-    celltypes: np.ndarray,
+    genes: List[str],
     crop_coord: List[int] = [0, 2000, 0, 2000],
     liver: bool = False,
 ) -> None:
+    celltypes = np.array(sorted(genes))
+
     # The coloring doesn't work yet for non-liver samples, but is easily adaptable, by just not defining a colormap
     # anywhere
     adata.obs["maxScores"] = adata.obs[
@@ -556,8 +559,8 @@ def clustercleanliness(
     adata.obs.maxScores = adata.obs.maxScores.astype("category")
 
     if liver:
-        other_immune_cells = celltypes[[1, 4, 7, 8, 9, 10, 11, 12, 13, 17]]
-        vein = celltypes[[15, 18]]
+        other_immune_cells = celltypes[1, 4, 7, 8, 9, 10, 11, 12, 13, 17]
+        vein = celltypes[15, 18]
         adata.obs["maxScoresSave"] = adata.obs.maxScores
 
         adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(
