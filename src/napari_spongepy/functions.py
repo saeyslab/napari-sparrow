@@ -23,38 +23,51 @@ from scipy import ndimage
 
 
 def BasiCCorrection(
-    img: np.ndarray, device: str = "cpu"
+    img: np.ndarray, device: str = "cpu", tile_size=2144
 ) -> Tuple[np.ndarray, np.ndarray]:
     "This function corrects for the tiling effect that occurs in RESOLVE data"
-    # create the tiles
-    tiles = np.array(
-        [
-            img[i : i + 2144, j : j + 2144]
-            for i in range(0, img.shape[0], 2144)
-            for j in range(0, img.shape[1], 2144)
-        ]
-    )
+
+    # check if data is small test data
+    tiles_present = img.shape[0] > tile_size and img.shape[1] > tile_size
+    if tiles_present:
+        # create the tiles
+        tiles = np.array(
+            [
+                img[i : i + tile_size, j : j + tile_size]
+                for i in range(0, img.shape[0], tile_size)
+                for j in range(0, img.shape[1], tile_size)
+            ]
+        )
+    else:
+        tiles = np.expand_dims(img, axis=0)
+
+    is_cuda = "cuda" in device
 
     # measure the filters
     device = torch.device(device)
-    torch.cuda.set_device(device)
+    if is_cuda:
+        torch.cuda.set_device(device)
 
     basic = BaSiC(epsilon=1e-06, device="cpu" if device == "cpu" else "gpu")
 
     device = torch.device(device)
-    torch.cuda.set_device(device)
+    if is_cuda:
+        torch.cuda.set_device(device)
 
     basic.fit(tiles)
     flatfield = basic.flatfield
     tiles_corrected = basic.transform(tiles)
 
-    # stitch the tiles back together
-    i_new = np.block(
-        [
-            list(tiles_corrected[i : i + (img.shape[1] // 2144)])
-            for i in range(0, len(tiles_corrected), img.shape[1] // 2144)
-        ]
-    )
+    if tiles_present:
+        # stitch the tiles back together
+        i_new = np.block(
+            [
+                list(tiles_corrected[i : i + (img.shape[1] // tile_size)])
+                for i in range(0, len(tiles_corrected), img.shape[1] // tile_size)
+            ]
+        )
+    else:
+        i_new = tiles_corrected.squeeze()
 
     return i_new.astype(np.uint16), flatfield
 
