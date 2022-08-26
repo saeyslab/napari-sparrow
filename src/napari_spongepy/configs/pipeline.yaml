@@ -5,10 +5,10 @@
 defaults:
   - _self_
   - dataset/resolve_liver
-  - segmentation/watershed
+  - segmentation/cellpose
   - paths/default
   - extras/default
-  - preprocess/default
+  - clean/default
   - hydra/default
 
   # experiment configs allow for version control of specific hyperparameters
@@ -30,7 +30,7 @@ defaults:
 # set to index to subset the data
 subset: []
 
-device: "cuda:0"
+device: "cpu"
 
 # Result dict
 result: null

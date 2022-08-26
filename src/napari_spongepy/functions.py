@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 
 # %matplotlib widget
 import cv2
+import dask.array as da
 import geopandas
 import matplotlib
 import matplotlib.pyplot as plt
@@ -19,96 +20,94 @@ from basicpy import BaSiC
 from cellpose import models
 from rasterio import features
 from scipy import ndimage
-from skimage import io
 
 
 def BasiCCorrection(
-    path_image: str = None, img: np.ndarray = None, device: str = "cpu"
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    img: np.ndarray, device: str = "cpu", tile_size=2144
+) -> Tuple[np.ndarray, np.ndarray]:
     "This function corrects for the tiling effect that occurs in RESOLVE data"
 
-    if img is None:
-        img = io.imread(path_image)
+    # check if data is small test data
+    tiles_present = img.shape[0] > tile_size and img.shape[1] > tile_size
+    if tiles_present:
+        # create the tiles
+        tiles = np.array(
+            [
+                img[i : i + tile_size, j : j + tile_size]
+                for i in range(0, img.shape[0], tile_size)
+                for j in range(0, img.shape[1], tile_size)
+            ]
+        )
+    else:
+        tiles = np.expand_dims(img, axis=0)
 
-    # create the tiles
-    tiles = []
-    for i in range(0, int(img.shape[0] / 2144)):  # over the rows
-        for j in range(0, int(img.shape[1] / 2144)):
-            temp = img[i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144]
-            tiles.append(temp)
-
-    device = torch.device(device)
-    torch.cuda.set_device(device)
+    is_cuda = "cuda" in device
 
     # measure the filters
-    tiles = np.array(tiles)
-    basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="gpu")
+    device = torch.device(device)
+    if is_cuda:
+        torch.cuda.set_device(device)
+
+    basic = BaSiC(epsilon=1e-06, device="cpu" if device == "cpu" else "gpu")
+
+    device = torch.device(device)
+    if is_cuda:
+        torch.cuda.set_device(device)
+
     basic.fit(tiles)
     flatfield = basic.flatfield
     tiles_corrected = basic.transform(tiles)
 
-    # stitch the tiles back together
-    i_new = np.zeros(img.shape)
-    k = 0
-    for i in range(0, int(img.shape[0] / 2144)):  # over the rows
-        for j in range(0, int(img.shape[1] / 2144)):
-            i_new[
-                i * 2144 : (i + 1) * 2144, j * 2144 : (j + 1) * 2144
-            ] = tiles_corrected[k]
-            k = k + 1
+    if tiles_present:
+        # stitch the tiles back together
+        i_new = np.block(
+            [
+                list(tiles_corrected[i : i + (img.shape[1] // tile_size)])
+                for i in range(0, len(tiles_corrected), img.shape[1] // tile_size)
+            ]
+        )
+    else:
+        i_new = tiles_corrected.squeeze()
 
-    return i_new.astype(np.uint16), flatfield, img
+    return i_new.astype(np.uint16), flatfield
 
 
 def BasiCCorrectionPlot(img: np.ndarray, flatfield, img_orig: np.ndarray) -> None:
     plt.imshow(flatfield, cmap="gray")
-    plt.title("correction performed per tile")
+    plt.title("Correction performed per tile")
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
     ax[0].imshow(img, cmap="gray")
-    ax[0].set_title("corrected image")
+    ax[0].set_title("Corrected image")
     ax[1].imshow(img_orig, cmap="gray")
-    ax[1].set_title("original image")
+    ax[1].set_title("Original image")
 
 
 def preprocessImage(
-    img: np.ndarray = None,
-    path_image: str = None,
+    img: np.ndarray,
     contrast_clip: float = 2.5,
     size_tophat: int = None,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> np.ndarray:
     "This function performs the prprocessing of an image. If the path_image i provided, the image is read from the path."
     "If the image img itself is provided, this image will be used."
     "Contrast_clip indiactes the input to the create_CLAHE function for histogram equalization"
     "size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is executes. The recommendable size is 45?-."
     "Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better."
 
-    # Read in image
-    if img is None:
-        img = io.imread(path_image)
-    img_orig = img
-
-    # mask black lines
-    mask_lines = np.where(img == 0)  # find the location of the lines
-    mask = np.zeros(img.shape, dtype=np.uint8)
-    mask[mask_lines[0], mask_lines[1]] = 1  # put one values in the correct position
-
     # perform inpainting
-    res_ns = cv2.inpaint(img, mask, 55, cv2.INPAINT_NS)
-    img = res_ns
+    img = cv2.inpaint(img, (img == 0).astype(np.uint8), 55, cv2.INPAINT_NS)
 
     # tophat filter
     if size_tophat is not None:
         minimum_t = ndimage.minimum_filter(img, size_tophat)
         max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
-        orig_sub_min = img - max_of_min_t
-        img = orig_sub_min
+        img -= max_of_min_t
 
     # enhance contrast
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
     img = clahe.apply(img)
 
-    return img, img_orig
+    return img
 
 
 def preprocessImagePlot(
@@ -118,26 +117,30 @@ def preprocessImagePlot(
 ) -> None:
     # plot_result
     fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    ax[0].imshow(img_orig, cmap="gray")
-    ax[1].imshow(img, cmap="gray")
+    ax[0].imshow(img, cmap="gray")
+    ax[0].set_title("Corrected image")
+    ax[1].imshow(img_orig, cmap="gray")
+    ax[1].set_title("Original image")
 
     # plot small part of image
     if small_size_vis is not None:
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
         ax[0].imshow(
-            img_orig[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
-            ],
-            cmap="gray",
-        )
-        ax[1].imshow(
             img[
                 small_size_vis[0] : small_size_vis[1],
                 small_size_vis[2] : small_size_vis[3],
             ],
             cmap="gray",
         )
+        ax[0].set_title("Corrected image")
+        ax[1].imshow(
+            img_orig[
+                small_size_vis[0] : small_size_vis[1],
+                small_size_vis[2] : small_size_vis[3],
+            ],
+            cmap="gray",
+        )
+        ax[1].set_title("Original image")
 
 
 def segmentation(
@@ -163,10 +166,7 @@ def segmentation(
     "When an RGB image is given a input, the R channel is expected to have the nuclei, and the blue channel the membranes"
     "When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei"
 
-    device = torch.cuda.device(device)  # GPU 4 is your GPU
-    torch.cuda.set_device(device)
-    model = models.Cellpose(gpu=device, model_type=model_type)
-    torch.cuda.set_device(device)
+    model = models.Cellpose(device=torch.device(device), model_type=model_type)
 
     masks, _, _, _ = model.eval(
         img,
@@ -297,7 +297,11 @@ def create_adata_quick(
     # allocate the transcripts
     df = pd.read_csv(path, delimiter="\t", header=None)
     df = df[(df[1] < masks.shape[0]) & (df[0] < masks.shape[1])]
+    if isinstance(masks, da.Array):
+        masks = masks.compute()
+
     df["cells"] = masks[df[1].values, df[0].values]
+    print(df)
     coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
     # calculate the mean of the transcripts for every cell. Now based on transcripts, better on masks?
     # based on masks is present in the adata.obsm
@@ -542,10 +546,12 @@ def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None
 def clustercleanliness(
     adata: AnnData,
     img: np.ndarray,
-    celltypes: np.ndarray,
+    genes: List[str],
     crop_coord: List[int] = [0, 2000, 0, 2000],
     liver: bool = False,
 ) -> None:
+    celltypes = np.array(sorted(genes))
+
     # The coloring doesn't work yet for non-liver samples, but is easily adaptable, by just not defining a colormap
     # anywhere
     adata.obs["maxScores"] = adata.obs[
@@ -554,8 +560,8 @@ def clustercleanliness(
     adata.obs.maxScores = adata.obs.maxScores.astype("category")
 
     if liver:
-        other_immune_cells = celltypes[[1, 4, 7, 8, 9, 10, 11, 12, 13, 17]]
-        vein = celltypes[[15, 18]]
+        other_immune_cells = celltypes[1, 4, 7, 8, 9, 10, 11, 12, 13, 17]
+        vein = celltypes[15, 18]
         adata.obs["maxScoresSave"] = adata.obs.maxScores
 
         adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(

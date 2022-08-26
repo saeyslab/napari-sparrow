@@ -106,7 +106,7 @@ def clean_widget(
     size_tophat: int = 45,
     contrast_clip: float = 2.5,
 ) -> None:
-    print(
+    log.info(
         f"About to clean {image}; size_tophat={size_tophat} contrast_clip={contrast_clip}"
     )
     if image is None:

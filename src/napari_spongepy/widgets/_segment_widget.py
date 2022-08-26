@@ -18,6 +18,7 @@ import napari.layers
 import napari.types
 import numpy as np
 import toolz as tz
+import torch
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from squidpy.im import ImageContainer, segment
@@ -40,7 +41,7 @@ def create_cellpose_method(device: str):
     from cellpose import models
 
     # Needs to be recreated, else AttributeError: 'CPnet' object has no attribute 'diam_mean'
-    model = models.Cellpose(device=device, model_type="nuclei")
+    model = models.Cellpose(device=torch.device(device), model_type="nuclei")
 
     def cellpose_method(img, fn_kwargs: dict):
         log.info(f"segmenting {img.shape}")
@@ -75,7 +76,6 @@ def toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold):
 def _segmentation_worker(
     ic: np.ndarray | ImageContainer,
     method: Callable | str,
-    subset=None,
     reduce_z=None,
     reduce_c=None,
     fn_kwargs=None,
@@ -96,9 +96,7 @@ def _segmentation_worker(
         chunks=chunks,
         fn_kwargs=fn_kwargs,
     )
-    s = utils.ic_to_da(ic, label_segmentation, reduce_c=reduce_c, reduce_z=reduce_z)
-    if subset:
-        s = s[subset]
+    s = utils.ic_to_da(ic, utils.SEGMENT, reduce_c=reduce_c, reduce_z=reduce_z)
 
     # make a dummy lower-res array to trigger multi-scale rendering
     dummy_s = da.zeros(tuple(np.array(s.shape) // 2)).astype(np.uint8)
