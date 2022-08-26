@@ -96,7 +96,7 @@ def _segmentation_worker(
         chunks=chunks,
         fn_kwargs=fn_kwargs,
     )
-    s = utils.ic_to_da(ic, "segment_watershed", reduce_c=reduce_c, reduce_z=reduce_z)
+    s = utils.ic_to_da(ic, utils.SEGMENT, reduce_c=reduce_c, reduce_z=reduce_z)
 
     # make a dummy lower-res array to trigger multi-scale rendering
     dummy_s = da.zeros(tuple(np.array(s.shape) // 2)).astype(np.uint8)
