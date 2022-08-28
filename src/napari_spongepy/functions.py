@@ -4,7 +4,6 @@ from typing import List, Optional, Tuple
 
 # %matplotlib widget
 import cv2
-import dask.array as da
 import geopandas
 import matplotlib
 import matplotlib.pyplot as plt
@@ -284,11 +283,8 @@ def create_adata_quick(
     # allocate the transcripts
     df = pd.read_csv(path, delimiter="\t", header=None)
     df = df[(df[1] < masks.shape[0]) & (df[0] < masks.shape[1])]
-    if isinstance(masks, da.Array):
-        masks = masks.compute()
-
     df["cells"] = masks[df[1].values, df[0].values]
-    print(df)
+
     coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
     # calculate the mean of the transcripts for every cell. Now based on transcripts, better on masks?
     # based on masks is present in the adata.obsm
@@ -308,11 +304,10 @@ def create_adata_quick(
     adata.obsm["polygons"] = polygons_f
 
     # add the figure to the anndata
-    spatial_key = "spatial"
-    adata.uns[spatial_key] = {library_id: {}}
-    adata.uns[spatial_key][library_id]["images"] = {}
-    adata.uns[spatial_key][library_id]["images"] = {"hires": img}
-    adata.uns[spatial_key][library_id]["scalefactors"] = {
+    adata.uns["spatial"] = {library_id: {}}
+    adata.uns["spatial"][library_id]["images"] = {}
+    adata.uns["spatial"][library_id]["images"] = {"hires": img}
+    adata.uns["spatial"][library_id]["scalefactors"] = {
         "tissue_hires_scalef": 1,
         "spot_diameter_fullres": 75,
     }
@@ -331,7 +326,7 @@ def plot_shapes(
 
     if column is not None:
         if column + "_colors" in adata.uns:
-            print("using the colormap defined in the anndata object")
+            print("Using the colormap defined in the anndata object")
             cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
                 "new_map",
                 adata.uns[column + "_colors"],
@@ -392,10 +387,7 @@ def preprocessAdata(
     # nucleusSizeNormalization
     if nuc_size_norm:
         _, counts = np.unique(mask, return_counts=True)
-        nucleus_size = []
-        for i in adata.obs.index:
-            nucleus_size.append(counts[int(i)])
-        adata.obs["nucleusSize"] = nucleus_size
+        adata.obs["nucleusSize"] = [counts[int(index)] for index in adata.obs.index]
         adata.X = (adata.X.T / adata.obs.nucleusSize.values).T
 
         # sc.pp.normalize_total(adata) #This no
