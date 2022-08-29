@@ -5,6 +5,8 @@
 defaults:
   - _self_
   - dataset/resolve_liver
+  - allocate/default
+  - annotate/default
   - segmentation/cellpose
   - paths/default
   - paths/output

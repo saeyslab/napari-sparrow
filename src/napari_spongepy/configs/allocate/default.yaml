@@ -1,0 +1,9 @@
+library_id: "melanoma"
+nuc_size_norm: True
+n_comps: 50
+min_size: 500
+max_size: 100000
+pcs: 17
+neighbors: 35
+spot_size: 70
+cluster_resolution: 0.8

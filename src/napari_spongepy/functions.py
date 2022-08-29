@@ -1,6 +1,6 @@
 # %load_ext autoreload
 # %autoreload 2
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 # %matplotlib widget
 import cv2
@@ -22,15 +22,15 @@ from scipy import ndimage
 
 
 def tilingCorrection(
-    img: np.ndarray, device: str = "cpu"
+    img: np.ndarray, device: str = "cpu", tile_size: int = 2144
 ) -> Tuple[np.ndarray, np.ndarray]:
     "This function corrects for the tiling effect that occurs in RESOLVE data"
     # create the tiles
     tiles = np.array(
         [
-            img[i : i + 2144, j : j + 2144]
-            for i in range(0, img.shape[0], 2144)
-            for j in range(0, img.shape[1], 2144)
+            img[i : i + tile_size, j : j + tile_size]
+            for i in range(0, img.shape[0], tile_size)
+            for j in range(0, img.shape[1], tile_size)
         ]
     )
 
@@ -50,8 +50,8 @@ def tilingCorrection(
     # stitch the tiles back together
     i_new = np.block(
         [
-            list(tiles_corrected[i : i + (img.shape[1] // 2144)])
-            for i in range(0, len(tiles_corrected), img.shape[1] // 2144)
+            list(tiles_corrected[i : i + (img.shape[1] // tile_size)])
+            for i in range(0, len(tiles_corrected), img.shape[1] // tile_size)
         ]
     ).astype(np.uint16)
 
@@ -135,13 +135,10 @@ def segmentation(
     min_size: int = 80,
     flow_threshold: float = 0.6,
     diameter: int = 55,
-    mask_threshold: int = 0,
-    small_size_vis: List[int] = None,
+    cellprob_threshold: int = 0,
     model_type: str = "nuclei",
-    channels: np.ndarray = np.array([0, 0]),
-) -> Tuple[
-    np.ndarray, np.ndarray, np.ndarray, Optional[List[int]], geopandas.GeoDataFrame
-]:
+    channels: List[int] = [0, 0],
+) -> Tuple[np.ndarray, np.ndarray, geopandas.GeoDataFrame]:
     "This function segments the data, using the cellpose algorithm, and plots the outcome"
     "img is the input image, showing the DAPI Staining, you can define your device by setting the device parameter"
     "min_size indicates the minimal amount of pixels in a mask (I assume)"
@@ -151,7 +148,7 @@ def segmentation(
     "mask_threshold indicates how many of the possible masks are kept. MAking it smaller (up to -6), will give you more masks, bigger is less masks. "
     "When an RGB image is given a input, the R channel is expected to have the nuclei, and the blue channel the membranes"
     "When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei"
-
+    channels = np.array(channels)
     model = models.Cellpose(device=torch.device(device), model_type=model_type)
 
     masks, _, _, _ = model.eval(
@@ -160,7 +157,7 @@ def segmentation(
         channels=channels,
         min_size=min_size,
         flow_threshold=flow_threshold,
-        cellprob_threshold=mask_threshold,
+        cellprob_threshold=cellprob_threshold,
     )
     mask_i = np.ma.masked_where(masks == 0, masks)
     # i_masked = np.ma.masked_where(img < 500, img)
@@ -174,15 +171,15 @@ def segmentation(
     polygons["cells"] = polygons.index
     polygons = polygons.dissolve(by="cells")
 
-    return masks, mask_i, channels, small_size_vis, polygons
+    return masks, mask_i, polygons
 
 
 def segmentationPlot(
     img: np.ndarray,
     mask_i: np.ndarray,
-    channels: np.ndarray,
-    small_size_vis: List[int],
     polygons: geopandas.GeoDataFrame,
+    channels: List[int] = [0, 0],
+    small_size_vis: List[int] = None,
 ) -> None:
     if sum(channels) != 0:
         img = img[0, :, :]  # select correct image
@@ -524,7 +521,6 @@ def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None
 
 def clustercleanliness(
     adata: AnnData,
-    img: np.ndarray,
     genes: List[str],
     crop_coord: List[int] = [0, 2000, 0, 2000],
     liver: bool = False,

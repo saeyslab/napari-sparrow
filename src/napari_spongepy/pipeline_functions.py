@@ -38,13 +38,15 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
 
     img = results["preprocessimg"]
 
-    masks, _, _, _, _ = fc.segmentation(
+    masks, _, _ = fc.segmentation(
         img,
         cfg.segmentation.device,
         cfg.segmentation.min_size,
         cfg.segmentation.flow_threshold,
         cfg.segmentation.diameter,
         cfg.segmentation.cellprob_threshold,
+        cfg.segmentation.model_type,
+        cfg.segmentation.channels,
     )
 
     if cfg.paths.masks:
@@ -59,11 +61,20 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
     masks = results["segmentationmasks"]
     img = results["preprocessimg"]
 
-    log.info(f"path is {cfg.dataset.coords}")
-    adata = fc.create_adata_quick(cfg.dataset.coords, img, masks)
-    adata, _ = fc.preprocessAdata(adata, masks)
-    adata, _ = fc.filter_on_size(adata, min_size=500)
-    fc.clustering(adata, 17, 35)
+    adata = fc.create_adata_quick(
+        cfg.dataset.coords, img, masks, cfg.allocate.library_id
+    )
+    adata, _ = fc.preprocessAdata(
+        adata, masks, cfg.allocate.nuc_size_norm, cfg.allocate.n_comps
+    )
+    adata, _ = fc.filter_on_size(adata, cfg.allocate.min_size, cfg.allocate.max_size)
+    fc.clustering(
+        adata,
+        cfg.allocate.pcs,
+        cfg.allocate.neighbors,
+        cfg.allocate.spot_size,
+        cfg.allocate.cluster_resolution,
+    )
 
     results["adata"] = adata
 
@@ -72,7 +83,7 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
 
 def annotate(cfg: DictConfig, results: dict) -> DictConfig:
     adata = results["adata"]
-    mg_dict, _ = fc.scoreGenesLiver(adata, cfg.dataset.markers)
+    mg_dict, _ = fc.scoreGenesLiver(adata, cfg.dataset.markers, cfg.annotate.row_norm)
     results["adata"] = adata
     results["mg_dict"] = mg_dict
 
@@ -81,7 +92,6 @@ def annotate(cfg: DictConfig, results: dict) -> DictConfig:
 
 def visualize(cfg: DictConfig, results: dict) -> DictConfig:
     adata = results["adata"]
-    img = results["preprocessimg"]
     mg_dict = results["mg_dict"]
     crd = [2000, 4000, 3000, 5000]
 
@@ -91,9 +101,7 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
         if adata.obs["Hepatocytes"].iloc[i] < 5.6:
             adata.obs["Hepatocytes"].iloc[i] = adata.obs["Hepatocytes"].iloc[i] / 7
 
-    fc.clustercleanliness(
-        adata, img, genes=list(mg_dict.keys()), crop_coord=crd, liver=True
-    )
+    fc.clustercleanliness(adata, genes=list(mg_dict.keys()), crop_coord=crd, liver=True)
 
     adata.raw.var.index.names = ["genes"]
     adata.var.index.names = ["genes"]
