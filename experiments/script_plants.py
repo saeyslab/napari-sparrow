@@ -46,6 +46,9 @@ def BasiCCorrection(path_image=None,I=None):
     for i in range(0,int(I.shape[0]/2144)): #over the rows
         for j in range(0,int(I.shape[1]/2144)):
             Temp=I[i*2144:(i+1)*2144,j*2144:(j+1)*2144]
+            if sum(sum(Temp))==0:
+                Temp=Temp+1
+                print('Some tiles dont contain any information.')
             Tiles.append(Temp)
      #measure the filters       
     flatfield = pybasic.basic(Tiles, darkfield=False,verbosity=False)
@@ -56,9 +59,14 @@ def BasiCCorrection(path_image=None,I=None):
     # stitch the tiles back together
     Inew=np.zeros(I.shape)
     k=0
+      
+    
     for i in range(0,int(I.shape[0]/2144)): #over the rows
         for j in range(0,int(I.shape[1]/2144)):
                 Inew[i*2144:(i+1)*2144,j*2144:(j+1)*2144]=tiles_corrected[k]
+                Temp=I[i*2144:(i+1)*2144,j*2144:(j+1)*2144]
+                if sum(sum(Temp))==0:
+                    Inew[i*2144:(i+1)*2144,j*2144:(j+1)*2144]=Inew[i*2144:(i+1)*2144,j*2144:(j+1)*2144]+1
                 k=k+1
       
     fig,ax =plt.subplots(1,2,figsize=(20,10))
@@ -85,11 +93,14 @@ def preprocessImage(I=None,path_image=None,contrast_clip=2.5,size_tophat=None,sm
     maskLines=np.where(I == 0) # find the location of the lines 
     mask=np.zeros(I.shape,dtype=np.uint8)
     mask[maskLines[0],maskLines[1]]=1 # put one values in the correct position
+    print(time.time()-t0)    
+    print('mask created')
     
     # perform inpainting
     res_NS = cv2.inpaint(I, mask,55, cv2.INPAINT_NS)
     I=res_NS
-    
+    print(time.time()-t0)    
+    print('inpaintng done')  
     #tophat filter
     if size_tophat is not None:
         minimum_t = ndimage.minimum_filter(I, size_tophat)
@@ -347,7 +358,7 @@ def preprocess3(adata,pcs,neighbors,spot_size=70,cluster_resolution=0.8):
 
 
 
-def score_genes_liver(adata,path_marker_genes,RowNorm=False):
+def score_genes_liver(adata,path_marker_genes,RowNorm=False,liver=False):
     
     df_markers=pd.read_csv(path_marker_genes,index_col=0)
     df_markers.columns = df_markers.columns.str.replace('Tot_Score_', '')
@@ -363,7 +374,11 @@ def score_genes_liver(adata,path_marker_genes,RowNorm=False):
         
     for i in Dict:
         sc.tl.score_genes(adata,Dict[i],score_name=i) 
-        
+    if liver==True:
+        del df_markers['Hepatocytes']
+        del df_markers['LSEC45']   
+        del Dict['Hepatocytes']
+        del Dict['LSEC45'] 
     #ScoresperCluster = adata.obs[[col for col in adata.obs if col.startswith('Tot')]] #very specific to this dataset 
     ScoresperCluster = adata.obs[[col for col in adata.obs if col in (df_markers.columns)]]
     if RowNorm==True:
@@ -402,46 +417,56 @@ def clustercleanliness(adata,I,celltypes,crop_coord=[0,2000,0,2000],liver=False)
     adata.obs.maxScores=adata.obs.maxScores.astype('category')
 
     if liver==True:
-        Other_ImmuneCells=celltypes[[1,4,7,8,9,10,11,12,13,17]]
-        vein=celltypes[[15,18]]
+        other_immune=celltypes[[1,2,8,14,15,16,17,18,19,21,22,26]]
+        fibroblast=celltypes[[4,5,23,25]]
+        stellate=celltypes[[28,29,30]]
         adata.obs['maxScoresSave']=adata.obs.maxScores
 
         adata.obs.maxScores=adata.obs.maxScores.cat.add_categories(['Other_ImmuneCells'])
         for i in range(0,len(adata.obs.maxScores)):
-            if adata.obs.maxScores[i] in Other_ImmuneCells:
+            if adata.obs.maxScores[i] in other_immune:
                 adata.obs.maxScores[i]='Other_ImmuneCells'
 
-        adata.obs.maxScores=adata.obs.maxScores.cat.add_categories(['vein_EC45'])
+        adata.obs.maxScores=adata.obs.maxScores.cat.add_categories(['fibroblast'])
         for i in range(0,len(adata.obs.maxScores)):
-            if adata.obs.maxScores[i] in vein:
-                adata.obs.maxScores[i]='vein_EC45'  
+            if adata.obs.maxScores[i] in fibroblast:
+                adata.obs.maxScores[i]='fibroblast'  
 
-        adata.obs.maxScoresSave=adata.obs.maxScoresSave.cat.add_categories(['vein_EC45'])
+
+        adata.obs.maxScores=adata.obs.maxScores.cat.add_categories(['stellate'])
         for i in range(0,len(adata.obs.maxScores)):
-            if adata.obs.maxScoresSave[i] in vein:
-                adata.obs.maxScoresSave[i]='vein_EC45'
-        for i in Other_ImmuneCells:
+            if adata.obs.maxScores[i] in stellate:
+                adata.obs.maxScores[i]='stellate' 
+
+
+        for i in other_immune:
             if i in adata.obs.maxScores.cat.categories:
                 adata.obs.maxScores=adata.obs.maxScores.cat.remove_categories(i)
-        adata.obs.maxScores=adata.obs.maxScores.cat.remove_categories(vein)
-        adata.obs.maxScoresSave=adata.obs.maxScoresSave.cat.remove_categories(vein)        
+
+        for i in fibroblast:
+            if i in adata.obs.maxScores.cat.categories:
+                adata.obs.maxScores=adata.obs.maxScores.cat.remove_categories(i)
+
+        for i in stellate:
+            if i in adata.obs.maxScores.cat.categories:
+                adata.obs.maxScores=adata.obs.maxScores.cat.remove_categories(i)
+  
         #fix the coloring
 
         #adata.uns['maxScores_colors']=np.append(adata.uns['maxScores_colors'],['#ff7f0e','#ad494a'])
-        colors=['#914d22','#c61b84','#ea579f','#5da6db','#fbb05f','#d46f6c','#E45466','#a31a2a','#929591','#cc7722']
+        colors=['#914d22','#c61b84','#ec67a7','#edabcb','#5da6db','#8f4716','#fa8307','#b0763a','#d0110b','#f62c4f','#fed8b1','#cc7722','#929591','#E45466','#a31a2a'] 
         adata.uns['maxScores_colors']=colors
-
-        color_Dict=dict(zip(list(adata.obs.maxScores.cat.categories),adata.uns['maxScores_colors']))
+        celltypes_F=np.delete(celltypes,[1,2,4,5,8,14,15,16,17,18,19,21,22,23,25,26,28,29,30])
+        celltypes_F=np.append(celltypes_F,['Other_ImmuneCells','fibroblast','stellate'])
+        color_Dict=dict(zip(celltypes_F,adata.uns['maxScores_colors']))
         for i, name in enumerate (color_Dict.keys()):
             color_Dict[name]=colors[i]
+        adata.uns['maxScores_colors']=list( map(color_Dict.get,adata.obs.maxScores.cat.categories.values ) )
 
-        colorsI=['#191919','#a3d7ba','#702963','#a4daf3','#4a6e34','#b4b5b5','#3ab04a','#893a86','#bf00ff','#9c7eba']
-        for i in range(0,10):
-            color_Dict[Other_ImmuneCells[i]]=colorsI[i]
+
+
 
     # create the plots 
-
-
 
     Stacked=adata.obs.groupby(['leiden','maxScores'],as_index=False).size().pivot('leiden','maxScores').fillna(0)
     Stacked_Norm=Stacked.div(Stacked.sum(axis=1),axis=0)
