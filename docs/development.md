@@ -36,13 +36,11 @@ This development environment is supported for:
 
 ## Testing
 ### Pytest
-In order to run the test suites, we use the package pytest. The config file for pytest is called pytest.ini and is located in the root of the project.
-In the config file the paths of the folders and files that need to be tested are specified.
-The commandline arguments read -n=auto for parallel testing and --nbmake for testing the notebooks.
-
-### Executing the tests
-You can run the test by executing the command ```pytest``` in the root of the project.
-In order to get detail eror readings and logs of the test, execute ```pytest -rx```.
+In order to run the test suite, we use the package pytest. The config file is part of `pyproject.yaml` and specifies the paths of the folders and files to be tested.
+You can run all tests by executing the command ```pytest``` in the root of the project.
+The default configuration uses `-n=auto` for parallel testing.
+Test certain notebooks as well using the option `pytest --nbmake`.
+In order to get detail error readings and logs of the test, execute ```pytest -rx```.
 
 ### Type testing
 Do a type test:
