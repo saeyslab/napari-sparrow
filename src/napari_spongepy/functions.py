@@ -21,7 +21,7 @@ from rasterio import features
 from scipy import ndimage
 
 
-def BasiCCorrection(
+def tilingCorrection(
     img: np.ndarray, device: str = "cpu"
 ) -> Tuple[np.ndarray, np.ndarray]:
     "This function corrects for the tiling effect that occurs in RESOLVE data"
@@ -53,9 +53,12 @@ def BasiCCorrection(
             list(tiles_corrected[i : i + (img.shape[1] // 2144)])
             for i in range(0, len(tiles_corrected), img.shape[1] // 2144)
         ]
-    )
+    ).astype(np.uint16)
 
-    return i_new.astype(np.uint16), flatfield
+    # perform inpainting
+    img = cv2.inpaint(i_new, (i_new == 0).astype(np.uint8), 55, cv2.INPAINT_NS)
+
+    return img, flatfield
 
 
 def BasiCCorrectionPlot(img: np.ndarray, flatfield, img_orig: np.ndarray) -> None:
@@ -79,9 +82,6 @@ def preprocessImage(
     "Contrast_clip indiactes the input to the create_CLAHE function for histogram equalization"
     "size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is executes. The recommendable size is 45?-."
     "Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better."
-
-    # perform inpainting
-    img = cv2.inpaint(img, (img == 0).astype(np.uint8), 55, cv2.INPAINT_NS)
 
     # tophat filter
     if size_tophat is not None:

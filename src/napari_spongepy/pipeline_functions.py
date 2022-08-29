@@ -10,17 +10,17 @@ log = utils.get_pylogger(__name__)
 
 
 def clean(cfg: DictConfig, results: dict) -> DictConfig:
-    # Image subset for realtime checking
+    img = io.imread(cfg.dataset.image)
+
+    # Perform tilingCorrection on whole image
+    if cfg.clean.tilingCorrection:
+        img, _ = fc.tilingCorrection(img=img, device=cfg.clean.device)
+
+    # Image subset for faster processing
     if cfg.subset:
         subset = utils.parse_subset(cfg.subset)
         log.info(f"Subset is {subset}")
-        img = io.imread(cfg.dataset.image)[subset]
-    else:
-        img = io.imread(cfg.dataset.image)
-
-    # Perform BaSiCCorrection
-    if cfg.clean.basic_correction:
-        img, _ = fc.BasiCCorrection(img=img, device=cfg.clean.device)
+        img = img[subset]
 
     # Preprocess Image
     img = fc.preprocessImage(
