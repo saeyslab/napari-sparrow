@@ -61,15 +61,22 @@ def tilingCorrection(
     return img, flatfield
 
 
-def BasiCCorrectionPlot(img: np.ndarray, flatfield, img_orig: np.ndarray) -> None:
-    plt.imshow(flatfield, cmap="gray")
-    plt.title("Correction performed per tile")
+def tilingCorrectionPlot(
+    img: np.ndarray, flatfield, img_orig: np.ndarray, output: str = None
+) -> None:
+    fig1, ax1 = plt.subplots(1, 1, figsize=(20, 10))
+    ax1.imshow(flatfield, cmap="gray")
+    ax1.set_title("Correction performed per tile")
+    if output:
+        fig1.savefig(output + "0.png")
 
-    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    ax[0].imshow(img, cmap="gray")
-    ax[0].set_title("Corrected image")
-    ax[1].imshow(img_orig, cmap="gray")
-    ax[1].set_title("Original image")
+    fig2, ax2 = plt.subplots(1, 2, figsize=(20, 10))
+    ax2[0].imshow(img, cmap="gray")
+    ax2[0].set_title("Corrected image")
+    ax2[1].imshow(img_orig, cmap="gray")
+    ax2[1].set_title("Original image")
+    if output:
+        fig2.savefig(output + "1.png")
 
 
 def preprocessImage(
@@ -100,33 +107,40 @@ def preprocessImagePlot(
     img: np.ndarray,
     img_orig: np.ndarray,
     small_size_vis: List[int] = None,
+    output: str = None,
 ) -> None:
     # plot_result
-    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    ax[0].imshow(img, cmap="gray")
-    ax[0].set_title("Corrected image")
-    ax[1].imshow(img_orig, cmap="gray")
-    ax[1].set_title("Original image")
+    fig1, ax1 = plt.subplots(1, 2, figsize=(20, 10))
+    ax1[0].imshow(img, cmap="gray")
+    ax1[0].set_title("Corrected image")
+    ax1[1].imshow(img_orig, cmap="gray")
+    ax1[1].set_title("Original image")
+
+    if output:
+        fig1.savefig(output + "0.png")
 
     # plot small part of image
     if small_size_vis is not None:
-        fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-        ax[0].imshow(
+        fig2, ax2 = plt.subplots(1, 2, figsize=(20, 10))
+        ax2[0].imshow(
             img[
                 small_size_vis[0] : small_size_vis[1],
                 small_size_vis[2] : small_size_vis[3],
             ],
             cmap="gray",
         )
-        ax[0].set_title("Corrected image")
-        ax[1].imshow(
+        ax2[0].set_title("Corrected image")
+        ax2[1].imshow(
             img_orig[
                 small_size_vis[0] : small_size_vis[1],
                 small_size_vis[2] : small_size_vis[3],
             ],
             cmap="gray",
         )
-        ax[1].set_title("Original image")
+        ax2[1].set_title("Original image")
+
+        if output:
+            fig2.savefig(output + "1.png")
 
 
 def segmentation(
@@ -180,6 +194,7 @@ def segmentationPlot(
     polygons: geopandas.GeoDataFrame,
     channels: List[int] = [0, 0],
     small_size_vis: List[int] = None,
+    output: str = None,
 ) -> None:
     if sum(channels) != 0:
         img = img[0, :, :]  # select correct image
@@ -208,7 +223,6 @@ def segmentationPlot(
             ],
             cmap="jet",
         )
-        plt.show()
     else:
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
         # ax[0].imshow(masks[0:3000,8000:10000],cmap='jet')
@@ -224,8 +238,8 @@ def segmentationPlot(
             legend=True,
             color="red",
         )
-        # ax[1].imshow(masksI,cmap='jet')
-        plt.show()
+    if output:
+        fig.savefig(output + ".png")
 
 
 def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
@@ -318,6 +332,7 @@ def plot_shapes(
     cmap: str = "magma",
     alpha: float = 0.5,
     crd: List[int] = None,
+    output: str = None,
 ) -> None:
     "This function plots the anndata on the shapes of the cells, but it does not do it smartly."
 
@@ -358,6 +373,8 @@ def plot_shapes(
             legend=True,
             color="blue",
         )
+    if output:
+        fig.savefig(output + ".png")
 
     ax.axes.xaxis.set_visible(False)
     ax.axes.yaxis.set_visible(False)
@@ -403,14 +420,16 @@ def preprocessAdata(
     return adata, adata_orig
 
 
-def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData) -> None:
-    _, axs = plt.subplots(1, 2, figsize=(15, 4))
+def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) -> None:
+    fig, axs = plt.subplots(1, 2, figsize=(15, 4))
     sns.distplot(adata_orig.obs["total_counts"], kde=False, ax=axs[0])
     sns.distplot(adata_orig.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
 
     plt.scatter(adata.obs["nucleusSize"], adata.obs["total_counts"])
     plt.title = "cellsize vs cellcount"
-    plt.show()
+
+    if output:
+        fig.savefig(output + ".png")
 
 
 def filter_on_size(
@@ -442,6 +461,7 @@ def clustering(
     neighbors: int,
     spot_size: int = 70,
     cluster_resolution: float = 0.8,
+    output: str = None,
 ) -> Tuple[AnnData, pd.DataFrame]:
     sc.pp.neighbors(adata, n_neighbors=neighbors, n_pcs=pcs)
     sc.tl.umap(adata)
@@ -449,7 +469,13 @@ def clustering(
     sc.tl.leiden(adata, resolution=cluster_resolution)
     sc.pl.umap(adata, color=["leiden"])
     sc.tl.rank_genes_groups(adata, "leiden", method="wilcoxon")
-    sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
+
+    if output:
+        sc.settings.figdir = ""
+        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
+        plt.savefig(output + ".png")
+    else:
+        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
 
     return adata
 
@@ -524,8 +550,8 @@ def clustercleanliness(
     genes: List[str],
     crop_coord: List[int] = [0, 2000, 0, 2000],
     liver: bool = False,
-) -> None:
-    celltypes = np.array(sorted(genes))
+) -> Tuple[AnnData, dict]:
+    celltypes = np.array(sorted(genes), dtype=str)
 
     # The coloring doesn't work yet for non-liver samples, but is easily adaptable, by just not defining a colormap
     # anywhere
@@ -535,8 +561,8 @@ def clustercleanliness(
     adata.obs.maxScores = adata.obs.maxScores.astype("category")
 
     if liver:
-        other_immune_cells = celltypes[1, 4, 7, 8, 9, 10, 11, 12, 13, 17]
-        vein = celltypes[15, 18]
+        other_immune_cells = celltypes[np.array([1, 4, 7, 8, 9, 10, 11, 12, 13, 17])]
+        vein = celltypes[np.array([15, 18])]
         adata.obs["maxScoresSave"] = adata.obs.maxScores
 
         adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(
@@ -599,9 +625,17 @@ def clustercleanliness(
         ]
         for i in range(0, 10):
             color_dict[other_immune_cells[i]] = colors_i[i]
+    return adata, color_dict
 
+
+def clustercleanlinessPlot(
+    adata: AnnData,
+    color_dict: dict,
+    crop_coord: List[int] = [0, 2000, 0, 2000],
+    liver: bool = False,
+    output: str = None,
+) -> None:
     # create the plots
-
     stacked = (
         adata.obs.groupby(["leiden", "maxScores"], as_index=False)
         .size()
@@ -626,7 +660,10 @@ def clustercleanliness(
     # plt.title('Cluster purity based on marker gene lists',fontsize='xx-large')
     plt.xlabel("Clusters")
     plt.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize="large")
-    plt.show()
+    if output:
+        fig.savefig(output + ".png")
+    else:
+        plt.show()
 
     plot_shapes(adata, column="maxScores", alpha=0.8)
     plot_shapes(adata, column="maxScores", crd=crop_coord, alpha=0.8)

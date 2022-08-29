@@ -3,3 +3,4 @@ tilingCorrection: True
 device: "cuda:4"
 size_tophat: 45
 contrast_clip: 3.5
+small_size_vis: [3000, 6000, 5000, 9000]

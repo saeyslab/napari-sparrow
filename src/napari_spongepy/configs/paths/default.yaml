@@ -13,6 +13,4 @@ log_dir: ${paths.work_dir}/logs/
 output_dir: ${hydra:runtime.output_dir}
 
 # default to null for all output paths
-# masks: null
-# geojson: null
-# h5ad: null
+h5ad: ${paths.output_dir}/adata.h5ad

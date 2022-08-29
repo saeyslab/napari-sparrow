@@ -33,6 +33,8 @@ defaults:
 # set to index to subset the data
 subset: []
 
+output: ""
+
 device: "cuda:4"
 
 # Result dict
