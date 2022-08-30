@@ -69,7 +69,8 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
             img,
             masks_i,
             polygons,
-            small_size_vis=[3000, 6000, 5000, 9000],
+            channels=cfg.segmentation.channels,
+            small_size_vis=cfg.segmentation.small_size_vis,
             output=cfg.paths.segmentation,
         )
 
@@ -90,7 +91,14 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
     )
     if cfg.paths.polygons:
         log.info(f"Writing polygon plot to {cfg.paths.polygons}")
-        fc.plot_shapes(adata, output=cfg.paths.polygons)
+        fc.plot_shapes(
+            adata,
+            cfg.allocate.polygon_column or None,
+            cfg.allocate.polygon_cmap,
+            cfg.allocate.polygon_alpha,
+            cfg.allocate.polygon_crd or None,
+            output=cfg.paths.polygons,
+        )
 
     adata, adata_orig = fc.preprocessAdata(
         adata, masks, cfg.allocate.nuc_size_norm, cfg.allocate.n_comps
@@ -100,12 +108,26 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
         fc.preprocesAdataPlot(adata, adata_orig, output=cfg.paths.preprocess_adata)
     if cfg.paths.total_counts:
         log.info(f"Writing total count plot to {cfg.paths.total_counts}")
-        fc.plot_shapes(adata, column="total_counts", output=cfg.paths.total_counts)
+        fc.plot_shapes(
+            adata,
+            cfg.allocate.total_counts_column or None,
+            cfg.allocate.total_counts_cmap,
+            cfg.allocate.total_counts_alpha,
+            cfg.allocate.total_counts_crd or None,
+            output=cfg.paths.total_counts,
+        )
 
     adata, _ = fc.filter_on_size(adata, cfg.allocate.min_size, cfg.allocate.max_size)
     if cfg.paths.distance:
         log.info(f"Writing distance plot to {cfg.paths.distance}")
-        fc.plot_shapes(adata, column="distance", output=cfg.paths.distance)
+        fc.plot_shapes(
+            adata,
+            cfg.allocate.distance_column or None,
+            cfg.allocate.distance_cmap,
+            cfg.allocate.distance_alpha,
+            cfg.allocate.distance_crd or None,
+            output=cfg.paths.distance,
+        )
 
     fc.clustering(
         adata,
@@ -117,7 +139,14 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
     )
     if cfg.paths.leiden:
         log.info(f"Writing leiden plot to {cfg.paths.leiden}")
-        fc.plot_shapes(adata, column="leiden", output=cfg.paths.leiden)
+        fc.plot_shapes(
+            adata,
+            cfg.allocate.leiden_column or None,
+            cfg.allocate.leiden_cmap,
+            cfg.allocate.leiden_alpha,
+            cfg.allocate.leiden_crd or None,
+            output=cfg.paths.leiden,
+        )
 
     results["adata"] = adata
 
@@ -136,7 +165,6 @@ def annotate(cfg: DictConfig, results: dict) -> DictConfig:
 def visualize(cfg: DictConfig, results: dict) -> DictConfig:
     adata = results["adata"]
     mg_dict = results["mg_dict"]
-    crd = [2000, 4000, 3000, 5000]
 
     adata.obs["Hep"] = (adata.obs["Hepatocytes"] > 5.6).astype(int)
 
@@ -145,13 +173,17 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
             adata.obs["Hepatocytes"].iloc[i] = adata.obs["Hepatocytes"].iloc[i] / 7
 
     adata, color_dict = fc.clustercleanliness(
-        adata, genes=list(mg_dict.keys()), crop_coord=crd, liver=True
+        adata, genes=list(mg_dict.keys()), liver=cfg.visualize.liver
     )
 
     if cfg.paths.cluster_cleanliness:
         log.info(f"Writing cluster cleanliness plot to {cfg.paths.cluster_cleanliness}")
         fc.clustercleanlinessPlot(
-            adata, color_dict, liver=True, output=cfg.paths.cluster_cleanliness
+            adata,
+            color_dict,
+            cfg.visualize.crd,
+            cfg.visualize.liver,
+            output=cfg.paths.cluster_cleanliness,
         )
 
     adata.raw.var.index.names = ["genes"]

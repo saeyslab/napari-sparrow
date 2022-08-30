@@ -373,8 +373,6 @@ def plot_shapes(
             legend=True,
             color="blue",
         )
-    if output:
-        fig.savefig(output + ".png")
 
     ax.axes.xaxis.set_visible(False)
     ax.axes.yaxis.set_visible(False)
@@ -387,6 +385,9 @@ def plot_shapes(
         ax.set_xlim(crd[0], crd[1])
         ax.set_ylim(crd[2], crd[3])
     # ax[1].imshow(I,cmap='gray',)
+
+    if output:
+        fig.savefig(output + ".png")
 
 
 def preprocessAdata(
@@ -548,7 +549,6 @@ def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None
 def clustercleanliness(
     adata: AnnData,
     genes: List[str],
-    crop_coord: List[int] = [0, 2000, 0, 2000],
     liver: bool = False,
 ) -> Tuple[AnnData, dict]:
     celltypes = np.array(sorted(genes), dtype=str)

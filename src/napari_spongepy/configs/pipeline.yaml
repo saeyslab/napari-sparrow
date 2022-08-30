@@ -8,6 +8,7 @@ defaults:
   - allocate/default
   - annotate/default
   - segmentation/cellpose
+  - visualize/default
   - paths/default
   - paths/output
   - extras/default
