@@ -1,6 +1,0 @@
-_target_: napari_spongepy._segmentation_widget.create_cellpose_method
-use_gpu: False
-min_size: 80
-flow_threshold: 0.6
-diameter:  55
-mask_threshold:  0

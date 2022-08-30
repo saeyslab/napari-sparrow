@@ -1,2 +1,0 @@
-# output file names
-masks: ${paths.output_dir}/masks.npy

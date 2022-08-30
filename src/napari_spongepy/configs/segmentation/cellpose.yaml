@@ -1,0 +1,6 @@
+_target_: napari_spongepy.widgets._segment_widget.create_cellpose_method
+min_size: 80
+flow_threshold: 0.9
+diameter:  50
+cellprob_threshold: -4
+model_type: "nuclei"

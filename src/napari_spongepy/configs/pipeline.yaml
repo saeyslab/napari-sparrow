@@ -1,0 +1,54 @@
+# @package _global_
+
+# specify here default configuration
+# order of defaults determines the order in which configs override each other
+defaults:
+  - _self_
+  - dataset/resolve_liver
+  - segmentation/cellpose
+  - paths/default
+  - extras/default
+  - clean/default
+  - hydra/default
+
+  # experiment configs allow for version control of specific hyperparameters
+  # e.g. best hyperparameters for given model and datamodule
+  - experiment: null
+
+  # config for hyperparameter optimization
+  - hparams_search: null
+
+  - viz/default
+
+  # optional local config for machine/user specific settings
+  # it's optional since it doesn't need to exist and is excluded from version control
+  - optional local: default.yaml
+
+  # debugging config (enable through command line, e.g. `python train.py debug=default)
+  - debug: null
+
+# set to index to subset the data
+subset: []
+
+device: "cpu"
+
+# Result dict
+result: null
+
+# task name, determines output directory path
+task_name: "segment"
+
+# tags to help you identify your experiments
+# you can overwrite this in experiment configs
+# overwrite from command line with `python train.py tags="[first_tag, second_tag]"`
+# appending lists from command line is currently not supported :(
+# https://github.com/facebookresearch/hydra/issues/1547
+tags: ["dev"]
+
+hydra:
+  searchpath:
+    # add local configs to search path
+    -  file://${oc.env:PWD}/configs
+    # You can also use file based schema:
+    # - file:///etc/my_app
+    # - file://${oc.env:HOME}/.my_app
