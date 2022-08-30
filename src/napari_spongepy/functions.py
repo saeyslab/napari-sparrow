@@ -33,7 +33,7 @@ def tilingCorrection(
             for j in range(0, img.shape[1], tile_size)
         ]
     )
-    tiles = [tile + 1 if ~np.any(tile) else tile for tile in tiles]
+    tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
 
     # measure the filters
     device = torch.device(device)
@@ -47,7 +47,9 @@ def tilingCorrection(
     basic.fit(tiles)
     flatfield = basic.flatfield
     tiles_corrected = basic.transform(tiles)
-    tiles_corrected = [tile + 1 if ~np.any(tile) else tile for tile in tiles_corrected]
+    tiles_corrected = np.array(
+        [tile + 1 if ~np.any(tile) else tile for tile in tiles_corrected]
+    )
 
     # stitch the tiles back together
     i_new = np.block(
@@ -576,57 +578,70 @@ def clustercleanliness(
     adata.obs.maxScores = adata.obs.maxScores.astype("category")
 
     if liver:
-        indexes = {
-            "Other_ImmuneCells": celltypes[
-                np.array([1, 2, 8, 14, 15, 16, 17, 18, 19, 21, 22, 26])
-            ],
-            "fibroblast": celltypes[np.array([4, 5, 23, 25])],
-            "stellate": celltypes[np.array([28, 29, 30])],
-        }
-
+        other_immune_cells = celltypes[np.array([1, 4, 7, 8, 9, 10, 11, 12, 13, 17])]
+        vein = celltypes[np.array([15, 18])]
         adata.obs["maxScoresSave"] = adata.obs.maxScores
 
-        for types in indexes:
-            adata = annotate_maxscore(types, indexes, adata)
+        adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(
+            ["Other_ImmuneCells"]
+        )
+        for i, val in enumerate(adata.obs.maxScores):
+            if val in other_immune_cells:
+                adata.obs.maxScores[i] = "Other_ImmuneCells"
+        adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(["vein_EC45"])
 
-        for types in indexes.values():
-            if types in adata.obs.maxScores.cat.categories:
-                adata.obs.maxScores = adata.obs.maxScores.cat.remove_categories(types)
+        for i, val in enumerate(adata.obs.maxScores):
+            if val in vein:
+                adata.obs.maxScores[i] = "vein_EC45"
+        adata.obs.maxScoresSave = adata.obs.maxScoresSave.cat.add_categories(
+            ["vein_EC45"]
+        )
 
+        for i in range(0, len(adata.obs.maxScores)):
+            if adata.obs.maxScoresSave[i] in vein:
+                adata.obs.maxScoresSave[i] = "vein_EC45"
+        for i in other_immune_cells:
+            if i in adata.obs.maxScores.cat.categories:
+                adata.obs.maxScores = adata.obs.maxScores.cat.remove_categories(i)
+        adata.obs.maxScores = adata.obs.maxScores.cat.remove_categories(vein)
+        adata.obs.maxScoresSave = adata.obs.maxScoresSave.cat.remove_categories(vein)
         # fix the coloring
+
         # adata.uns['maxScores_colors']=np.append(adata.uns['maxScores_colors'],['#ff7f0e','#ad494a'])
         colors = [
             "#914d22",
             "#c61b84",
-            "#ec67a7",
-            "#edabcb",
+            "#ea579f",
             "#5da6db",
-            "#8f4716",
-            "#fa8307",
-            "#b0763a",
-            "#d0110b",
-            "#f62c4f",
-            "#fed8b1",
-            "#cc7722",
-            "#929591",
+            "#fbb05f",
+            "#d46f6c",
             "#E45466",
             "#a31a2a",
+            "#929591",
+            "#cc7722",
         ]
         adata.uns["maxScores_colors"] = colors
-        celltypes_F = np.delete(
-            celltypes,
-            [1, 2, 4, 5, 8, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 28, 29, 30],
+
+        color_dict = dict(
+            zip(list(adata.obs.maxScores.cat.categories), adata.uns["maxScores_colors"])
         )
-        celltypes_F = np.append(
-            celltypes_F, ["Other_ImmuneCells", "fibroblast", "stellate"]
-        )
-        color_dict = dict(zip(celltypes_F, adata.uns["maxScores_colors"]))
         for i, name in enumerate(color_dict.keys()):
             color_dict[name] = colors[i]
-        adata.uns["maxScores_colors"] = list(
-            map(color_dict.get, adata.obs.maxScores.cat.categories.values)
-        )
 
+        colors_i = [
+            "#191919",
+            "#a3d7ba",
+            "#702963",
+            "#a4daf3",
+            "#4a6e34",
+            "#b4b5b5",
+            "#3ab04a",
+            "#893a86",
+            "#bf00ff",
+            "#9c7eba",
+        ]
+        for i in range(0, 10):
+            color_dict[other_immune_cells[i]] = colors_i[i]
     return adata, color_dict
 
 
