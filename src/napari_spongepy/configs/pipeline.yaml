@@ -5,7 +5,10 @@
 defaults:
   - _self_
   - dataset/resolve_liver
+  - allocate/default
+  - annotate/default
   - segmentation/cellpose
+  - visualize/default
   - paths/default
   - extras/default
   - clean/default
@@ -30,7 +33,10 @@ defaults:
 # set to index to subset the data
 subset: []
 
-device: "cpu"
+output: ""
+
+device: "cuda:4"
+
 
 # Result dict
 result: null
