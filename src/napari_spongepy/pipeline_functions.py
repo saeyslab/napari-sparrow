@@ -54,7 +54,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
 
     masks, masks_i, polygons = fc.segmentation(
         img,
-        cfg.segmentation.device,
+        cfg.device,
         cfg.segmentation.min_size,
         cfg.segmentation.flow_threshold,
         cfg.segmentation.diameter,

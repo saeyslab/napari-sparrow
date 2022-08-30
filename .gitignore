@@ -1,7 +1,8 @@
 # Custom
 configs/local/default.yaml
-data/
-logs/
+data
+spatial
+logs
 .env
 .autoenv
 

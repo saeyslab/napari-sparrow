@@ -10,7 +10,6 @@ defaults:
   - segmentation/cellpose
   - visualize/default
   - paths/default
-  - paths/output
   - extras/default
   - clean/default
   - hydra/default
@@ -37,6 +36,7 @@ subset: []
 output: ""
 
 device: "cuda:4"
+
 
 # Result dict
 result: null

@@ -36,12 +36,14 @@ def tilingCorrection(
 
     # measure the filters
     device = torch.device(device)
-    torch.cuda.set_device(device)
+    if is_cuda:
+        torch.cuda.set_device(device)
 
     basic = BaSiC(epsilon=1e-06, device="cpu" if device == "cpu" else "gpu")
 
     device = torch.device(device)
-    torch.cuda.set_device(device)
+    if is_cuda:
+        torch.cuda.set_device(device)
 
     basic.fit(tiles)
     flatfield = basic.flatfield

@@ -106,6 +106,10 @@ Run both a watershed and a cellpose segmentation on a small amount of test data 
 spongepy subset=\'0:100,0:100\' +segmentation={watershed,cellpose} --multirun
 ```
 
+## Contributing
+
+Find more information and development instructions in the `docs/` folder.
+
 ## References
 
 - https://github.com/ashleve/lightning-hydra-template
