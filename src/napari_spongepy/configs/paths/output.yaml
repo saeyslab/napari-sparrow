@@ -1,3 +1,6 @@
+defaults:
+  - default
+
 # output file names
 masks: ${paths.output_dir}/masks.npy
 geojson: ${paths.output_dir}/adata.geojson
