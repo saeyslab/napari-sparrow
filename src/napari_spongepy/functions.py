@@ -33,21 +33,23 @@ def tilingCorrection(
             for j in range(0, img.shape[1], tile_size)
         ]
     )
+    tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
 
     # measure the filters
     device = torch.device(device)
-    if is_cuda:
-        torch.cuda.set_device(device)
+    torch.cuda.set_device(device)
 
     basic = BaSiC(epsilon=1e-06, device="cpu" if device == "cpu" else "gpu")
 
     device = torch.device(device)
-    if is_cuda:
-        torch.cuda.set_device(device)
+    torch.cuda.set_device(device)
 
     basic.fit(tiles)
     flatfield = basic.flatfield
     tiles_corrected = basic.transform(tiles)
+    tiles_corrected = np.array(
+        [tile + 1 if ~np.any(tile) else tile for tile in tiles_corrected]
+    )
 
     # stitch the tiles back together
     i_new = np.block(
@@ -484,7 +486,7 @@ def clustering(
 
 
 def scoreGenesLiver(
-    adata: AnnData, path_marker_genes: str, row_norm: bool = False
+    adata: AnnData, path_marker_genes: str, row_norm: bool = False, liver: bool = False
 ) -> Tuple[dict, pd.DataFrame]:
     df_markers = pd.read_csv(path_marker_genes, index_col=0)
     df_markers.columns = df_markers.columns.str.replace("Tot_Score_", "")
@@ -501,6 +503,11 @@ def scoreGenesLiver(
     for key, value in genes_dict.items():
         sc.tl.score_genes(adata, value, score_name=key)
 
+    if liver:
+        del df_markers["Hepatocytes"]
+        del df_markers["LSEC45"]
+        del genes_dict["Hepatocytes"]
+        del genes_dict["LSEC45"]
     # scoresper_cluster = adata.obs[[col for col in adata.obs if col.startswith('Tot')]] #very specific to this dataset
     scoresper_cluster = adata.obs[
         [col for col in adata.obs if col in df_markers.columns]
@@ -546,6 +553,14 @@ def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None
         var_names=scoresper_cluster.columns.values,
         groupby="leiden",
     )
+
+
+def annotate_maxscore(types: str, indexes: dict, adata: AnnData) -> AnnData:
+    adata.obs.maxScores = adata.obs.maxScores.cat.add_categories([types])
+    for i in range(0, len(adata.obs.maxScores)):
+        if adata.obs.maxScores[i] in indexes[types]:
+            adata.obs.maxScores[i] = types
+    return adata
 
 
 def clustercleanliness(
