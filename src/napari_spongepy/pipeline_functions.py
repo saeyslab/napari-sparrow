@@ -16,7 +16,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
     # Perform tilingCorrection on whole image
     if cfg.clean.tilingCorrection:
         img_correct, flatfield = fc.tilingCorrection(img=img, device=cfg.clean.device)
-        if cfg.paths.tiling_correction:
+        if "tiling_correction" in cfg.paths:
             log.info(f"Writing tiling plots to {cfg.paths.tiling_correction}")
             fc.tilingCorrectionPlot(
                 img_correct, flatfield, img, cfg.paths.tiling_correction
@@ -36,7 +36,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
         contrast_clip=cfg.clean.contrast_clip,
     )
 
-    if cfg.paths.preprocess:
+    if "preprocess" in cfg.paths:
         log.info(f"Writing preprocess plots to {cfg.paths.preprocess}")
         fc.preprocessImagePlot(
             img_preprocess, img, cfg.clean.small_size_vis, cfg.paths.preprocess
@@ -63,7 +63,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
         cfg.segmentation.channels,
     )
 
-    if cfg.paths.segmentation:
+    if "segmentation" in cfg.paths:
         log.info(f"Writing segmentation plots to {cfg.paths.segmentation}")
         fc.segmentationPlot(
             img,
@@ -74,7 +74,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
             output=cfg.paths.segmentation,
         )
 
-    if cfg.paths.masks:
+    if "masks" in cfg.paths:
         log.info(f"Writing masks to {cfg.paths.masks}")
         np.save(cfg.paths.masks, masks)
     results["segmentationmasks"] = masks
@@ -89,7 +89,7 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
     adata = fc.create_adata_quick(
         cfg.dataset.coords, img, masks, cfg.allocate.library_id
     )
-    if cfg.paths.polygons:
+    if "polygons" in cfg.paths:
         log.info(f"Writing polygon plot to {cfg.paths.polygons}")
         fc.plot_shapes(
             adata,
@@ -103,10 +103,10 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
     adata, adata_orig = fc.preprocessAdata(
         adata, masks, cfg.allocate.nuc_size_norm, cfg.allocate.n_comps
     )
-    if cfg.paths.preprocess_adata:
+    if "preprocess_adata" in cfg.paths:
         log.info(f"Writing preprocess_adata plot to {cfg.paths.preprocess_adata}")
         fc.preprocesAdataPlot(adata, adata_orig, output=cfg.paths.preprocess_adata)
-    if cfg.paths.total_counts:
+    if "total_counts" in cfg.paths:
         log.info(f"Writing total count plot to {cfg.paths.total_counts}")
         fc.plot_shapes(
             adata,
@@ -118,7 +118,7 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
         )
 
     adata, _ = fc.filter_on_size(adata, cfg.allocate.min_size, cfg.allocate.max_size)
-    if cfg.paths.distance:
+    if "distance" in cfg.paths:
         log.info(f"Writing distance plot to {cfg.paths.distance}")
         fc.plot_shapes(
             adata,
@@ -137,7 +137,7 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
         cfg.allocate.cluster_resolution,
         output=cfg.paths.score_genes,
     )
-    if cfg.paths.leiden:
+    if "leiden" in cfg.paths:
         log.info(f"Writing leiden plot to {cfg.paths.leiden}")
         fc.plot_shapes(
             adata,
@@ -176,7 +176,7 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
         adata, genes=list(mg_dict.keys()), liver=cfg.visualize.liver
     )
 
-    if cfg.paths.cluster_cleanliness:
+    if "cluster_cleanliness" in cfg.paths:
         log.info(f"Writing cluster cleanliness plot to {cfg.paths.cluster_cleanliness}")
         fc.clustercleanlinessPlot(
             adata,
@@ -193,7 +193,7 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
     sq.gr.spatial_neighbors(adata, coord_type="generic")
     sq.gr.nhood_enrichment(adata, cluster_key="maxScores")
     sq.pl.nhood_enrichment(adata, cluster_key="maxScores", method="ward")
-    if cfg.paths.nhood:
+    if "nhood" in cfg.paths:
         plt.savefig(cfg.paths.nhood + ".png", bbox_inches="tight")
 
     del adata.obsm["polygons"]["color"]
