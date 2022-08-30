@@ -10,6 +10,8 @@ defaults:
   - extras: default
   - clean: default
   - hydra: default
+  - allocate: default
+  - visualize: default
 
   # config for hyperparameter optimization
   - hparams_search: null
@@ -26,7 +28,10 @@ defaults:
 # set to index to subset the data
 subset: []
 
-device: "cpu"
+output: ""
+
+device: "cuda:4"
+
 
 # Result dict
 result: null
