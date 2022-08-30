@@ -473,7 +473,7 @@ def clustering(
     if output:
         sc.settings.figdir = ""
         sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
-        plt.savefig(output + ".png")
+        plt.savefig(output + ".png", bbox_inches="tight")
     else:
         sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
 
@@ -661,7 +661,7 @@ def clustercleanlinessPlot(
     plt.xlabel("Clusters")
     plt.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize="large")
     if output:
-        fig.savefig(output + ".png")
+        fig.savefig(output + ".png", bbox_inches="tight")
     else:
         plt.show()
 

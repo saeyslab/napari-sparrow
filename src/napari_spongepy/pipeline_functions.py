@@ -1,4 +1,4 @@
-import matplotlib as plt
+import matplotlib.pyplot as plt
 import pandas as pd
 import squidpy as sq
 from omegaconf import DictConfig
@@ -162,7 +162,7 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
     sq.gr.nhood_enrichment(adata, cluster_key="maxScores")
     sq.pl.nhood_enrichment(adata, cluster_key="maxScores", method="ward")
     if cfg.paths.nhood:
-        plt.savefig(cfg.paths.nhood + ".png")
+        plt.savefig(cfg.paths.nhood + ".png", bbox_inches="tight")
 
     del adata.obsm["polygons"]["color"]
     adata.obsm["polygons"]["geometry"].to_file(cfg.paths.geojson, driver="GeoJSON")
