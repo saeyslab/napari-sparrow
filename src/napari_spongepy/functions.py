@@ -276,9 +276,16 @@ def segmentationPlot(
 
 
 def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
-    # https://rocreguant.com/convert-a-mask-into-a-polygon-for-images-using-shapely-and-rasterio/1786/
+    """Returns the polygons as GeoDataFrame
+
+    This function converts the mask to polygons.
+    https://rocreguant.com/convert-a-mask-into-a-polygon-for-images-using-shapely-and-rasterio/1786/
+    """
+
     all_polygons = []
     all_values = []
+
+    # Extract the polygons from the mask
     for shape, value in features.shapes(
         mask.astype(np.int16),
         mask=(mask > 0),
@@ -291,63 +298,61 @@ def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
 
 
 def color(_) -> matplotlib.colors.Colormap:
+    """Select random color from set1 colors."""
     return plt.get_cmap("Set1")(np.random.choice(np.arange(0, 18)))
 
 
 def border_color(r: bool) -> matplotlib.colors.Colormap:
+    """Select border color from tab10 colors or preset color (1, 1, 1, 1) otherwise."""
     return plt.get_cmap("tab10")(3) if r else (1, 1, 1, 1)
 
 
 def linewidth(r: bool) -> float:
+    """Select linewidth 1 if true else 0.5."""
     return 1 if r else 0.5
-
-
-def is_in_border(r, h, w, border_margin):
-    r = r.centroid
-    if (r.x - border_margin < 0) or (r.x + border_margin > h):
-        return True
-    if (r.y - border_margin < 0) or (r.y + border_margin > w):
-        return True
-    return False
 
 
 def create_adata_quick(
     path: str, img: np.ndarray, masks: np.ndarray, library_id: str = "melanoma"
 ) -> AnnData:
+    """Returns the AnnData object with transcript and polygon data.
 
-    # create the polygon shapes of the different cells
+    This function creates the polygon shapes from the mask and adjusts the colors and linewidth.
+    The transcripts are read from the csv file in path, all transcripts within cells are assigned.
+    Only cells with transcripts are retained.
+    """
+
+    # Create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
-    # polygons["border"] = polygons.geometry.map(is_in_border)
+
     polygons["border_color"] = polygons.geometry.map(border_color)
     polygons["linewidth"] = polygons.geometry.map(linewidth)
     polygons["color"] = polygons.geometry.map(color)
     polygons["cells"] = polygons.index
     polygons = polygons.dissolve(by="cells")
 
-    # allocate the transcripts
+    # Allocate the transcripts
     df = pd.read_csv(path, delimiter="\t", header=None)
     df = df[(df[1] < masks.shape[0]) & (df[0] < masks.shape[1])]
     df["cells"] = masks[df[1].values, df[0].values]
 
+    # Calculate the mean of the transcripts for every cell
     coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
-    # calculate the mean of the transcripts for every cell. Now based on transcripts, better on masks?
-    # based on masks is present in the adata.obsm
-    # create the anndata object
-    cell_counts = (
-        df.groupby(["cells", 3]).size().unstack(fill_value=0)
-    )  # create a matrix based on counts
+    cell_counts = df.groupby(["cells", 3]).size().unstack(fill_value=0)
+
+    # Create the anndata object
     adata = AnnData(cell_counts[cell_counts.index != 0])
     coordinates.index = coordinates.index.map(str)
     adata.obsm["spatial"] = coordinates[coordinates.index != "0"]
 
-    # add the polygons to the anndata object
+    # Add the polygons to the anndata object
     polygons_f = polygons[
         np.isin(polygons.index.values, list(map(int, adata.obs.index.values)))
     ]
     polygons_f.index = list(map(str, polygons_f.index))
     adata.obsm["polygons"] = polygons_f
 
-    # add the figure to the anndata
+    # Add the figure to the anndata object
     adata.uns["spatial"] = {library_id: {}}
     adata.uns["spatial"][library_id]["images"] = {}
     adata.uns["spatial"][library_id]["images"] = {"hires": img}
@@ -367,11 +372,11 @@ def plot_shapes(
     crd: List[int] = None,
     output: str = None,
 ) -> None:
-    "This function plots the anndata on the shapes of the cells, but it does not do it smartly."
+    """This function plots the anndata on the shapes of the cells."""
 
+    # Only plot specific column
     if column is not None:
         if column + "_colors" in adata.uns:
-            print("Using the colormap defined in the anndata object")
             cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
                 "new_map",
                 adata.uns[column + "_colors"],
@@ -392,6 +397,8 @@ def plot_shapes(
             legend=True,
             cmap=cmap,
         )
+
+    # Plot full AnnData object
     else:
         fig, ax = plt.subplots(1, 1, figsize=(20, 20))
         ax.imshow(
@@ -414,10 +421,12 @@ def plot_shapes(
     ax.spines["bottom"].set_visible(False)
     ax.spines["left"].set_visible(False)
 
+    # Plot small part of the image
     if crd is not None:
         ax.set_xlim(crd[0], crd[1])
         ax.set_ylim(crd[2], crd[3])
 
+    # Save the plot to ouput
     if output:
         fig.savefig(output + ".png")
 
@@ -425,13 +434,23 @@ def plot_shapes(
 def preprocessAdata(
     adata: AnnData, mask: np.ndarray, nuc_size_norm: bool = True, n_comps: int = 50
 ) -> Tuple[AnnData, AnnData]:
+    """Returns the new and original AnnData objects
+
+    This function calculates the QC metrics.
+    All cells with les then 10 genes and all genes with less then 5 cells are removed.
+    Normalization is performed based on the size of the nucleus in nuc_size_norm.
+    """
+
+    # Calculate QC Metrics
     sc.pp.calculate_qc_metrics(adata, inplace=True, percent_top=[2, 5])
     adata_orig = adata
+
+    # Filter cells and genes
     sc.pp.filter_cells(adata, min_counts=10)
     sc.pp.filter_genes(adata, min_cells=5)
     adata.raw = adata
 
-    # nucleusSizeNormalization
+    # Normalize nucleus size
     if nuc_size_norm:
         _, counts = np.unique(mask, return_counts=True)
         adata.obs["nucleusSize"] = [counts[int(index)] for index in adata.obs.index]
@@ -442,6 +461,7 @@ def preprocessAdata(
     else:
         sc.pp.normalize_total(adata)
         sc.pp.log1p(adata)
+
     sc.tl.pca(adata, svd_solver="arpack", n_comps=n_comps)
     sc.pl.pca(adata, color="total_counts")
     adata.obsm["polygons"] = geopandas.GeoDataFrame(
@@ -452,6 +472,8 @@ def preprocessAdata(
 
 
 def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) -> None:
+    """This function plots the size of the nucleus related to the counts."""
+
     fig, axs = plt.subplots(1, 2, figsize=(15, 4))
     sns.distplot(adata_orig.obs["total_counts"], kde=False, ax=axs[0])
     sns.distplot(adata_orig.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
@@ -459,6 +481,7 @@ def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) 
     plt.scatter(adata.obs["nucleusSize"], adata.obs["total_counts"])
     plt.title = "cellsize vs cellcount"
 
+    # Save the plot to ouput
     if output:
         fig.savefig(output + ".png")
 
@@ -466,7 +489,15 @@ def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) 
 def filter_on_size(
     adata: AnnData, min_size: int = 100, max_size: int = 100000
 ) -> Tuple[AnnData, int]:
+    """Returns a tuple with the AnnData object and the number of filtered cells.
+
+    All cells outside of the min and max size range are removed.
+    If the distance between the location of the transcript and the center of the polygon is large, the cell is deleted.
+    """
+
     start = adata.shape[0]
+
+    # Calculate center of the cell and distance between transcript and polygon center
     adata.obsm["polygons"]["X"] = adata.obsm["polygons"].centroid.x
     adata.obsm["polygons"]["Y"] = adata.obsm["polygons"].centroid.y
     adata.obs["distance"] = np.sqrt(
@@ -474,6 +505,7 @@ def filter_on_size(
         + np.square(adata.obsm["polygons"]["Y"] - adata.obsm["spatial"][1])
     )
 
+    # Filter cells based on size and distance
     adata = adata[adata.obs["nucleusSize"] < max_size, :]
     adata = adata[adata.obs["nucleusSize"] > min_size, :]
     adata = adata[adata.obs["distance"] < 70, :]
@@ -492,17 +524,29 @@ def clustering(
     neighbors: int,
     cluster_resolution: float = 0.8,
     output: str = None,
-) -> Tuple[AnnData, pd.DataFrame]:
+) -> AnnData:
+    """Returns the AnnData object.
+
+    Performs neighborhood analysis, Leiden clustering and UMAP.
+    Provides option to save the plots to output.
+    """
+
+    # Neighborhood analysis
     sc.pp.neighbors(adata, n_neighbors=neighbors, n_pcs=pcs)
     sc.tl.umap(adata)
+
+    # Leiden clustering
     sc.tl.leiden(adata, resolution=cluster_resolution)
     sc.pl.umap(adata, color=["leiden"])
     sc.tl.rank_genes_groups(adata, "leiden", method="wilcoxon")
 
+    # Save the plot to ouput
     if output:
         sc.settings.figdir = ""
         sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
         plt.savefig(output + ".png", bbox_inches="tight")
+
+    # Display plot
     else:
         sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
 
@@ -516,12 +560,22 @@ def scoreGenes(
     repl_columns: dict[str, str] = None,
     del_genes: List[str] = None,
 ) -> Tuple[dict, pd.DataFrame]:
+    """Returns genes dict and the score sper cluster
+
+    Load the marker genes from csv file in path_marker_genes.
+    repl_columns holds the column names that should be replaced the in the marker genes.
+    del_genes holds the marker genes that should be deleted from the marker genes and genes dict.
+    """
+
+    # Load marker genes from csv
     df_markers = pd.read_csv(path_marker_genes, index_col=0)
 
+    # Replace column names in marker genes
     if repl_columns:
         for column, replace in repl_columns.items():
             df_markers.columns = df_markers.columns.str.replace(column, replace)
 
+    # Create genes dict with all marker genes for every celltype
     genes_dict = {}
     for i in df_markers:
         genes = []
@@ -530,9 +584,11 @@ def scoreGenes(
                 genes.append(df_markers.index[row])
         genes_dict[i] = genes
 
+    # Score all cells for all celltypes
     for key, value in genes_dict.items():
         sc.tl.score_genes(adata, value, score_name=key)
 
+    # Delete genes from marker genes and genes dict
     if del_genes:
         for gene in del_genes:
             del df_markers[gene]
@@ -541,18 +597,17 @@ def scoreGenes(
     scoresper_cluster = adata.obs[
         [col for col in adata.obs if col in df_markers.columns]
     ]
+
+    # Row normalization for visualisation purposes
     if row_norm:
         row_norm = scoresper_cluster.sub(
             scoresper_cluster.mean(axis=1).values, axis="rows"
-        ).div(
-            scoresper_cluster.std(axis=1).values, axis="rows"
-        )  # row normalization
-        # Row normalization is just there for visualization purposes, to make sure we are not overdoing it
-
+        ).div(scoresper_cluster.std(axis=1).values, axis="rows")
         adata.obs[scoresper_cluster.columns.values] = row_norm
         temp = pd.DataFrame(np.sort(row_norm)[:, -2:])
     else:
         temp = pd.DataFrame(np.sort(scoresper_cluster)[:, -2:])
+
     scores = (temp[1] - temp[0]) / ((temp[1] + temp[0]) / 2)
     adata.obs["Cleanliness"] = scores.values
     adata.obs["maxScores"] = scoresper_cluster.idxmax(axis=1)
@@ -563,12 +618,17 @@ def scoreGenes(
 def scoreGenesPlot(
     adata: AnnData, scoresper_cluster: pd.DataFrame, filter_index: int = 5
 ) -> None:
+    """This function plots the cleanliness and the leiden score next to the maxscores."""
+
+    # Plot cleanliness and leiden next to maxscores
     sc.pl.umap(adata, color=["Cleanliness", "maxScores"])
     sc.pl.umap(adata, color=["leiden", "maxScores"])
 
+    # Plot maxScores and cleanliness columns of AnnData object
     plot_shapes(adata, column="maxScores")
     plot_shapes(adata, column="Cleanliness")
 
+    # Plot heatmap of celltypes and filtered celltypes based on filter index
     sc.pl.heatmap(adata, var_names=scoresper_cluster.columns.values, groupby="leiden")
     sc.pl.heatmap(
         adata[
@@ -584,6 +644,13 @@ def scoreGenesPlot(
 def correct_marker_genes(
     adata: AnnData, genes: dict[str, Tuple[float, float]]
 ) -> AnnData:
+    """Returns the new AnnData object.
+
+    Corrects marker genes that are higher expessed by dividing them.
+    The genes has as keys the genes that should be corrected and as values the threshold and the divider.
+    """
+
+    # Correct for all the genes
     for gene, values in genes.items():
         for i in range(0, len(adata.obs)):
             if adata.obs[gene].iloc[i] < values[0]:
@@ -592,6 +659,10 @@ def correct_marker_genes(
 
 
 def annotate_maxscore(types: str, indexes: dict, adata: AnnData) -> AnnData:
+    """Returns the AnnData object.
+
+    Adds types to the Anndata maxscore category.
+    """
     adata.obs.maxScores = adata.obs.maxScores.cat.add_categories([types])
     for i, val in enumerate(adata.obs.maxScores):
         if val in indexes[types]:
@@ -600,6 +671,7 @@ def annotate_maxscore(types: str, indexes: dict, adata: AnnData) -> AnnData:
 
 
 def remove_celltypes(types: str, indexes: dict, adata: AnnData) -> AnnData:
+    """Returns the AnnData object."""
     for index in indexes[types]:
         if index in adata.obs.maxScores.cat.categories:
             adata.obs.maxScores = adata.obs.maxScores.cat.remove_categories(index)
@@ -612,6 +684,7 @@ def clustercleanliness(
     gene_indexes: dict[str, int] = None,
     colors: List[str] = None,
 ) -> Tuple[AnnData, dict]:
+    """Returns a tuple with the AnnData object and the color dict."""
     celltypes = np.array(sorted(genes), dtype=str)
 
     adata.obs["maxScores"] = adata.obs[
@@ -632,7 +705,7 @@ def clustercleanliness(
         for gene, indexes in gene_indexes.items():
             adata = remove_celltypes(gene, gene_celltypes, adata)
 
-        # fix the coloring
+        # Create custom colormap for clusters
         if colors:
             adata.uns["maxScores_colors"] = colors
 
@@ -654,7 +727,9 @@ def clustercleanlinessPlot(
     color_dict: dict = None,
     output: str = None,
 ) -> None:
-    # create the plots
+    """This function plots the clustercleanliness as barplots, the images with colored celltypes and the clusters."""
+
+    # Create the barplot
     stacked = (
         adata.obs.groupby(["leiden", "maxScores"], as_index=False)
         .size()
@@ -664,56 +739,71 @@ def clustercleanlinessPlot(
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
     stacked_norm.columns = list(adata.obs.maxScores.cat.categories)
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+
+    # Use custom colormap
     if color_dict:
-        stacked_norm.plot(
-            kind="bar", stacked=True, ax=fig.gca(), color=color_dict
-        )  # .legend(loc='lower left')
+        stacked_norm.plot(kind="bar", stacked=True, ax=fig.gca(), color=color_dict)
     else:
         stacked_norm.plot(kind="bar", stacked=True, ax=fig.gca())
-        # ax.axis('off')
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
     ax.spines["left"].set_visible(False)
     ax.get_yaxis().set_ticks([])
-    # plt.title('Cluster purity based on marker gene lists',fontsize='xx-large')
     plt.xlabel("Clusters")
     plt.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize="large")
+
+    # Save the barplot to ouput
     if output:
         fig.savefig(output + ".png", bbox_inches="tight")
     else:
         plt.show()
 
+    # Plot images with colored celltypes
     plot_shapes(adata, column="maxScores", alpha=0.8)
     plot_shapes(adata, column="maxScores", crd=crop_coord, alpha=0.8)
 
+    # Plot clusters
     _, ax = plt.subplots(1, 1, figsize=(15, 10))
     sc.pl.umap(adata, color=["maxScores"], ax=ax, size=60, show=False)
     ax.axis("off")
-    # plt.title('UMAP colored by annotation based on celltype ',fontsize='xx-large')
     plt.show()
 
 
-def enrichement(adata: AnnData) -> AnnData:
+def enrichment(adata: AnnData) -> AnnData:
+    """Returns the AnnData object.
+
+    Performs some adaptations to save the data.
+    Calculate the nhood enrichment"
+    """
+
+    # Adaptations for saving
     adata.raw.var.index.names = ["genes"]
     adata.var.index.names = ["genes"]
     adata.obsm["spatial"] = adata.obsm["spatial"].rename({0: "X", 1: "Y"}, axis=1)
 
+    # Calculate nhood enrichment
     sq.gr.spatial_neighbors(adata, coord_type="generic")
     sq.gr.nhood_enrichment(adata, cluster_key="maxScores")
     return adata
 
 
-def enrichement_plot(adata: AnnData, output: str = None) -> None:
+def enrichment_plot(adata: AnnData, output: str = None) -> None:
+    """This function plots the nhood enrichment between different celltypes."""
+
     sq.pl.nhood_enrichment(adata, cluster_key="maxScores", method="ward")
+
+    # Save the plot to ouput
     if output:
         plt.savefig(output + ".png", bbox_inches="tight")
 
 
 def save_data(adata: AnnData, output_geojson: str, output_h5ad: str):
+    """Saves the ploygons to output_geojson as GeoJson object and the rest of the AnnData object to output_h5ad as h5ad file."""
+
+    # Save polygons to geojson
     del adata.obsm["polygons"]["color"]
     adata.obsm["polygons"]["geometry"].to_file(output_geojson, driver="GeoJSON")
-
     adata.obsm["polygons"] = pd.DataFrame(
         {
             "linewidth": adata.obsm["polygons"]["linewidth"],
@@ -721,4 +811,6 @@ def save_data(adata: AnnData, output_geojson: str, output_h5ad: str):
             "Y": adata.obsm["polygons"]["Y"],
         }
     )
+
+    # Write AnnData object to h5ad file
     adata.write(output_h5ad)
