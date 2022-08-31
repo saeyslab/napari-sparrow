@@ -17,7 +17,7 @@ colors:
   - '#E45466'
   - '#a31a2a'
 gene_indexes:
-  - "Other_ImmuneCells":
+  "Other_ImmuneCells":
     - 1
     - 2
     - 8
@@ -30,12 +30,12 @@ gene_indexes:
     - 21
     - 22
     - 26
-  - "fibroblast":
+  "fibroblast":
     - 4
     - 5
     - 23
     - 25
-  - "stellate":
+  "stellate":
     - 28
     - 29
     - 30

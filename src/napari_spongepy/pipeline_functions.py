@@ -130,7 +130,6 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
         adata,
         cfg.allocate.pcs,
         cfg.allocate.neighbors,
-        cfg.allocate.spot_size,
         cfg.allocate.cluster_resolution,
         output=cfg.paths.score_genes,
     )
@@ -189,9 +188,9 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
             output=cfg.paths.cluster_cleanliness,
         )
 
-    adata = fc.enrichement(adata)
+    adata = fc.enrichment(adata)
     if "nhood" in cfg.paths:
-        fc.enrichement_plot(adata, cfg.paths.nhood)
+        fc.enrichment_plot(adata, cfg.paths.nhood)
 
     fc.save_data(adata, cfg.paths.geojson, cfg.paths.h5ad)
     log.info("Pipeline finished")

@@ -11,6 +11,7 @@ defaults:
   - clean: default
   - hydra: default
   - allocate: default
+  - annotate: default
   - visualize: default
 
   # config for hyperparameter optimization
@@ -28,9 +29,7 @@ defaults:
 # set to index to subset the data
 subset: []
 
-output: ""
-
-device: "cuda:4"
+device: "cuda:0"
 
 
 # Result dict
