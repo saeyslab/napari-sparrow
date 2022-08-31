@@ -1,8 +1,8 @@
 # %load_ext autoreload
 # %autoreload 2
+from itertools import chain
 from typing import List, Tuple
 
-# %matplotlib widget
 import cv2
 import geopandas
 import matplotlib
@@ -18,7 +18,6 @@ import torch
 from anndata import AnnData
 from basicpy import BaSiC
 from cellpose import models
-from iterools import chain
 from rasterio import features
 from scipy import ndimage
 
@@ -26,8 +25,13 @@ from scipy import ndimage
 def tilingCorrection(
     img: np.ndarray, device: str = "cpu", tile_size: int = 2144
 ) -> Tuple[np.ndarray, np.ndarray]:
-    "This function corrects for the tiling effect that occurs in RESOLVE data"
-    # create the tiles
+    """Returns the corrected image and the flatfield array
+
+    This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
+    The illumination within the tiles is adjusted, afterwards the tiles are connected as a whole image by inpainting the lines between the tiles.
+    """
+
+    # Create the tiles
     tiles = np.array(
         [
             img[i : i + tile_size, j : j + tile_size]
@@ -37,7 +41,7 @@ def tilingCorrection(
     )
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
 
-    # measure the filters
+    # Measure the filters
     device = torch.device(device)
     torch.cuda.set_device(device)
 
@@ -53,7 +57,7 @@ def tilingCorrection(
         [tile + 1 if ~np.any(tile) else tile for tile in tiles_corrected]
     )
 
-    # stitch the tiles back together
+    # Stitch the tiles back together
     i_new = np.block(
         [
             list(tiles_corrected[i : i + (img.shape[1] // tile_size)])
@@ -61,7 +65,7 @@ def tilingCorrection(
         ]
     ).astype(np.uint16)
 
-    # perform inpainting
+    # Perform inpainting
     img = cv2.inpaint(i_new, (i_new == 0).astype(np.uint8), 55, cv2.INPAINT_NS)
 
     return img, flatfield
@@ -70,17 +74,25 @@ def tilingCorrection(
 def tilingCorrectionPlot(
     img: np.ndarray, flatfield, img_orig: np.ndarray, output: str = None
 ) -> None:
+    """Creates the plots based on the correction overlay and the original and corrected images."""
+
+    # Tile correction overlay
     fig1, ax1 = plt.subplots(1, 1, figsize=(20, 10))
     ax1.imshow(flatfield, cmap="gray")
     ax1.set_title("Correction performed per tile")
+
+    # Save the plot to ouput
     if output:
         fig1.savefig(output + "0.png")
 
+    # Original and corrected image
     fig2, ax2 = plt.subplots(1, 2, figsize=(20, 10))
     ax2[0].imshow(img, cmap="gray")
     ax2[0].set_title("Corrected image")
     ax2[1].imshow(img_orig, cmap="gray")
     ax2[1].set_title("Original image")
+
+    # Save the plot to ouput
     if output:
         fig2.savefig(output + "1.png")
 
@@ -90,19 +102,21 @@ def preprocessImage(
     contrast_clip: float = 2.5,
     size_tophat: int = None,
 ) -> np.ndarray:
-    "This function performs the prprocessing of an image. If the path_image i provided, the image is read from the path."
-    "If the image img itself is provided, this image will be used."
-    "Contrast_clip indiactes the input to the create_CLAHE function for histogram equalization"
-    "size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is executes. The recommendable size is 45?-."
-    "Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better."
+    """Returns the new image
 
-    # tophat filter
+    This function performs the preprocessing of the image.
+    Contrast_clip indicates the input to the create_CLAHE function for histogram equalization.
+    Size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is applied. The recommendable size is 45.
+    Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better.
+    """
+
+    # Apply tophat filter
     if size_tophat is not None:
         minimum_t = ndimage.minimum_filter(img, size_tophat)
         max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
         img -= max_of_min_t
 
-    # enhance contrast
+    # Enhance the contrast
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
     img = clahe.apply(img)
 
@@ -115,17 +129,20 @@ def preprocessImagePlot(
     small_size_vis: List[int] = None,
     output: str = None,
 ) -> None:
-    # plot_result
+    """Creates the plots based on the original and preprocessed image."""
+
+    # Original and preprocessed image
     fig1, ax1 = plt.subplots(1, 2, figsize=(20, 10))
     ax1[0].imshow(img, cmap="gray")
     ax1[0].set_title("Corrected image")
     ax1[1].imshow(img_orig, cmap="gray")
     ax1[1].set_title("Original image")
 
+    # Save the plot to ouput
     if output:
         fig1.savefig(output + "0.png")
 
-    # plot small part of image
+    # Plot small part of the images
     if small_size_vis is not None:
         fig2, ax2 = plt.subplots(1, 2, figsize=(20, 10))
         ax2[0].imshow(
@@ -145,6 +162,7 @@ def preprocessImagePlot(
         )
         ax2[1].set_title("Original image")
 
+        # Save the plot to ouput
         if output:
             fig2.savefig(output + "1.png")
 
@@ -159,18 +177,24 @@ def segmentation(
     model_type: str = "nuclei",
     channels: List[int] = [0, 0],
 ) -> Tuple[np.ndarray, np.ndarray, geopandas.GeoDataFrame]:
-    "This function segments the data, using the cellpose algorithm, and plots the outcome"
-    "img is the input image, showing the DAPI Staining, you can define your device by setting the device parameter"
-    "min_size indicates the minimal amount of pixels in a mask (I assume)"
-    "The lfow_threshold indicates someting about the shape of the masks, if you increase it, more masks with less orund shapes will be accepted"
-    "The diameter is a very important parameter to estimate. In the best case, you estimate it yourself, it indicates the mean expected diameter of your dataset."
-    "If you put None in diameter, them odel will estimate is herself."
-    "mask_threshold indicates how many of the possible masks are kept. MAking it smaller (up to -6), will give you more masks, bigger is less masks. "
-    "When an RGB image is given a input, the R channel is expected to have the nuclei, and the blue channel the membranes"
-    "When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei"
-    channels = np.array(channels)
-    model = models.Cellpose(device=torch.device(device), model_type=model_type)
+    """Returns the segmentation masks, the image masks and the polygons
 
+    This function segments the data, using the cellpose algorithm.
+    Img is the input image.
+    You can define your device by setting the device parameter.
+    Min_size indicates the minimal amount of pixels in a mask.
+    The flow_threshold indicates someting about the shape of the masks, if you increase it, more masks with less orund shapes will be accepted.
+    The diameter is a very important parameter to estimate, in the best case you estimate it yourself. It indicates the mean expected diameter of your dataset.
+    If you put None in diameter, the model will estimate it automatically.
+    Mask_threshold indicates how many of the possible masks are kept. Making it smaller (up to -6), will give you more masks, bigger is less masks.
+    When an RGB image is given an input, the R channel is expected to have the nuclei, and the blue channel the membranes.
+    When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei.
+    """
+
+    channels = np.array(channels)
+
+    # Perform cellpose segmentation
+    model = models.Cellpose(device=torch.device(device), model_type=model_type)
     masks, _, _, _ = model.eval(
         img,
         diameter=diameter,
@@ -180,11 +204,9 @@ def segmentation(
         cellprob_threshold=cellprob_threshold,
     )
     mask_i = np.ma.masked_where(masks == 0, masks)
-    # i_masked = np.ma.masked_where(img < 500, img)
 
-    # create the polygon shapes of the different cells
+    # Create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
-    # polygons["border"] = polygons.geometry.map(is_in_border)
     polygons["border_color"] = polygons.geometry.map(border_color)
     polygons["linewidth"] = polygons.geometry.map(linewidth)
     polygons["color"] = polygons.geometry.map(color)
@@ -202,9 +224,13 @@ def segmentationPlot(
     small_size_vis: List[int] = None,
     output: str = None,
 ) -> None:
-    if sum(channels) != 0:
-        img = img[0, :, :]  # select correct image
+    """Creates the plots based on the original image as well as the image masks."""
 
+    # Select correct layer of the image
+    if sum(channels) != 0:
+        img = img[0, :, :]
+
+    # Show only small part of the image
     if small_size_vis is not None:
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
         ax[0].imshow(
@@ -229,12 +255,11 @@ def segmentationPlot(
             ],
             cmap="jet",
         )
+
+    # Show the full image
     else:
         fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-        # ax[0].imshow(masks[0:3000,8000:10000],cmap='jet')
         ax[0].imshow(img, cmap="gray")
-        # ax[0].imshow(masks,cmap='jet')
-
         ax[1].imshow(img, cmap="gray")
         polygons.plot(
             ax=ax[1],
@@ -244,6 +269,8 @@ def segmentationPlot(
             legend=True,
             color="red",
         )
+
+    # Save the plot to ouput
     if output:
         fig.savefig(output + ".png")
 
@@ -463,7 +490,6 @@ def clustering(
     adata: AnnData,
     pcs: int,
     neighbors: int,
-    spot_size: int = 70,
     cluster_resolution: float = 0.8,
     output: str = None,
 ) -> Tuple[AnnData, pd.DataFrame]:
@@ -611,7 +637,7 @@ def clustercleanliness(
             adata.uns["maxScores_colors"] = colors
 
             celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
-            celltypes_f = np.append(celltypes_f, list(chain(*gene_indexes.keys())))
+            celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
             color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
             for i, name in enumerate(color_dict.keys()):
                 color_dict[name] = colors[i]
