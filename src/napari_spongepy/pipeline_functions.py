@@ -1,6 +1,3 @@
-import matplotlib.pyplot as plt
-import pandas as pd
-import squidpy as sq
 from omegaconf import DictConfig
 from skimage import io
 
@@ -155,7 +152,15 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
 
 def annotate(cfg: DictConfig, results: dict) -> DictConfig:
     adata = results["adata"]
-    mg_dict, _ = fc.scoreGenesLiver(adata, cfg.dataset.markers, cfg.annotate.row_norm)
+    repl_columns = (
+        cfg.annotate.repl_columns if "repl_columns" in cfg.annotate else dict()
+    )
+    del_genes = cfg.annotate.del_genes if "del_genes" in cfg.annotate else []
+    mg_dict, _ = fc.scoreGenes(
+        adata, cfg.dataset.markers, cfg.annotate.row_norm, repl_columns, del_genes
+    )
+    if "marker_genes" in cfg.annotate:
+        adata = fc.correct_marker_genes(adata, cfg.annotate.marker_genes)
     results["adata"] = adata
     results["mg_dict"] = mg_dict
 
@@ -166,48 +171,29 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
     adata = results["adata"]
     mg_dict = results["mg_dict"]
 
-    adata.obs["Hep"] = (adata.obs["Hepatocytes"] > 5.6).astype(int)
-
-    for i in range(0, len(adata.obs)):
-        if adata.obs["Hepatocytes"].iloc[i] < 5.6:
-            adata.obs["Hepatocytes"].iloc[i] = adata.obs["Hepatocytes"].iloc[i] / 7
+    gene_indexes = (
+        cfg.visualize.gene_indexes if "gene_indexes" in cfg.visualize else None
+    )
+    colors = cfg.visualize.colors if "colors" in cfg.visualize else None
 
     adata, color_dict = fc.clustercleanliness(
-        adata, genes=list(mg_dict.keys()), liver=cfg.visualize.liver
+        adata, list(mg_dict.keys()), gene_indexes, colors
     )
 
     if "cluster_cleanliness" in cfg.paths:
         log.info(f"Writing cluster cleanliness plot to {cfg.paths.cluster_cleanliness}")
         fc.clustercleanlinessPlot(
             adata,
-            color_dict,
             cfg.visualize.crd,
-            cfg.visualize.liver,
+            color_dict,
             output=cfg.paths.cluster_cleanliness,
         )
 
-    adata.raw.var.index.names = ["genes"]
-    adata.var.index.names = ["genes"]
-    adata.obsm["spatial"] = adata.obsm["spatial"].rename({0: "X", 1: "Y"}, axis=1)
-
-    sq.gr.spatial_neighbors(adata, coord_type="generic")
-    sq.gr.nhood_enrichment(adata, cluster_key="maxScores")
-    sq.pl.nhood_enrichment(adata, cluster_key="maxScores", method="ward")
+    adata = fc.enrichement(adata)
     if "nhood" in cfg.paths:
-        plt.savefig(cfg.paths.nhood + ".png", bbox_inches="tight")
+        fc.enrichement_plot(adata, cfg.paths.nhood)
 
-    del adata.obsm["polygons"]["color"]
-    adata.obsm["polygons"]["geometry"].to_file(cfg.paths.geojson, driver="GeoJSON")
-
-    adata.obsm["polygons"] = pd.DataFrame(
-        {
-            "linewidth": adata.obsm["polygons"]["linewidth"],
-            "X": adata.obsm["polygons"]["X"],
-            "Y": adata.obsm["polygons"]["Y"],
-        }
-    )
-    adata.write(cfg.paths.h5ad)
-
+    fc.save_data(adata, cfg.paths.geojson, cfg.paths.h5ad)
     log.info("Pipeline finished")
 
     return cfg, results

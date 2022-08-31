@@ -13,10 +13,12 @@ import rasterio
 import scanpy as sc
 import seaborn as sns
 import shapely
+import squidpy as sq
 import torch
 from anndata import AnnData
 from basicpy import BaSiC
 from cellpose import models
+from iterools import chain
 from rasterio import features
 from scipy import ndimage
 
@@ -384,11 +386,10 @@ def plot_shapes(
     ax.spines["right"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
     ax.spines["left"].set_visible(False)
-    # ax.legend(bbox_to_anchor=(1.1, 1.05))
+
     if crd is not None:
         ax.set_xlim(crd[0], crd[1])
         ax.set_ylim(crd[2], crd[3])
-    # ax[1].imshow(I,cmap='gray',)
 
     if output:
         fig.savefig(output + ".png")
@@ -409,7 +410,6 @@ def preprocessAdata(
         adata.obs["nucleusSize"] = [counts[int(index)] for index in adata.obs.index]
         adata.X = (adata.X.T / adata.obs.nucleusSize.values).T
 
-        # sc.pp.normalize_total(adata) #This no
         sc.pp.log1p(adata)
         sc.pp.scale(adata, max_value=10)
     else:
@@ -417,7 +417,6 @@ def preprocessAdata(
         sc.pp.log1p(adata)
     sc.tl.pca(adata, svd_solver="arpack", n_comps=n_comps)
     sc.pl.pca(adata, color="total_counts")
-    # sc.pl.pca_variance_ratio(adata,n_pcs=50) #lets take 6,10 or 12
     adata.obsm["polygons"] = geopandas.GeoDataFrame(
         adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
     )
@@ -470,7 +469,6 @@ def clustering(
 ) -> Tuple[AnnData, pd.DataFrame]:
     sc.pp.neighbors(adata, n_neighbors=neighbors, n_pcs=pcs)
     sc.tl.umap(adata)
-    # sc.pl.umap(adata, color=['Folr2','Glul','Sox9','Cd9']) #total counts doesn't matter that much
     sc.tl.leiden(adata, resolution=cluster_resolution)
     sc.pl.umap(adata, color=["leiden"])
     sc.tl.rank_genes_groups(adata, "leiden", method="wilcoxon")
@@ -485,30 +483,35 @@ def clustering(
     return adata
 
 
-def scoreGenesLiver(
-    adata: AnnData, path_marker_genes: str, row_norm: bool = False, liver: bool = False
+def scoreGenes(
+    adata: AnnData,
+    path_marker_genes: str,
+    row_norm: bool = False,
+    repl_columns: dict[str, str] = None,
+    del_genes: List[str] = None,
 ) -> Tuple[dict, pd.DataFrame]:
     df_markers = pd.read_csv(path_marker_genes, index_col=0)
-    df_markers.columns = df_markers.columns.str.replace("Tot_Score_", "")
-    df_markers.columns = df_markers.columns.str.replace("uppfer", "upffer")
+
+    if repl_columns:
+        for column, replace in repl_columns.items():
+            df_markers.columns = df_markers.columns.str.replace(column, replace)
+
     genes_dict = {}
     for i in df_markers:
         genes = []
         for row, value in enumerate(df_markers[i]):
             if value > 0:
                 genes.append(df_markers.index[row])
-                # print(df_markers.index[row])
         genes_dict[i] = genes
 
     for key, value in genes_dict.items():
         sc.tl.score_genes(adata, value, score_name=key)
 
-    if liver:
-        del df_markers["Hepatocytes"]
-        del df_markers["LSEC45"]
-        del genes_dict["Hepatocytes"]
-        del genes_dict["LSEC45"]
-    # scoresper_cluster = adata.obs[[col for col in adata.obs if col.startswith('Tot')]] #very specific to this dataset
+    if del_genes:
+        for gene in del_genes:
+            del df_markers[gene]
+            del genes_dict[gene]
+
     scoresper_cluster = adata.obs[
         [col for col in adata.obs if col in df_markers.columns]
     ]
@@ -531,14 +534,11 @@ def scoreGenesLiver(
     return genes_dict, scoresper_cluster
 
 
-def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None:
+def scoreGenesPlot(
+    adata: AnnData, scoresper_cluster: pd.DataFrame, filter_index: int = 5
+) -> None:
     sc.pl.umap(adata, color=["Cleanliness", "maxScores"])
     sc.pl.umap(adata, color=["leiden", "maxScores"])
-    # fig,ax =plt.subplots(1,1,figsize=(20,10))
-
-    # sc.pl.spatial(adata,color='maxScores',spot_size=70,show=False,cmap='magma',alpha=1,title='AnnotationScores',ax=ax)
-    # fig,ax =plt.subplots(1,1,figsize=(20,10)) sc.pl.spatial(adata,color='Cleanliness',spot_size=70,show=False,
-    # cmap='magma',alpha=1,title='Cleanliness of data',ax=ax)
 
     plot_shapes(adata, column="maxScores")
     plot_shapes(adata, column="Cleanliness")
@@ -547,7 +547,7 @@ def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None
     sc.pl.heatmap(
         adata[
             adata.obs.leiden.isin(
-                ["5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]
+                [str(index) for index in range(filter_index, len(adata.obs.leiden))]
             )
         ],
         var_names=scoresper_cluster.columns.values,
@@ -555,101 +555,77 @@ def scoreGenesLiverPlot(adata: AnnData, scoresper_cluster: pd.DataFrame) -> None
     )
 
 
+def correct_marker_genes(
+    adata: AnnData, genes: dict[str, Tuple[float, float]]
+) -> AnnData:
+    for gene, values in genes.items():
+        for i in range(0, len(adata.obs)):
+            if adata.obs[gene].iloc[i] < values[0]:
+                adata.obs[gene].iloc[i] = adata.obs[gene].iloc[i] / values[1]
+    return adata
+
+
 def annotate_maxscore(types: str, indexes: dict, adata: AnnData) -> AnnData:
     adata.obs.maxScores = adata.obs.maxScores.cat.add_categories([types])
-    for i in range(0, len(adata.obs.maxScores)):
-        if adata.obs.maxScores[i] in indexes[types]:
+    for i, val in enumerate(adata.obs.maxScores):
+        if val in indexes[types]:
             adata.obs.maxScores[i] = types
+    return adata
+
+
+def remove_celltypes(types: str, indexes: dict, adata: AnnData) -> AnnData:
+    for index in indexes[types]:
+        if index in adata.obs.maxScores.cat.categories:
+            adata.obs.maxScores = adata.obs.maxScores.cat.remove_categories(index)
     return adata
 
 
 def clustercleanliness(
     adata: AnnData,
     genes: List[str],
-    liver: bool = False,
+    gene_indexes: dict[str, int] = None,
+    colors: List[str] = None,
 ) -> Tuple[AnnData, dict]:
     celltypes = np.array(sorted(genes), dtype=str)
 
-    # The coloring doesn't work yet for non-liver samples, but is easily adaptable, by just not defining a colormap
-    # anywhere
     adata.obs["maxScores"] = adata.obs[
         [col for col in adata.obs if col in celltypes]
     ].idxmax(axis=1)
     adata.obs.maxScores = adata.obs.maxScores.astype("category")
 
-    if liver:
-        other_immune_cells = celltypes[np.array([1, 4, 7, 8, 9, 10, 11, 12, 13, 17])]
-        vein = celltypes[np.array([15, 18])]
+    if gene_indexes:
         adata.obs["maxScoresSave"] = adata.obs.maxScores
+        gene_celltypes = {}
 
-        adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(
-            ["Other_ImmuneCells"]
-        )
-        for i, val in enumerate(adata.obs.maxScores):
-            if val in other_immune_cells:
-                adata.obs.maxScores[i] = "Other_ImmuneCells"
-        adata.obs.maxScores = adata.obs.maxScores.cat.add_categories(["vein_EC45"])
+        for key, value in gene_indexes.items():
+            gene_celltypes[key] = celltypes[value]
 
-        for i, val in enumerate(adata.obs.maxScores):
-            if val in vein:
-                adata.obs.maxScores[i] = "vein_EC45"
-        adata.obs.maxScoresSave = adata.obs.maxScoresSave.cat.add_categories(
-            ["vein_EC45"]
-        )
+        for gene, indexes in gene_indexes.items():
+            adata = annotate_maxscore(gene, gene_celltypes, adata)
 
-        for i in range(0, len(adata.obs.maxScores)):
-            if adata.obs.maxScoresSave[i] in vein:
-                adata.obs.maxScoresSave[i] = "vein_EC45"
-        for i in other_immune_cells:
-            if i in adata.obs.maxScores.cat.categories:
-                adata.obs.maxScores = adata.obs.maxScores.cat.remove_categories(i)
-        adata.obs.maxScores = adata.obs.maxScores.cat.remove_categories(vein)
-        adata.obs.maxScoresSave = adata.obs.maxScoresSave.cat.remove_categories(vein)
+        for gene, indexes in gene_indexes.items():
+            adata = remove_celltypes(gene, gene_celltypes, adata)
+
         # fix the coloring
+        if colors:
+            adata.uns["maxScores_colors"] = colors
 
-        # adata.uns['maxScores_colors']=np.append(adata.uns['maxScores_colors'],['#ff7f0e','#ad494a'])
-        colors = [
-            "#914d22",
-            "#c61b84",
-            "#ea579f",
-            "#5da6db",
-            "#fbb05f",
-            "#d46f6c",
-            "#E45466",
-            "#a31a2a",
-            "#929591",
-            "#cc7722",
-        ]
-        adata.uns["maxScores_colors"] = colors
+            celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
+            celltypes_f = np.append(celltypes_f, list(chain(*gene_indexes.keys())))
+            color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
+            for i, name in enumerate(color_dict.keys()):
+                color_dict[name] = colors[i]
+            adata.uns["maxScores_colors"] = list(
+                map(color_dict.get, adata.obs.maxScores.cat.categories.values)
+            )
 
-        color_dict = dict(
-            zip(list(adata.obs.maxScores.cat.categories), adata.uns["maxScores_colors"])
-        )
-        for i, name in enumerate(color_dict.keys()):
-            color_dict[name] = colors[i]
-
-        colors_i = [
-            "#191919",
-            "#a3d7ba",
-            "#702963",
-            "#a4daf3",
-            "#4a6e34",
-            "#b4b5b5",
-            "#3ab04a",
-            "#893a86",
-            "#bf00ff",
-            "#9c7eba",
-        ]
-        for i in range(0, 10):
-            color_dict[other_immune_cells[i]] = colors_i[i]
     return adata, color_dict
 
 
 def clustercleanlinessPlot(
     adata: AnnData,
-    color_dict: dict,
     crop_coord: List[int] = [0, 2000, 0, 2000],
-    liver: bool = False,
+    color_dict: dict = None,
     output: str = None,
 ) -> None:
     # create the plots
@@ -662,7 +638,7 @@ def clustercleanlinessPlot(
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
     stacked_norm.columns = list(adata.obs.maxScores.cat.categories)
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-    if liver:
+    if color_dict:
         stacked_norm.plot(
             kind="bar", stacked=True, ax=fig.gca(), color=color_dict
         )  # .legend(loc='lower left')
@@ -690,3 +666,33 @@ def clustercleanlinessPlot(
     ax.axis("off")
     # plt.title('UMAP colored by annotation based on celltype ',fontsize='xx-large')
     plt.show()
+
+
+def enrichement(adata: AnnData) -> AnnData:
+    adata.raw.var.index.names = ["genes"]
+    adata.var.index.names = ["genes"]
+    adata.obsm["spatial"] = adata.obsm["spatial"].rename({0: "X", 1: "Y"}, axis=1)
+
+    sq.gr.spatial_neighbors(adata, coord_type="generic")
+    sq.gr.nhood_enrichment(adata, cluster_key="maxScores")
+    return adata
+
+
+def enrichement_plot(adata: AnnData, output: str = None) -> None:
+    sq.pl.nhood_enrichment(adata, cluster_key="maxScores", method="ward")
+    if output:
+        plt.savefig(output + ".png", bbox_inches="tight")
+
+
+def save_data(adata: AnnData, output_geojson: str, output_h5ad: str):
+    del adata.obsm["polygons"]["color"]
+    adata.obsm["polygons"]["geometry"].to_file(output_geojson, driver="GeoJSON")
+
+    adata.obsm["polygons"] = pd.DataFrame(
+        {
+            "linewidth": adata.obsm["polygons"]["linewidth"],
+            "X": adata.obsm["polygons"]["X"],
+            "Y": adata.obsm["polygons"]["Y"],
+        }
+    )
+    adata.write(output_h5ad)
