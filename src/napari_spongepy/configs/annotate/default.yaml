@@ -1,11 +1,1 @@
 row_norm: False
-repl_columns:
-  "Tot_Score_": ""
-  "uppfer": "upffer"
-del_genes:
-  - "Hepatocytes"
-  - "LSEC45"
-marker_genes:
-  "Hepatocytes":
-    - 5.6
-    - 7.0

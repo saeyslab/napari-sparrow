@@ -2,13 +2,13 @@
 work_dir: ${hydra:runtime.cwd}
 
 # path to data directory
-data_dir: ${paths.work_dir}/data
+data_dir: /srv/scratch/data/spatial/
 
 # path to logging directory with all output
 log_dir: ${paths.work_dir}/logs/
 
 # path to output directory, created dynamically by hydra
-# will be under the log_dir folder 
+# will be under the log_dir folder
 # path generation pattern is specified in `configs/hydra/default.yaml`
 # use it to store all files generated during the run, like ckpts and metrics
 output_dir: ${hydra:runtime.output_dir}
