@@ -719,6 +719,7 @@ def clustercleanliness(
 ) -> Tuple[AnnData, dict]:
     """Returns a tuple with the AnnData object and the color dict."""
     celltypes = np.array(sorted(genes), dtype=str)
+    color_dict = None
 
     adata.obs["maxScores"] = adata.obs[
         [col for col in adata.obs if col in celltypes]
