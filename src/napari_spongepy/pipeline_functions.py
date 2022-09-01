@@ -126,13 +126,16 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
             output=cfg.paths.distance,
         )
 
-    fc.clustering(
+    adata = fc.clustering(
         adata,
         cfg.allocate.pcs,
         cfg.allocate.neighbors,
         cfg.allocate.cluster_resolution,
-        output=cfg.paths.score_genes,
     )
+    if "cluster" in cfg.paths:
+        log.info(f"Writing clustering plots to {cfg.paths.cluster}")
+        fc.clustering_plot(adata, output=cfg.paths.cluster)
+
     if "leiden" in cfg.paths:
         log.info(f"Writing leiden plot to {cfg.paths.leiden}")
         fc.plot_shapes(
@@ -155,9 +158,13 @@ def annotate(cfg: DictConfig, results: dict) -> DictConfig:
         cfg.annotate.repl_columns if "repl_columns" in cfg.annotate else dict()
     )
     del_genes = cfg.annotate.del_genes if "del_genes" in cfg.annotate else []
-    mg_dict, _ = fc.scoreGenes(
+    mg_dict, scoresper_cluster = fc.scoreGenes(
         adata, cfg.dataset.markers, cfg.annotate.row_norm, repl_columns, del_genes
     )
+
+    if "score_genes" in cfg.paths:
+        fc.scoreGenesPlot(adata, scoresper_cluster, output=cfg.paths.score_genes)
+
     if "marker_genes" in cfg.annotate:
         adata = fc.correct_marker_genes(adata, cfg.annotate.marker_genes)
     results["adata"] = adata

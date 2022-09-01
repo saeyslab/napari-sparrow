@@ -463,7 +463,6 @@ def preprocessAdata(
         sc.pp.log1p(adata)
 
     sc.tl.pca(adata, svd_solver="arpack", n_comps=n_comps)
-    sc.pl.pca(adata, color="total_counts")
     adata.obsm["polygons"] = geopandas.GeoDataFrame(
         adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
     )
@@ -474,16 +473,19 @@ def preprocessAdata(
 def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) -> None:
     """This function plots the size of the nucleus related to the counts."""
 
+    sc.pl.pca(adata, color="total_counts")
+
     fig, axs = plt.subplots(1, 2, figsize=(15, 4))
-    sns.distplot(adata_orig.obs["total_counts"], kde=False, ax=axs[0])
-    sns.distplot(adata_orig.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
+    sns.histplot(adata_orig.obs["total_counts"], kde=False, ax=axs[0])
+    sns.histplot(adata_orig.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
 
     plt.scatter(adata.obs["nucleusSize"], adata.obs["total_counts"])
     plt.title = "cellsize vs cellcount"
 
     # Save the plot to ouput
     if output:
-        fig.savefig(output + ".png")
+        plt.savefig(output + "0.png")
+        fig.savefig(output + "1.png")
 
 
 def filter_on_size(
@@ -519,11 +521,7 @@ def filter_on_size(
 
 
 def clustering(
-    adata: AnnData,
-    pcs: int,
-    neighbors: int,
-    cluster_resolution: float = 0.8,
-    output: str = None,
+    adata: AnnData, pcs: int, neighbors: int, cluster_resolution: float = 0.8
 ) -> AnnData:
     """Returns the AnnData object.
 
@@ -537,20 +535,26 @@ def clustering(
 
     # Leiden clustering
     sc.tl.leiden(adata, resolution=cluster_resolution)
-    sc.pl.umap(adata, color=["leiden"])
     sc.tl.rank_genes_groups(adata, "leiden", method="wilcoxon")
+
+    return adata
+
+
+def clustering_plot(adata: AnnData, output: str = None) -> None:
+    """This function plots the clusters and genes ranking"""
+
+    # Leiden clustering
+    sc.pl.umap(adata, color=["leiden"])
 
     # Save the plot to ouput
     if output:
-        sc.settings.figdir = ""
+        plt.savefig(output + "0.png", bbox_inches="tight")
         sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
-        plt.savefig(output + ".png", bbox_inches="tight")
+        plt.savefig(output + "1.png", bbox_inches="tight")
 
     # Display plot
     else:
         sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
-
-    return adata
 
 
 def scoreGenes(
@@ -616,29 +620,58 @@ def scoreGenes(
 
 
 def scoreGenesPlot(
-    adata: AnnData, scoresper_cluster: pd.DataFrame, filter_index: int = 5
+    adata: AnnData,
+    scoresper_cluster: pd.DataFrame,
+    filter_index: int = 5,
+    output: str = None,
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the maxscores."""
 
     # Plot cleanliness and leiden next to maxscores
     sc.pl.umap(adata, color=["Cleanliness", "maxScores"])
-    sc.pl.umap(adata, color=["leiden", "maxScores"])
+
+    # Save the plot to ouput
+    if output:
+        plt.savefig(output + "0.png", bbox_inches="tight")
+        sc.pl.umap(adata, color=["leiden", "maxScores"])
+        plt.savefig(output + "1.png", bbox_inches="tight")
+
+    # Display plot
+    else:
+        sc.pl.umap(adata, color=["leiden", "maxScores"])
 
     # Plot maxScores and cleanliness columns of AnnData object
-    plot_shapes(adata, column="maxScores")
-    plot_shapes(adata, column="Cleanliness")
+    plot_shapes(adata, column="maxScores", output=output + "2" if output else None)
+    plot_shapes(adata, column="Cleanliness", output=output + "3" if output else None)
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
     sc.pl.heatmap(adata, var_names=scoresper_cluster.columns.values, groupby="leiden")
-    sc.pl.heatmap(
-        adata[
-            adata.obs.leiden.isin(
-                [str(index) for index in range(filter_index, len(adata.obs.leiden))]
-            )
-        ],
-        var_names=scoresper_cluster.columns.values,
-        groupby="leiden",
-    )
+
+    # Save the plot to ouput
+    if output:
+        plt.savefig(output + "4.png", bbox_inches="tight")
+        sc.pl.heatmap(
+            adata[
+                adata.obs.leiden.isin(
+                    [str(index) for index in range(filter_index, len(adata.obs.leiden))]
+                )
+            ],
+            var_names=scoresper_cluster.columns.values,
+            groupby="leiden",
+        )
+        plt.savefig(output + "5.png", bbox_inches="tight")
+
+    # Display plot
+    else:
+        sc.pl.heatmap(
+            adata[
+                adata.obs.leiden.isin(
+                    [str(index) for index in range(filter_index, len(adata.obs.leiden))]
+                )
+            ],
+            var_names=scoresper_cluster.columns.values,
+            groupby="leiden",
+        )
 
 
 def correct_marker_genes(
