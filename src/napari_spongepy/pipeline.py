@@ -8,9 +8,26 @@ import hydra
 from omegaconf import DictConfig
 
 
+def check_config(cfg: DictConfig):
+    from pathlib import Path
+
+    # check all mandatory paths
+    for p in [
+        cfg.paths.data_dir,
+        cfg.dataset.data_dir,
+        cfg.dataset.image,
+        cfg.dataset.coords,
+        cfg.paths.output_dir,
+    ]:
+        assert Path(p).exists()
+
+
 @hydra.main(version_base="1.2", config_path="configs", config_name="pipeline.yaml")
 def main(cfg: DictConfig) -> None:
     from napari_spongepy import pipeline_functions as pf
+
+    # check the config
+    check_config(cfg)
 
     # The pipeline consist of 5 steps:
     results: dict[str, Any] = {}
