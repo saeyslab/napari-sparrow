@@ -1,7 +1,7 @@
 # %load_ext autoreload
 # %autoreload 2
 from itertools import chain
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import geopandas
@@ -473,7 +473,7 @@ def preprocessAdata(
 def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) -> None:
     """This function plots the size of the nucleus related to the counts."""
 
-    sc.pl.pca(adata, color="total_counts")
+    sc.pl.pca(adata, color="total_counts", show=not output)
 
     fig, axs = plt.subplots(1, 2, figsize=(15, 4))
     sns.histplot(adata_orig.obs["total_counts"], kde=False, ax=axs[0])
@@ -544,12 +544,12 @@ def clustering_plot(adata: AnnData, output: str = None) -> None:
     """This function plots the clusters and genes ranking"""
 
     # Leiden clustering
-    sc.pl.umap(adata, color=["leiden"])
+    sc.pl.umap(adata, color=["leiden"], show=not output)
 
     # Save the plot to ouput
     if output:
         plt.savefig(output + "0.png", bbox_inches="tight")
-        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
+        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False, show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
 
     # Display plot
@@ -628,12 +628,12 @@ def scoreGenesPlot(
     """This function plots the cleanliness and the leiden score next to the maxscores."""
 
     # Plot cleanliness and leiden next to maxscores
-    sc.pl.umap(adata, color=["Cleanliness", "maxScores"])
+    sc.pl.umap(adata, color=["Cleanliness", "maxScores"], show=not output)
 
     # Save the plot to ouput
     if output:
         plt.savefig(output + "0.png", bbox_inches="tight")
-        sc.pl.umap(adata, color=["leiden", "maxScores"])
+        sc.pl.umap(adata, color=["leiden", "maxScores"], show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
 
     # Display plot
@@ -645,7 +645,12 @@ def scoreGenesPlot(
     plot_shapes(adata, column="Cleanliness", output=output + "3" if output else None)
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
-    sc.pl.heatmap(adata, var_names=scoresper_cluster.columns.values, groupby="leiden")
+    sc.pl.heatmap(
+        adata,
+        var_names=scoresper_cluster.columns.values,
+        groupby="leiden",
+        show=not output,
+    )
 
     # Save the plot to ouput
     if output:
@@ -658,6 +663,7 @@ def scoreGenesPlot(
             ],
             var_names=scoresper_cluster.columns.values,
             groupby="leiden",
+            show=False,
         )
         plt.savefig(output + "5.png", bbox_inches="tight")
 
@@ -716,7 +722,7 @@ def clustercleanliness(
     genes: List[str],
     gene_indexes: dict[str, int] = None,
     colors: List[str] = None,
-) -> Tuple[AnnData, dict]:
+) -> Tuple[AnnData, Optional[dict]]:
     """Returns a tuple with the AnnData object and the color dict."""
     celltypes = np.array(sorted(genes), dtype=str)
     color_dict = None
@@ -789,17 +795,25 @@ def clustercleanlinessPlot(
 
     # Save the barplot to ouput
     if output:
-        fig.savefig(output + ".png", bbox_inches="tight")
+        fig.savefig(output + "0.png", bbox_inches="tight")
     else:
         plt.show()
 
     # Plot images with colored celltypes
-    plot_shapes(adata, column="maxScores", alpha=0.8)
-    plot_shapes(adata, column="maxScores", crd=crop_coord, alpha=0.8)
+    plot_shapes(
+        adata, column="maxScores", alpha=0.8, output=output + "1" if output else None
+    )
+    plot_shapes(
+        adata,
+        column="maxScores",
+        crd=crop_coord,
+        alpha=0.8,
+        output=output + "2" if output else None,
+    )
 
     # Plot clusters
     _, ax = plt.subplots(1, 1, figsize=(15, 10))
-    sc.pl.umap(adata, color=["maxScores"], ax=ax, size=60, show=False)
+    sc.pl.umap(adata, color=["maxScores"], ax=ax, size=60, show=not output)
     ax.axis("off")
     plt.show()
 
