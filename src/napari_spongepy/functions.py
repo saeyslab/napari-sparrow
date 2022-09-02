@@ -76,6 +76,10 @@ def tilingCorrectionPlot(
 ) -> None:
     """Creates the plots based on the correction overlay and the original and corrected images."""
 
+    # disable interactive mode
+    if output:
+        plt.ioff()
+
     # Tile correction overlay
     fig1, ax1 = plt.subplots(1, 1, figsize=(20, 10))
     ax1.imshow(flatfield, cmap="gray")
@@ -130,6 +134,10 @@ def preprocessImagePlot(
     output: str = None,
 ) -> None:
     """Creates the plots based on the original and preprocessed image."""
+
+    # disable interactive mode
+    if output:
+        plt.ioff()
 
     # Original and preprocessed image
     fig1, ax1 = plt.subplots(1, 2, figsize=(20, 10))
@@ -225,6 +233,10 @@ def segmentationPlot(
     output: str = None,
 ) -> None:
     """Creates the plots based on the original image as well as the image masks."""
+
+    # disable interactive mode
+    if output:
+        plt.ioff()
 
     # Select correct layer of the image
     if sum(channels) != 0:
@@ -374,6 +386,10 @@ def plot_shapes(
 ) -> None:
     """This function plots the anndata on the shapes of the cells."""
 
+    # disable interactive mode
+    if output:
+        plt.ioff()
+
     # Only plot specific column
     if column is not None:
         if column + "_colors" in adata.uns:
@@ -473,6 +489,10 @@ def preprocessAdata(
 def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) -> None:
     """This function plots the size of the nucleus related to the counts."""
 
+    # disable interactive mode
+    if output:
+        plt.ioff()
+
     sc.pl.pca(adata, color="total_counts", show=not output)
 
     fig, axs = plt.subplots(1, 2, figsize=(15, 4))
@@ -542,6 +562,10 @@ def clustering(
 
 def clustering_plot(adata: AnnData, output: str = None) -> None:
     """This function plots the clusters and genes ranking"""
+
+    # disable interactive mode
+    if output:
+        plt.ioff()
 
     # Leiden clustering
     sc.pl.umap(adata, color=["leiden"], show=not output)
@@ -626,6 +650,10 @@ def scoreGenesPlot(
     output: str = None,
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the maxscores."""
+
+    # disable interactive mode
+    if output:
+        plt.ioff()
 
     # Plot cleanliness and leiden next to maxscores
     sc.pl.umap(adata, color=["Cleanliness", "maxScores"], show=not output)
@@ -769,6 +797,10 @@ def clustercleanlinessPlot(
 ) -> None:
     """This function plots the clustercleanliness as barplots, the images with colored celltypes and the clusters."""
 
+    # disable interactive mode
+    if output:
+        plt.ioff()
+
     # Create the barplot
     stacked = (
         adata.obs.groupby(["leiden", "maxScores"], as_index=False)
@@ -838,6 +870,10 @@ def enrichment(adata: AnnData) -> AnnData:
 
 def enrichment_plot(adata: AnnData, output: str = None) -> None:
     """This function plots the nhood enrichment between different celltypes."""
+
+    # disable interactive mode
+    if output:
+        plt.ioff()
 
     sq.pl.nhood_enrichment(adata, cluster_key="maxScores", method="ward")
 
