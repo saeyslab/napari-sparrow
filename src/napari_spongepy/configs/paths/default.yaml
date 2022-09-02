@@ -2,7 +2,7 @@
 work_dir: ${hydra:runtime.cwd}
 
 # path to data directory
-data_dir: /srv/scratch/data/spatial/
+data_dir: ${paths.work_dir}/data/
 
 # path to logging directory with all output
 log_dir: ${paths.work_dir}/logs/
