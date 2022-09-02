@@ -98,7 +98,7 @@ raw: ${dataset.data_dir}/33075-974_A2-1_raw.tiff
 markers: null
 ```
 
-Use this newly defined dataset in a new experiment configuration at `config/experiment/liver_small.yaml`. 
+Use this newly defined dataset in a new experiment configuration at `config/experiment/liver_small.yaml`.
 
 ```yaml
 # @package _global
@@ -112,13 +112,29 @@ subset: '0:100,0:100'
 
 Now running the experiment can be done using only the name of the experiment:
 ```
-spongepy +experiment=liver_small 
+spongepy +experiment=liver_small
 ```
 
 By creating multiple experiment configs, experiments can be cleanly defined by composing existing configs and overwriting only a few new parameters.
 
 ## Submit multiple experiments
 
+Multiple experiment can be run using a comma or the [glob syntax]().
+```bash
+spongepy +experiment=liver_small,brain_small -m
 ```
-spongepy +experiment=liver_small,brain_small --multirun
+
+For large batches, create the an extra folder of configs programmatically using `scripts/create_dataset.py` based on the folder structure in the dataset.
+```bash
+python scripts/create_dataset.py -f /srv/scratch/data/spatial/resolve_melanoma -c configs/ms_melanoma/dataset
+```
+
+You can then run all are part of the datasets by pointing to this additional config folder.
+```bash
+spongepy -cd configs/ms_melanoma dataset='glob(*A1*)' -m
+```
+
+Alternatively, you can supply argmuments in the commandline using bash functions like find, sed and paste:
+```bash
+spongepy dataset=$(find src/napari_spongepy/configs/dataset/multisample_resolve_melanoma  -name '*.yaml' | sed -E 's@.*/(.*/.*)$@\1@g' | paste -sd ',' -) paths=output -m
 ```

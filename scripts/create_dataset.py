@@ -39,8 +39,10 @@ args.config_folder.mkdir(exist_ok=True, parents=True)
 logging.debug(f"Config folder at {args.config_folder}")
 
 TEMPLATE = r"""# @package dataset
+
 defaults:
 - {default_dataset}
+
 image: ${{dataset.data_dir}}/{tiff}
 coords: ${{dataset.data_dir}}/{txt}
 """
