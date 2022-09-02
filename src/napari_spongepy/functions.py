@@ -18,6 +18,7 @@ import torch
 from anndata import AnnData
 from basicpy import BaSiC
 from cellpose import models
+from matplotlib.colors import ListedColormap
 from rasterio import features
 from scipy import ndimage
 
@@ -783,17 +784,23 @@ def clustercleanliness(
             adata = remove_celltypes(gene, gene_celltypes, adata)
 
         # Create custom colormap for clusters
-        if colors:
-            adata.uns["maxScores_colors"] = colors
-
-            celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
-            celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
-            color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
-            for i, name in enumerate(color_dict.keys()):
-                color_dict[name] = colors[i]
-            adata.uns["maxScores_colors"] = list(
-                map(color_dict.get, adata.obs.maxScores.cat.categories.values)
+        if not colors:
+            tab20b = plt.get_cmap("tab20b")
+            tab20c = plt.get_cmap("tab20c")
+            colors = ListedColormap(
+                np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
             )
+
+        adata.uns["maxScores_colors"] = colors
+
+        celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
+        celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
+        color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
+        for i, name in enumerate(color_dict.keys()):
+            color_dict[name] = colors[i]
+        adata.uns["maxScores_colors"] = list(
+            map(color_dict.get, adata.obs.maxScores.cat.categories.values)
+        )
 
     return adata, color_dict
 
