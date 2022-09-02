@@ -1,5 +1,8 @@
 # path to original working directory the app was executed from
-work_dir: ${hydra:runtime.cwd}
+# ${hydra:runtime.cwd}
+# Use current cwd path, because interpolation error otherwise at sweep dir https://github.com/facebookresearch/hydra/issues/2247
+# Alternative is to use pyrootutils as in https://github.com/ashleve/lightning-hydra-template
+work_dir: "./"
 
 # path to data directory
 data_dir: /srv/scratch/data/spatial/
