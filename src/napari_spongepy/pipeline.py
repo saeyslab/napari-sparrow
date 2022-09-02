@@ -2,6 +2,7 @@
 # can be run from any place
 
 
+import warnings
 from typing import Any
 
 import hydra
@@ -28,6 +29,9 @@ def main(cfg: DictConfig) -> None:
 
     # check the config
     check_config(cfg)
+
+    # Supress _core_genes futerewarnings
+    warnings.simplefilter(action="ignore", category=FutureWarning)
 
     # The pipeline consist of 5 steps:
     results: dict[str, Any] = {}
