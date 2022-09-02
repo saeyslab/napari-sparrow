@@ -12,7 +12,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
 
     # Perform tilingCorrection on whole image
     if cfg.clean.tilingCorrection:
-        img_correct, flatfield = fc.tilingCorrection(img=img, device=cfg.clean.device)
+        img_correct, flatfield = fc.tilingCorrection(img=img)
         if "tiling_correction" in cfg.paths:
             log.info(f"Writing tiling plots to {cfg.paths.tiling_correction}")
             fc.tilingCorrectionPlot(

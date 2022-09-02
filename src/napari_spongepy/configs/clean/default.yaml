@@ -1,6 +1,4 @@
 tilingCorrection: True
-# Device is either cpu or cuda:[int] for gpu devices
-device: "cuda:0"
 size_tophat: 85
 contrast_clip: 3.5
 small_size_vis: [3000, 6000, 5000, 9000]
