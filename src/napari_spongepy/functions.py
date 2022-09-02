@@ -23,7 +23,7 @@ from scipy import ndimage
 
 
 def tilingCorrection(
-    img: np.ndarray, device: str = "cpu", tile_size: int = 2144
+    img: np.ndarray, tile_size: int = 2144
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Returns the corrected image and the flatfield array
 
@@ -42,13 +42,8 @@ def tilingCorrection(
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
 
     # Measure the filters
-    device = torch.device(device)
-    torch.cuda.set_device(device)
-
-    basic = BaSiC(epsilon=1e-06, device="cpu" if device == "cpu" else "gpu")
-
-    device = torch.device(device)
-    torch.cuda.set_device(device)
+    # BaSiC has no support for gpu devices, see https://github.com/peng-lab/BaSiCPy/issues/101
+    basic = BaSiC(epsilon=1e-06)
 
     basic.fit(tiles)
     flatfield = basic.flatfield
@@ -87,6 +82,7 @@ def tilingCorrectionPlot(
 
     # Save the plot to ouput
     if output:
+        plt.close(fig1)
         fig1.savefig(output + "0.png")
 
     # Original and corrected image
@@ -98,6 +94,7 @@ def tilingCorrectionPlot(
 
     # Save the plot to ouput
     if output:
+        plt.close(fig2)
         fig2.savefig(output + "1.png")
 
 
@@ -148,6 +145,7 @@ def preprocessImagePlot(
 
     # Save the plot to ouput
     if output:
+        plt.close(fig1)
         fig1.savefig(output + "0.png")
 
     # Plot small part of the images
@@ -172,6 +170,7 @@ def preprocessImagePlot(
 
         # Save the plot to ouput
         if output:
+            plt.close(fig2)
             fig2.savefig(output + "1.png")
 
 
@@ -284,6 +283,7 @@ def segmentationPlot(
 
     # Save the plot to ouput
     if output:
+        plt.close(fig)
         fig.savefig(output + ".png")
 
 
@@ -444,6 +444,7 @@ def plot_shapes(
 
     # Save the plot to ouput
     if output:
+        plt.close(fig)
         fig.savefig(output + ".png")
 
 
@@ -504,7 +505,9 @@ def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) 
 
     # Save the plot to ouput
     if output:
+        plt.close()
         plt.savefig(output + "0.png")
+        plt.close(fig)
         fig.savefig(output + "1.png")
 
 
@@ -572,8 +575,10 @@ def clustering_plot(adata: AnnData, output: str = None) -> None:
 
     # Save the plot to ouput
     if output:
+        plt.close()
         plt.savefig(output + "0.png", bbox_inches="tight")
         sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False, show=False)
+        plt.close()
         plt.savefig(output + "1.png", bbox_inches="tight")
 
     # Display plot
@@ -660,8 +665,10 @@ def scoreGenesPlot(
 
     # Save the plot to ouput
     if output:
+        plt.close()
         plt.savefig(output + "0.png", bbox_inches="tight")
         sc.pl.umap(adata, color=["leiden", "maxScores"], show=False)
+        plt.close()
         plt.savefig(output + "1.png", bbox_inches="tight")
 
     # Display plot
@@ -682,6 +689,7 @@ def scoreGenesPlot(
 
     # Save the plot to ouput
     if output:
+        plt.close()
         plt.savefig(output + "4.png", bbox_inches="tight")
         sc.pl.heatmap(
             adata[
@@ -693,6 +701,7 @@ def scoreGenesPlot(
             groupby="leiden",
             show=False,
         )
+        plt.close()
         plt.savefig(output + "5.png", bbox_inches="tight")
 
     # Display plot
@@ -827,6 +836,7 @@ def clustercleanlinessPlot(
 
     # Save the barplot to ouput
     if output:
+        plt.close(fig)
         fig.savefig(output + "0.png", bbox_inches="tight")
     else:
         plt.show()
@@ -847,7 +857,13 @@ def clustercleanlinessPlot(
     _, ax = plt.subplots(1, 1, figsize=(15, 10))
     sc.pl.umap(adata, color=["maxScores"], ax=ax, size=60, show=not output)
     ax.axis("off")
-    plt.show()
+
+    # Save the plot to ouput
+    if output:
+        plt.close()
+        fig.savefig(output + "3.png", bbox_inches="tight")
+    else:
+        plt.show()
 
 
 def enrichment(adata: AnnData) -> AnnData:
