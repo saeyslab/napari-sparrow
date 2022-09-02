@@ -790,6 +790,8 @@ def clustercleanliness(
             colors = ListedColormap(
                 np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
             )
+            colors = np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
+            colors = [colors[j * 4 + i] for i in range(4) for j in range(10)]
 
         adata.uns["maxScores_colors"] = colors
 
