@@ -2,4 +2,4 @@ data_dir: ${paths.data_dir}/resolve_liver
 dtype: tiff
 image: ${dataset.data_dir}/20272_slide1_A1-1_DAPI.tiff
 coords: ${dataset.data_dir}/20272_slide1_A1-1_results.txt
-markers: ${dataset.data_dir}/markers_including_CD45neg.csv
+markers: ${dataset.data_dir}/markerGeneListMartinNoLow.csv

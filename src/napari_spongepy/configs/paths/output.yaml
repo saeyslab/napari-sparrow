@@ -14,6 +14,7 @@ polygons: ${paths.output_dir}/plot_polygons
 preprocess_adata: ${paths.output_dir}/plot_preprocess_adata
 total_counts: ${paths.output_dir}/plot_shapes_total_counts
 distance: ${paths.output_dir}/plot_shapes_distance
+cluster: ${paths.output_dir}/plot_clustering
 leiden: ${paths.output_dir}/plot_shapes_leiden
 score_genes: ${paths.output_dir}/plot_score_genes
 cluster_cleanliness: ${paths.output_dir}/plot_cluster_cleanliness

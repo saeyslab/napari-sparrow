@@ -51,7 +51,7 @@ coords: ${{dataset.data_dir}}/{txt}
 for tiff in Path(args.dataset_folder).glob("*_DAPI.tiff"):
     tiff = Path(tiff)
     # assume the omics data with the same name as a text file
-    txt = Path(tiff.stem + ".txt")
+    txt = Path(tiff.stem.replace("_DAPI", "_results") + ".txt")
     # output to a config file with the same name
     file = args.config_folder / f"{tiff.stem}.yaml"
     logging.debug(tiff.name)

@@ -5,7 +5,7 @@
 work_dir: "./"
 
 # path to data directory
-data_dir: ${paths.work_dir}/data
+data_dir: ${paths.work_dir}/data/
 
 # path to logging directory with all output
 log_dir: ${paths.work_dir}/logs/
