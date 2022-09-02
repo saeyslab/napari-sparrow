@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 import cv2
 import geopandas
 import matplotlib
+import matplotlib.colors as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -18,7 +19,6 @@ import torch
 from anndata import AnnData
 from basicpy import BaSiC
 from cellpose import models
-from matplotlib.colors import ListedColormap
 from rasterio import features
 from scipy import ndimage
 
@@ -770,6 +770,16 @@ def clustercleanliness(
     ].idxmax(axis=1)
     adata.obs.maxScores = adata.obs.maxScores.astype("category")
 
+    # Create custom colormap for clusters
+    if not colors:
+        tab20b = plt.get_cmap("tab20b")
+        tab20c = plt.get_cmap("tab20c")
+        colors = mpl.ListedColormap(
+            np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
+        )
+        colors = np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
+        colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
+
     if gene_indexes:
         adata.obs["maxScoresSave"] = adata.obs.maxScores
         gene_celltypes = {}
@@ -783,26 +793,20 @@ def clustercleanliness(
         for gene, indexes in gene_indexes.items():
             adata = remove_celltypes(gene, gene_celltypes, adata)
 
-        # Create custom colormap for clusters
-        if not colors:
-            tab20b = plt.get_cmap("tab20b")
-            tab20c = plt.get_cmap("tab20c")
-            colors = ListedColormap(
-                np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
-            )
-            colors = np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
-            colors = [colors[j * 4 + i] for i in range(4) for j in range(10)]
-
         adata.uns["maxScores_colors"] = colors
 
         celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
         celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
         color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
-        for i, name in enumerate(color_dict.keys()):
-            color_dict[name] = colors[i]
-        adata.uns["maxScores_colors"] = list(
-            map(color_dict.get, adata.obs.maxScores.cat.categories.values)
-        )
+
+    else:
+        color_dict = dict(zip(celltypes, adata.uns["maxScores_colors"]))
+
+    for i, name in enumerate(color_dict.keys()):
+        color_dict[name] = colors[i]
+    adata.uns["maxScores_colors"] = list(
+        map(color_dict.get, adata.obs.maxScores.cat.categories.values)
+    )
 
     return adata, color_dict
 
