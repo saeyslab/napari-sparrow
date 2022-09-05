@@ -576,11 +576,11 @@ def clustering_plot(adata: AnnData, output: str = None) -> None:
 
     # Save the plot to ouput
     if output:
-        plt.close()
         plt.savefig(output + "0.png", bbox_inches="tight")
-        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False, show=False)
         plt.close()
+        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False, show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
+        plt.close()
 
     # Display plot
     else:
@@ -657,6 +657,12 @@ def scoreGenesPlot(
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the maxscores."""
 
+    # Custom colormap:
+    colors = np.concatenate(
+        (plt.get_cmap("tab20c")(np.arange(20)), plt.get_cmap("tab20b")(np.arange(20)))
+    )
+    colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
+
     # disable interactive mode
     if output:
         plt.ioff()
@@ -666,17 +672,18 @@ def scoreGenesPlot(
 
     # Save the plot to ouput
     if output:
-        plt.close()
         plt.savefig(output + "0.png", bbox_inches="tight")
-        sc.pl.umap(adata, color=["leiden", "maxScores"], show=False)
         plt.close()
+        sc.pl.umap(adata, color=["leiden", "maxScores"], show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
+        plt.close()
 
     # Display plot
     else:
         sc.pl.umap(adata, color=["leiden", "maxScores"])
 
     # Plot maxScores and cleanliness columns of AnnData object
+    adata.uns["maxScores_colors"] = colors
     plot_shapes(adata, column="maxScores", output=output + "2" if output else None)
     plot_shapes(adata, column="Cleanliness", output=output + "3" if output else None)
 
@@ -690,8 +697,8 @@ def scoreGenesPlot(
 
     # Save the plot to ouput
     if output:
-        plt.close()
         plt.savefig(output + "4.png", bbox_inches="tight")
+        plt.close()
         sc.pl.heatmap(
             adata[
                 adata.obs.leiden.isin(
@@ -702,8 +709,8 @@ def scoreGenesPlot(
             groupby="leiden",
             show=False,
         )
-        plt.close()
         plt.savefig(output + "5.png", bbox_inches="tight")
+        plt.close()
 
     # Display plot
     else:
@@ -772,12 +779,12 @@ def clustercleanliness(
 
     # Create custom colormap for clusters
     if not colors:
-        tab20b = plt.get_cmap("tab20b")
-        tab20c = plt.get_cmap("tab20c")
-        colors = mpl.ListedColormap(
-            np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
+        colors = np.concatenate(
+            (
+                plt.get_cmap("tab20c")(np.arange(20)),
+                plt.get_cmap("tab20b")(np.arange(20)),
+            )
         )
-        colors = np.concatenate((tab20c(np.arange(20)), tab20b(np.arange(20))))
         colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
 
     if gene_indexes:
@@ -873,8 +880,8 @@ def clustercleanlinessPlot(
 
     # Save the plot to ouput
     if output:
-        plt.close()
         fig.savefig(output + "3.png", bbox_inches="tight")
+        plt.close()
     else:
         plt.show()
 
