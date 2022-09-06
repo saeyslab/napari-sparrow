@@ -21,19 +21,18 @@ log = utils.get_pylogger(__name__)
 
 def cleanImage(
     img: np.ndarray,
-    contrast_clip: float = 2.5,
+    contrast_clip: float = 3.5,
     size_tophat: int = None,
 ) -> np.ndarray:
     from napari_spongepy.functions import preprocessImage, tilingCorrection
-
+    
     img = np.squeeze(img)
 
     img, _ = tilingCorrection(img)
 
     result = preprocessImage(img, contrast_clip, size_tophat)
 
-    result = result[:, :, np.newaxis, np.newaxis]
-    return result
+    return result[4288, 4288]
 
 
 @thread_worker(
@@ -44,59 +43,22 @@ def _clean_worker(
     method: Callable,
     subset=None,
     fn_kwargs=None,
-    reduce_z=None,
-    reduce_c=None,
-    # if async interactive works: smaller chunks for faster segmentation computation
-    chunks=(12864, 10720, 1, 1),
-    # chunks="auto",
 ) -> list[np.ndarray]:
     """
     clean image in a thread worker
     """
 
-    ic = utils.get_ic(img, layer=utils.IMAGE)
-    new_ic = ic.apply(
-        func=method,
-        layer=utils.IMAGE,
-        new_layer=utils.CLEAN,
-        lazy=True,
-        copy=True,
-        chunks=chunks,
-        fn_kwargs=fn_kwargs,
-    )
-    ic.add_img(new_ic, layer=utils.CLEAN, lazy=True)
-    s = utils.ic_to_da(ic, utils.CLEAN, reduce_c=reduce_c, reduce_z=reduce_z)
-    # make a dummy lower-res array to trigger multi-scale rendering
-    # dummy_s = da.zeros(tuple(np.array(s.shape) // 2)).astype(np.uint8)
-    # ss = [s, dummy_s]
-    return s
-
-
-# def layer_options(gui) -> list[tuple[str, Any]]:
-#     # `gui` will be the combobox instance... if you want, you can traverse
-#     # the widget parent chain to find the viewer and do whatever you want.
-#     # but here, we just return a simple list of strings that we want
-#     # the combobox to show
-#     from napari.utils._magicgui import get_layers_data
-
-#     layers_data = get_layers_data(gui)
-
-#     try:
-#         index = [x[0] for x in layers_data].index(utils.CLEAN)
-#     except ValueError:
-#         index = None
-#     if index:
-#         l = layers_data.pop(index)
-#         return l + layers_data
-#     return layers_data
+    res = method(img, **fn_kwargs)
+    
+    return res
 
 
 @magic_factory(call_button="clean")
 def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
-    size_tophat: int = 45,
-    contrast_clip: float = 2.5,
+    size_tophat: int = 85,
+    contrast_clip: float = 3.5,
 ) -> None:
     log.info(
         f"About to clean {image}; size_tophat={size_tophat} contrast_clip={contrast_clip}"
@@ -120,18 +82,14 @@ def clean_widget(
             layer = viewer.layers[layer_name]
             viewer.layers.remove(layer)
 
-            # layer.data = img
             log.info(f"Refreshing {layer_name}")
             # layer.refresh()
         except KeyError:
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
+
         viewer.add_image(img, name=layer_name)
-        # f = toggle_layer_vis_on_zoom(viewer, layer_name, zoom_threshold=0.9)
-        # viewer.camera.events.zoom.connect(f)
-        # execute f to emulate zoom event and set visiblity correct
-        # f(None)
-        log.debug(print(utils.get_ic()))
+       
         return viewer
 
 
