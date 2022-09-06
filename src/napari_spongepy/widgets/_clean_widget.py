@@ -19,26 +19,18 @@ import napari_spongepy.utils as utils
 log = utils.get_pylogger(__name__)
 
 
-def BasiCCorrection(img: np.ndarray) -> np.ndarray:
-    from basicpy import BaSiC
-
-    "This function corrects for the tiling effect that occurs in RESOLVE data"
-    basic = BaSiC(get_darkfield=True, lambda_flatfield_coef=10, device="cpu")
-    basic.fit(img)
-    tiles_corrected = basic.transform(img)
-    return basic.transform(tiles_corrected)
-
-
 def cleanImage(
     img: np.ndarray,
     contrast_clip: float = 2.5,
     size_tophat: int = None,
 ) -> np.ndarray:
-    from napari_spongepy.functions import preprocessImage
+    from napari_spongepy.functions import preprocessImage, tilingCorrection
 
     img = np.squeeze(img)
 
-    result, _ = preprocessImage(img)
+    img, _ = tilingCorrection(img)
+
+    result = preprocessImage(img, contrast_clip, size_tophat)
 
     result = result[:, :, np.newaxis, np.newaxis]
     return result
@@ -55,8 +47,8 @@ def _clean_worker(
     reduce_z=None,
     reduce_c=None,
     # if async interactive works: smaller chunks for faster segmentation computation
-    # chunks=(1000, 1000, 1, 1),
-    chunks="auto",
+    chunks=(12864, 10720, 1, 1),
+    # chunks="auto",
 ) -> list[np.ndarray]:
     """
     clean image in a thread worker
@@ -158,7 +150,7 @@ if __name__ == "__main__":
         layer=utils.IMAGE,
         new_layer=utils.CLEAN,
         lazy=False,
-        chunks="auto",
+        chunks=(12864, 10720, 1, 1),
         fn_kwargs=fn_kwargs,
     )
     ic[utils.CLEAN].data
