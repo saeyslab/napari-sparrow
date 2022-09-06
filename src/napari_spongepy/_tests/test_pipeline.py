@@ -1,6 +1,6 @@
 from hydra.core.hydra_config import HydraConfig
 
-from napari_spongepy.pipeline import main
+from napari_spongepy.single import main
 
 
 def test_pipeline(cfg_pipeline):

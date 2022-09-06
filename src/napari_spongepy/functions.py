@@ -6,6 +6,7 @@ from typing import List, Optional, Tuple
 import cv2
 import geopandas
 import matplotlib
+import matplotlib.colors as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -575,11 +576,11 @@ def clustering_plot(adata: AnnData, output: str = None) -> None:
 
     # Save the plot to ouput
     if output:
-        plt.close()
         plt.savefig(output + "0.png", bbox_inches="tight")
-        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False, show=False)
         plt.close()
+        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False, show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
+        plt.close()
 
     # Display plot
     else:
@@ -656,6 +657,12 @@ def scoreGenesPlot(
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the maxscores."""
 
+    # Custom colormap:
+    colors = np.concatenate(
+        (plt.get_cmap("tab20c")(np.arange(20)), plt.get_cmap("tab20b")(np.arange(20)))
+    )
+    colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
+
     # disable interactive mode
     if output:
         plt.ioff()
@@ -665,17 +672,18 @@ def scoreGenesPlot(
 
     # Save the plot to ouput
     if output:
-        plt.close()
         plt.savefig(output + "0.png", bbox_inches="tight")
-        sc.pl.umap(adata, color=["leiden", "maxScores"], show=False)
         plt.close()
+        sc.pl.umap(adata, color=["leiden", "maxScores"], show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
+        plt.close()
 
     # Display plot
     else:
         sc.pl.umap(adata, color=["leiden", "maxScores"])
 
     # Plot maxScores and cleanliness columns of AnnData object
+    adata.uns["maxScores_colors"] = colors
     plot_shapes(adata, column="maxScores", output=output + "2" if output else None)
     plot_shapes(adata, column="Cleanliness", output=output + "3" if output else None)
 
@@ -689,8 +697,8 @@ def scoreGenesPlot(
 
     # Save the plot to ouput
     if output:
-        plt.close()
         plt.savefig(output + "4.png", bbox_inches="tight")
+        plt.close()
         sc.pl.heatmap(
             adata[
                 adata.obs.leiden.isin(
@@ -701,8 +709,8 @@ def scoreGenesPlot(
             groupby="leiden",
             show=False,
         )
-        plt.close()
         plt.savefig(output + "5.png", bbox_inches="tight")
+        plt.close()
 
     # Display plot
     else:
@@ -769,6 +777,16 @@ def clustercleanliness(
     ].idxmax(axis=1)
     adata.obs.maxScores = adata.obs.maxScores.astype("category")
 
+    # Create custom colormap for clusters
+    if not colors:
+        colors = np.concatenate(
+            (
+                plt.get_cmap("tab20c")(np.arange(20)),
+                plt.get_cmap("tab20b")(np.arange(20)),
+            )
+        )
+        colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
+
     if gene_indexes:
         adata.obs["maxScoresSave"] = adata.obs.maxScores
         gene_celltypes = {}
@@ -782,18 +800,20 @@ def clustercleanliness(
         for gene, indexes in gene_indexes.items():
             adata = remove_celltypes(gene, gene_celltypes, adata)
 
-        # Create custom colormap for clusters
-        if colors:
-            adata.uns["maxScores_colors"] = colors
+        adata.uns["maxScores_colors"] = colors
 
-            celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
-            celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
-            color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
-            for i, name in enumerate(color_dict.keys()):
-                color_dict[name] = colors[i]
-            adata.uns["maxScores_colors"] = list(
-                map(color_dict.get, adata.obs.maxScores.cat.categories.values)
-            )
+        celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
+        celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
+        color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
+
+    else:
+        color_dict = dict(zip(celltypes, adata.uns["maxScores_colors"]))
+
+    for i, name in enumerate(color_dict.keys()):
+        color_dict[name] = colors[i]
+    adata.uns["maxScores_colors"] = list(
+        map(color_dict.get, adata.obs.maxScores.cat.categories.values)
+    )
 
     return adata, color_dict
 
@@ -860,8 +880,8 @@ def clustercleanlinessPlot(
 
     # Save the plot to ouput
     if output:
-        plt.close()
         fig.savefig(output + "3.png", bbox_inches="tight")
+        plt.close()
     else:
         plt.show()
 
