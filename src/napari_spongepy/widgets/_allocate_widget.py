@@ -11,28 +11,29 @@ from napari_spongepy import functions as fc
 log = utils.get_pylogger(__name__)
 
 
-@magic_factory(call_button="Allocate")
+@magic_factory(
+    call_button="Allocate",
+    transcripts_file={"widget_type": "FileEdit", "filter": "*.txt"},
+)
 def allocate_widget(
     viewer: napari.Viewer,
     transcripts_file: pathlib.Path = pathlib.Path(""),
     min_size=500,
+    max_size=100000,
     pcs: int = 17,
     neighbors: int = 35,
-    spot_size: int = 70,
     cluster_resolution: float = 0.8,
 ):
-    ic = utils.get_ic()
 
-    img = ic[utils.CLEAN].data.squeeze()
-    masks = ic[utils.SEGMENT].data.squeeze()
-
+    img = viewer.layers[utils.CLEAN].data_raw
+    masks = viewer.layers[utils.SEGMENT].data_raw
     log.info(f"path is {transcripts_file}")
 
     adata = fc.create_adata_quick(str(transcripts_file), img, masks)
     adata, _ = fc.preprocessAdata(adata, masks)
-    adata, _ = fc.filter_on_size(adata, min_size=min_size)
-    fc.clustering(adata, pcs, neighbors, spot_size, cluster_resolution)
-
+    adata, _ = fc.filter_on_size(adata, min_size, max_size)
+    fc.clustering(adata, pcs, neighbors, cluster_resolution)
+    viewer.layers[utils.SEGMENT].metadata = {"adata_allocat": adata}
     log.info(f"adata is {adata}")
 
 
