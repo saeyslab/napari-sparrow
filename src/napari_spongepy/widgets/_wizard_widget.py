@@ -12,7 +12,7 @@ current_widget = None
 
 
 def get_choices(prop_dropdown):
-    from napari_spongepy.widgets import (
+    from napari_spongepy.widgets import (  # load_widget,
         allocate_widget,
         annotate_widget,
         clean_widget,
@@ -24,12 +24,12 @@ def get_choices(prop_dropdown):
         # Use lambdas so that the function is only called when the step is changed and can be removed safely.
         # TODO run call at startup so first widget loads immediately instead of empty option.
         # TODO use Enums
-        ("#0 Load", None),
+        # ("#0 Load", lambda: load_widget),
         ("#1 Clean", lambda: clean_widget),
         ("#2 Segment", lambda: segment_widget),
         ("#3 Allocate", lambda: allocate_widget),
         ("#4 Annotate", lambda: annotate_widget),
-        ("#4 Visualize", lambda: visualize_widget),
+        ("#5 Visualize", lambda: visualize_widget),
     ]
 
 
