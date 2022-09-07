@@ -787,6 +787,8 @@ def clustercleanliness(
         )
         colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
 
+    adata.uns["maxScores_colors"] = colors
+
     if gene_indexes:
         adata.obs["maxScoresSave"] = adata.obs.maxScores
         gene_celltypes = {}
@@ -799,8 +801,6 @@ def clustercleanliness(
 
         for gene, indexes in gene_indexes.items():
             adata = remove_celltypes(gene, gene_celltypes, adata)
-
-        adata.uns["maxScores_colors"] = colors
 
         celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
         celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
