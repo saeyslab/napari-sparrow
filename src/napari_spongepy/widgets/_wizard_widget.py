@@ -1,6 +1,7 @@
 """
 Napari widget for managing the other widgets and giving a general overview of the workflow.
 """
+
 from magicgui.widgets import ComboBox, Container
 
 from napari_spongepy.utils import get_pylogger
@@ -45,6 +46,7 @@ def wizard_widget() -> None:
     step = ComboBox(label="Step:", choices=get_choices(), name="step")
     clean = clean_widget()
     clean.label = "Clean"
+    clean.name = "Clean"
     container = Container(name="global", widgets=[step, clean])
 
     # global current_widget
@@ -55,10 +57,21 @@ def wizard_widget() -> None:
         when the step menu selection changes
         """
         name = event()[0]
-        widget = event()[1]()
-        widget.label = name
-        widget.name = name
-        container.append(widget)
+
+        # Add widget if not yet exists
+        if name not in [x.name for x in container._list]:
+
+            widget = event()[1]()
+            widget.label = name
+            widget.name = name
+            container.append(widget)
+
+        # Hide other widgets
+        for widget in list(container):
+            if widget.name not in ["step", name]:
+                widget.visible = False
+            else:
+                widget.visible = True
 
     step.changed.connect(step_changed)
 
