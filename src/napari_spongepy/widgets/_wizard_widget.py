@@ -47,7 +47,7 @@ def wizard_widget() -> None:
     clean = clean_widget()
     clean.label = "Clean"
     clean.name = "Clean"
-    container = Container(name="global", widgets=[step, clean])
+    container = Container(name="global", widgets=[step, clean], labels=False)
 
     # global current_widget
     # current_widget = clean
