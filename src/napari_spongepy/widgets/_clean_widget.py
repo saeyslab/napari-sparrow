@@ -25,14 +25,15 @@ def cleanImage(
     size_tophat: int = None,
 ) -> np.ndarray:
     from napari_spongepy.functions import preprocessImage, tilingCorrection
-    
+
     img = np.squeeze(img)
+    img = img[:4288, :4288]
 
     img, _ = tilingCorrection(img)
 
     result = preprocessImage(img, contrast_clip, size_tophat)
 
-    return result[4288, 4288]
+    return result
 
 
 @thread_worker(
@@ -49,11 +50,11 @@ def _clean_worker(
     """
 
     res = method(img, **fn_kwargs)
-    
+
     return res
 
 
-@magic_factory(call_button="clean")
+@magic_factory(call_button="Clean")
 def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
@@ -89,7 +90,7 @@ def clean_widget(
             log.info(f"Adding {layer_name}")
 
         viewer.add_image(img, name=layer_name)
-       
+
         return viewer
 
 

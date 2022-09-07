@@ -68,7 +68,10 @@ def _segmentation_worker(
     return res
 
 
-@magic_factory(call_button="Segment")
+@magic_factory(
+    call_button="Segment",
+    cellprob_threshold={"widget_type": "SpinBox", "min": -50, "max": 100},
+)
 def segment_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
