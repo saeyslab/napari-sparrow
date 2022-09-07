@@ -31,4 +31,5 @@ def annotate_widget(
     mg_dict, _ = fc.scoreGenes(adata, str(markers_file), row_norm)
 
     viewer.layers[utils.SEGMENT].metadata["mg_dict"] = mg_dict
+    viewer.layers[utils.SEGMENT].metadata["adata_annotate"] = adata
     log.info(f"mg_dict is {mg_dict}")
