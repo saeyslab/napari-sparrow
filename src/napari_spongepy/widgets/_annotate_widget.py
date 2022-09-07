@@ -1,31 +1,34 @@
 """
 Napari widget for managing the other widgets and giving a general overview of the workflow.
 """
+import pathlib
+
+import napari
+import napari.layers
+import napari.types
 from magicgui import magic_factory
-from napari.viewer import Viewer
+
+import napari_spongepy.utils as utils
+from napari_spongepy import functions as fc
+
+log = utils.get_pylogger(__name__)
 
 current_widget = None
 
 
 @magic_factory(
-    step={
-        "choices": [
-            # Use lambdas so that the function is only called when the step is changed and can be removed safely.
-            # TODO run call at startup so first widget loads immediately instead of empty option.
-            ("Start Here", None),
-            # TODO add rest of widgets
-        ]
-    },
-    auto_call=True,
-    layout="horizontal",
+    call_button="Annotate", markers_file={"widget_type": "FileEdit", "filter": "*.csv"}
 )
 def annotate_widget(
-    viewer: Viewer,
-    step,
-) -> None:
-    if not step:
-        return
-    global current_widget
-    if current_widget:
-        viewer.window.remove_dock_widget(current_widget)
-    current_widget = viewer.window.add_dock_widget(step()())
+    viewer: napari.Viewer,
+    markers_file: pathlib.Path = pathlib.Path(""),
+    row_norm: bool = False,
+):
+
+    adata = viewer.layers[utils.SEGMENT].metadata["adata_allocate"]
+    log.info(f"Marker file is {markers_file}")
+
+    mg_dict, _ = fc.scoreGenes(adata, str(markers_file), row_norm)
+
+    viewer.layers[utils.SEGMENT].metadata["mg_dict"] = mg_dict
+    log.info(f"mg_dict is {mg_dict}")

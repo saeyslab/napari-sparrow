@@ -33,7 +33,7 @@ def allocate_widget(
     adata, _ = fc.preprocessAdata(adata, masks)
     adata, _ = fc.filter_on_size(adata, min_size, max_size)
     fc.clustering(adata, pcs, neighbors, cluster_resolution)
-    viewer.layers[utils.SEGMENT].metadata = {"adata_allocat": adata}
+    viewer.layers[utils.SEGMENT].metadata = {"adata_allocate": adata}
     log.info(f"adata is {adata}")
 
 
