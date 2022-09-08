@@ -1,23 +1,48 @@
+"""
+Allocation widget for creating and preprocesing the adata object, filtering the cells and performing clustering.
+"""
 import pathlib
 
 import napari
 import napari.layers
 import napari.types
 from magicgui import magic_factory
-
+from napari.qt.threading import thread_worker
+import numpy as np
+from typing import Callable
+from anndata import AnnData
 import napari_spongepy.utils as utils
 from napari_spongepy import functions as fc
 
 log = utils.get_pylogger(__name__)
 
 
+def allocateImage(path: str, img: np.ndarray, masks: np.ndarray, pcs: int, neighbors: int, library_id: str = "melanoma", min_size: int = 100, max_size: int = 100000, cluster_resolution: float = 0.8) -> AnnData:
+    adata = fc.create_adata_quick(path, img, masks, library_id)
+    adata, _ = fc.preprocessAdata(adata, masks)
+    adata, _ = fc.filter_on_size(adata, min_size, max_size)
+    fc.clustering(adata, pcs, neighbors, cluster_resolution)
+    return adata
+
+
+@thread_worker(progress=True)
+def _allocation_worker(
+    method: Callable,
+    fn_kwargs,
+) -> AnnData:
+    res = method(**fn_kwargs)
+
+    return res
+
+
 @magic_factory(
     call_button="Allocate",
-    transcripts_file={"widget_type": "FileEdit", "filter": "*.txt"},
+    transcripts_file={"widget_type": "FileEdit", "filter": "*.txt"}, result_widget=True
 )
 def allocate_widget(
     viewer: napari.Viewer,
     transcripts_file: pathlib.Path = pathlib.Path(""),
+    library_id: str = "melanoma",
     min_size=500,
     max_size=100000,
     pcs: int = 17,
@@ -25,39 +50,43 @@ def allocate_widget(
     cluster_resolution: float = 0.8,
 ):
 
-    img = viewer.layers[utils.CLEAN].data_raw
-    masks = viewer.layers[utils.SEGMENT].data_raw
-    log.info(f"path is {transcripts_file}")
+    if str(transcripts_file) in ["", "."]:
+        return "Please select transcripts file (.txt)"
+    log.info(f"Transcripts file is {str(transcripts_file)}")
 
-    adata = fc.create_adata_quick(str(transcripts_file), img, masks)
-    adata, _ = fc.preprocessAdata(adata, masks)
-    adata, _ = fc.filter_on_size(adata, min_size, max_size)
-    fc.clustering(adata, pcs, neighbors, cluster_resolution)
-    viewer.layers[utils.SEGMENT].metadata = {"adata_allocate": adata}
-    log.info(f"adata is {adata}")
+    try:
+        img = viewer.layers[utils.CLEAN].data_raw
+        masks = viewer.layers[utils.SEGMENT].data_raw
+    except KeyError:
+        return "Please run previous steps first"
 
+    fn_kwargs = {
+        "path": str(transcripts_file),
+        "img": img,
+        "masks": masks,
+        "pcs": pcs,
+        "neighbors": neighbors,
+        "library_id": library_id,
+        "min_size": min_size,
+        "max_size": max_size,
+        "cluster_resolution": cluster_resolution
+    }
 
-if __name__ == "__main__":
-    from hydra import compose, initialize
-    from hydra.core.hydra_config import HydraConfig
+    worker = _allocation_worker(allocateImage, fn_kwargs)
+    log.info("Allocationn worker Created")
 
-    import napari_spongepy.pipeline_functions as pf
+    def add_metadata(result: AnnData):
+        try:
+            # if the layer exists, update its data
+            layer = viewer.layers[utils.SEGMENT]
+        except KeyError:
+            # otherwise add it to the viewer
+            log.info(f"Layer does not exist {utils.SEGMENT}")
+        
+        layer.metadata["adata_allocate"] = result
+        log.info("Allocation finished")
+        
+        return "Allocation finished" 
 
-    with initialize(version_base="1.2", config_path="../configs"):
-        cfg = compose(
-            config_name="pipeline",
-            overrides=[
-                "+dataset=resolve_liver",
-                "+segmentation=watershed",
-                "dataset.image=${dataset.data_dir}/subset_20272_slide1_A1-1_DAPI.tiff",
-            ],
-            return_hydra_config=True,
-        )
-        HydraConfig().set_config(cfg)
-
-    results: dict = {}
-    cfg, results = pf.clean(cfg, results)
-    cfg, results = pf.segment(cfg, results)
-
-    viewer = napari.Viewer()
-    allocate_widget(viewer=viewer, transcripts_file=cfg.dataset.coords)
+    worker.returned.connect(add_metadata)
+    worker.start()
