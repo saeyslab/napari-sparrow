@@ -41,7 +41,7 @@ def annotate_widget(
     viewer: napari.Viewer,
     markers_file: pathlib.Path = pathlib.Path(""),
     row_norm: bool = False,
-):
+) -> str:
 
     if str(markers_file) in ["", "."]:
         return "Please select marker file (.csv)"
@@ -77,3 +77,4 @@ def annotate_widget(
 
     worker.returned.connect(add_metadata)
     worker.start()
+    return "Annotation started"

@@ -54,18 +54,18 @@ def _clean_worker(
     return res
 
 
-@magic_factory(call_button="Clean")
+@magic_factory(call_button="Clean", result_widget=True)
 def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
     size_tophat: int = 85,
     contrast_clip: float = 3.5,
-) -> None:
+) -> str:
     log.info(
         f"About to clean {image}; size_tophat={size_tophat} contrast_clip={contrast_clip}"
     )
     if image is None:
-        return
+        return "Please select an image"
 
     fn_kwargs = {
         "contrast_clip": contrast_clip,
@@ -73,9 +73,7 @@ def clean_widget(
     }
 
     worker = _clean_worker(image.data, method=cleanImage, fn_kwargs=fn_kwargs)
-    worker.returned.connect(lambda data: add_image(data, utils.CLEAN))
-    worker.start()
-    log.info("Worker created")
+    log.info("Cleaning worker created")
 
     def add_image(img, layer_name):
         try:
@@ -90,28 +88,10 @@ def clean_widget(
             log.info(f"Adding {layer_name}")
 
         viewer.add_image(img, name=layer_name)
+        log.info("Cleaning finished")
 
-        return viewer
+        return "Cleaning finished"
 
-
-if __name__ == "__main__":
-    from skimage import io
-    from squidpy.im import ImageContainer
-
-    img = io.imread("data/resolve_liver/20272_slide1_A1-1_DAPI.tiff")
-    ic = ImageContainer(img, layer=utils.CLEAN)
-    fn_kwargs = {
-        "contrast_clip": 45,
-        "size_tophat": 2.5,
-    }
-    ic = ic.apply(
-        func=cleanImage,
-        layer=utils.IMAGE,
-        new_layer=utils.CLEAN,
-        lazy=False,
-        chunks=(12864, 10720, 1, 1),
-        fn_kwargs=fn_kwargs,
-    )
-    ic[utils.CLEAN].data
-    s = utils.ic_to_da(ic, utils.CLEAN, reduce_c=False, reduce_z=False)
-    s
+    worker.returned.connect(lambda data: add_image(data, utils.CLEAN))
+    worker.start()
+    return "Cleaning started"

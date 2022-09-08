@@ -60,7 +60,7 @@ def allocate_widget(
     pcs: int = 17,
     neighbors: int = 35,
     cluster_resolution: float = 0.8,
-):
+) -> str:
 
     if str(transcripts_file) in ["", "."]:
         return "Please select transcripts file (.txt)"
@@ -102,3 +102,4 @@ def allocate_widget(
 
     worker.returned.connect(add_metadata)
     worker.start()
+    return "Allocation started"

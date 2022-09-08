@@ -71,6 +71,7 @@ def _segmentation_worker(
 @magic_factory(
     call_button="Segment",
     cellprob_threshold={"widget_type": "SpinBox", "min": -50, "max": 100},
+    result_widget=True,
 )
 def segment_widget(
     viewer: napari.Viewer,
@@ -81,11 +82,11 @@ def segment_widget(
     diameter: int = 50,
     cellprob_threshold: int = -2,
     model_type: ModelOption = ModelOption.nuclei,
-) -> None:
+) -> str:
 
     log.info(f"About to segment {image} using cellpose; device={device}")
     if image is None:
-        return
+        return "Please select an image"
     else:
         method_fn = segmentImage
         fn_kwargs = {
@@ -97,8 +98,9 @@ def segment_widget(
             "model_type": model_type.value,
             "channels": [0, 0],
         }
+
     worker = _segmentation_worker(image.data, method_fn, fn_kwargs=fn_kwargs)
-    log.info("Worker created")
+    log.info("Segmentation worker created")
 
     layer_name = utils.SEGMENT
 
@@ -112,9 +114,12 @@ def segment_widget(
         except KeyError:
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
-        viewer.add_labels(img, visible=True, name=layer_name)
 
-        return viewer
+        viewer.add_labels(img, visible=True, name=layer_name)
+        log.info("Segmenatation finished")
+
+        return "Segmentation finished"
 
     worker.returned.connect(add_labels)
     worker.start()
+    return "Segmentation started"

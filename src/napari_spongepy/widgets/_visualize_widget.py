@@ -40,7 +40,7 @@ def _visualisation_worker(
 def visualize_widget(
     viewer: napari.Viewer,
     save_folder: pathlib.Path = pathlib.Path(""),
-):
+) -> str:
     if str(save_folder) in ["", "."]:
         return "Please select output folder"
     log.info(f"Data will be saved in {str(save_folder)}")
@@ -62,3 +62,4 @@ def visualize_widget(
 
     worker.returned.connect(lambda: log.info("Visualisation finished"))
     worker.start()
+    return "Visualisation started"
