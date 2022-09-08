@@ -35,22 +35,21 @@ def _annotation_worker(method: Callable, fn_kwargs) -> Tuple[dict, AnnData]:
 @magic_factory(
     call_button="Annotate",
     markers_file={"widget_type": "FileEdit", "filter": "*.csv"},
-    result_widget=True,
 )
 def annotate_widget(
     viewer: napari.Viewer,
     markers_file: pathlib.Path = pathlib.Path(""),
     row_norm: bool = False,
-) -> str:
+):
 
     if str(markers_file) in ["", "."]:
-        return "Please select marker file (.csv)"
+        raise ValueError("Please select marker file (.csv)")
     log.info(f"Marker file is {markers_file}")
 
     try:
         adata = viewer.layers[utils.SEGMENT].metadata["adata_allocate"]
     except KeyError:
-        return "Please run previous steps first"
+        raise RuntimeError("Please run previous steps first")
 
     fn_kwargs = {
         "adata": adata,
@@ -73,8 +72,5 @@ def annotate_widget(
         layer.metadata["adata_annotate"] = result[1]
         log.info("Annotation finished")
 
-        return "Annotation finished"
-
     worker.returned.connect(add_metadata)
     worker.start()
-    return "Annotation started"

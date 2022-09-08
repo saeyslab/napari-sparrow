@@ -54,18 +54,20 @@ def _clean_worker(
     return res
 
 
-@magic_factory(call_button="Clean", result_widget=True)
+@magic_factory(call_button="Clean", info={"widget_type": "Label", "label": ""})
 def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
     size_tophat: int = 85,
     contrast_clip: float = 3.5,
-) -> str:
+    info: str = """Clean widget\nThis step performs lighting correction and mask inpainting for the black lines, afterwards a tophat filter and contrast clip are applied.""",
+):
+
     log.info(
         f"About to clean {image}; size_tophat={size_tophat} contrast_clip={contrast_clip}"
     )
     if image is None:
-        return "Please select an image"
+        raise ValueError("Please select an image")
 
     fn_kwargs = {
         "contrast_clip": contrast_clip,
@@ -90,8 +92,5 @@ def clean_widget(
         viewer.add_image(img, name=layer_name)
         log.info("Cleaning finished")
 
-        return "Cleaning finished"
-
     worker.returned.connect(lambda data: add_image(data, utils.CLEAN))
     worker.start()
-    return "Cleaning started"

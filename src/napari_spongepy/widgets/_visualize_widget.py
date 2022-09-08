@@ -35,21 +35,20 @@ def _visualisation_worker(
 @magic_factory(
     call_button="Visualize",
     save_folder={"widget_type": "FileEdit", "mode": "d"},
-    result_widget=True,
 )
 def visualize_widget(
     viewer: napari.Viewer,
     save_folder: pathlib.Path = pathlib.Path(""),
-) -> str:
+):
     if str(save_folder) in ["", "."]:
-        return "Please select output folder"
+        raise ValueError("Please select output folder")
     log.info(f"Data will be saved in {str(save_folder)}")
 
     try:
         adata = viewer.layers[utils.SEGMENT].metadata["adata_annotate"]
         mg_dict = viewer.layers[utils.SEGMENT].metadata["mg_dict"]
     except KeyError:
-        return "Please run previous steps first"
+        raise RuntimeError("Please run previous steps first")
 
     fn_kwargs = {
         "adata": adata,
@@ -62,4 +61,3 @@ def visualize_widget(
 
     worker.returned.connect(lambda: log.info("Visualisation finished"))
     worker.start()
-    return "Visualisation started"

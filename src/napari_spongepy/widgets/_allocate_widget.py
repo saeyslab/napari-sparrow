@@ -49,7 +49,6 @@ def _allocation_worker(
 @magic_factory(
     call_button="Allocate",
     transcripts_file={"widget_type": "FileEdit", "filter": "*.txt"},
-    result_widget=True,
 )
 def allocate_widget(
     viewer: napari.Viewer,
@@ -60,17 +59,17 @@ def allocate_widget(
     pcs: int = 17,
     neighbors: int = 35,
     cluster_resolution: float = 0.8,
-) -> str:
+):
 
     if str(transcripts_file) in ["", "."]:
-        return "Please select transcripts file (.txt)"
+        raise ValueError("Please select transcripts file (.txt)")
     log.info(f"Transcripts file is {str(transcripts_file)}")
 
     try:
         img = viewer.layers[utils.CLEAN].data_raw
         masks = viewer.layers[utils.SEGMENT].data_raw
     except KeyError:
-        return "Please run previous steps first"
+        raise RuntimeError("Please run previous steps first")
 
     fn_kwargs = {
         "path": str(transcripts_file),
@@ -98,8 +97,5 @@ def allocate_widget(
         layer.metadata["adata_allocate"] = result
         log.info("Allocation finished")
 
-        return "Allocation finished"
-
     worker.returned.connect(add_metadata)
     worker.start()
-    return "Allocation started"
