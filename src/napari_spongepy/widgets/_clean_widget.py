@@ -54,13 +54,12 @@ def _clean_worker(
     return res
 
 
-@magic_factory(call_button="Clean", info={"widget_type": "Label", "label": ""})
+@magic_factory(call_button="Clean")
 def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
     size_tophat: int = 85,
     contrast_clip: float = 3.5,
-    info: str = """Clean widget\nThis step performs lighting correction and mask inpainting for the black lines, afterwards a tophat filter and contrast clip are applied.""",
 ):
 
     log.info(
