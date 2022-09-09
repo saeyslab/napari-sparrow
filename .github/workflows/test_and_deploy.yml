@@ -16,23 +16,85 @@ on:
       - npe2
   workflow_dispatch:
 
+defaults:
+  run:
+    # set as default so all run commands use micromamba shell
+    shell: bash -l {0}
+
 jobs:
   test:
     name: ${{ matrix.platform }} py${{ matrix.python-version }}
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}-latest
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-latest]
-        python-version: [3.8, 3.9, '3.10']
-
+        os: ["ubuntu", "macos", "windows"]
+        pytest: ["6.2"]
+        # 3.9 is not supported because of | for Union syntax
+        python: ["3.10"]
+        include:
+          - os: ubuntu
+            environment-file: environment.yml
+            # miniforge-variant: Mambaforge-pypy3
+            # miniforge-version: 4.9.2-4
+          - os: macos
+            environment-file: environment.yml
+            # miniforge-variant: Mambaforge-pypy3
+            # miniforge-version: 4.9.2-4
+          - os: windows
+            environment-file: environment.yml
+            # miniforge-variant: Mambaforge-pypy3
+            # miniforge-version: 4.9.2-4
     steps:
       - uses: actions/checkout@v2
+      # - name: Cache conda
+      #   if: ${{ !env.ACT }}
+      #   uses: actions/cache@v2
+      #   env:
+      #     # Increase this value to reset cache if environment.yml has not changed
+      #     CACHE_NUMBER: 0
+      #   with:
+      #     path: ~/conda_pkgs_dir
+      #     key:
+      #       ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{
+      #       hashFiles('environment.yml') }}
+      # - uses: conda-incubator/setup-miniconda@v2
+      #   with:
+      #     condarc-file: ${{ matrix.condarc-file }}
+      #     environment-file: ${{ matrix.environment-file }}
+      #     miniforge-variant: ${{ matrix.miniforge-variant }}
+      #     miniforge-version: ${{ matrix.miniforge-version }}
+      #     use-mamba: true
+      #     channel-priority: strict
+      #     activate-environment: napari-spongepy
+      #     use-only-tar-bz2: true # IMPORTANT: This needs to be set for caching to work properly!
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+      - name: Install Conda environment with Micromamba and cache
+        uses: mamba-org/provision-with-micromamba@main
+        # Run other step if running locally in act
+        if: ${{ !env.ACT }}
         with:
-          python-version: ${{ matrix.python-version }}
+          # Use caching on GitHub Actions
+          cache-downloads: true
+          cache-env: true
+          environment-file: ${{ matrix.environment-file }}
+          extra-specs: |
+            python=${{ matrix.python }}
+            pytest=${{ matrix.pytest }}
+      - name: Install Conda environment with Micromamba and no cache
+        uses: mamba-org/provision-with-micromamba@main
+        # If running locally in act, --reuse already caches, so no caching needed
+        if: ${{ env.ACT }}
+        with:
+          environment-file: ${{ matrix.environment-file }}
+          extra-specs: |
+            python=${{ matrix.python }}
+            pytest=${{ matrix.pytest }}
+
+      # - name: Set up Python ${{ matrix.python-version }}
+      #   uses: actions/setup-python@v2
+      #   with:
+      #     python-version: ${{ matrix.python-version }}
 
       # these libraries enable testing on Qt on linux
       - uses: tlambert03/setup-qt-libs@v1
@@ -48,21 +110,37 @@ jobs:
       # setup-miniconda: https://github.com/conda-incubator/setup-miniconda
       # and
       # tox-conda: https://github.com/tox-dev/tox-conda
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install setuptools tox tox-gh-actions
+      # - name: Install dependencies
+      #   run: |
+      #     python -m pip install --upgrade pip
+      #     python -m pip install setuptools tox tox-gh-actions
 
       # this runs the platform-specific tests declared in tox.ini
-      - name: Test with tox
-        uses: GabrielBB/xvfb-action@v1
-        with:
-          run: python -m tox
-        env:
-          PLATFORM: ${{ matrix.platform }}
+      # is stuck with no error log (https://github.com/GabrielBB/xvfb-action/issues/23), running without for now
+      # - name: Test with tox
+      #   uses: GabrielBB/xvfb-action@v1
+      #   with:
+      #     # we need to manually specify bash here in order to activate the micromamba environment
+      #     run: bash -l tox
+      #   env:
+      #     PLATFORM: ${{ matrix.platform }}
+      #     CONDA_EXE: mamba
+      # - name: Test with tox
+      #   run: tox
 
-      - name: Coverage
-        uses: codecov/codecov-action@v2
+      # Install package locally to test it
+      - name: Install package
+        run: |
+          python -m pip install pyqt5 pytest-cov pytest-qt
+          python -m pip install .
+
+      # TODO: also run notebooks with --nbmake
+      - name: Run pytest directly
+        run: pytest
+
+      # - name: Coverage
+      #   uses: codecov/codecov-action@v2
+
 
   deploy:
     # this will run when you have tagged a commit, starting with "v*"

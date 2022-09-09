@@ -90,3 +90,13 @@ Debug in VS Code using a [Remote Attach](https://code.visualstudio.com/docs/pyth
 ```
 LOGLEVEL=DEBUG python -m debugpy --listen 5678 src/pipeline.py
 ```
+
+## GitHub Actions
+
+At `.github/`, there are some steps defined that run automatic [GitHub Actions](https://docs.github.com/en/actions) to see if new code breaks some functionality. Normally GitHub runs this automatically.
+For debugging, you can run these tests locally using [act](https://github.com/nektos/act).
+
+To run the test job (and specify container architecture on e.g. ARM chips):
+```
+act -j test --container-architecture linux/amd64
+```

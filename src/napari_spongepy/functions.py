@@ -16,7 +16,6 @@ import shapely
 import squidpy as sq
 import torch
 from anndata import AnnData
-from basicpy import BaSiC
 from cellpose import models
 from rasterio import features
 from scipy import ndimage
@@ -25,6 +24,8 @@ from scipy import ndimage
 def tilingCorrection(
     img: np.ndarray, tile_size: int = 2144
 ) -> Tuple[np.ndarray, np.ndarray]:
+    from basicpy import BaSiC
+
     """Returns the corrected image and the flatfield array
 
     This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
