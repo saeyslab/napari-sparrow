@@ -2,7 +2,10 @@
 Napari widget for managing the other widgets and giving a general overview of the workflow.
 """
 
-from magicgui.widgets import ComboBox, Container, TextEdit
+import os
+
+from magicgui.widgets import ComboBox, Container, Label, TextEdit
+from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import QSizePolicy
 
 from napari_spongepy.utils import get_pylogger
@@ -34,9 +37,13 @@ class Step:
 
     def get_description(self):
         description = TextEdit(
-            value=self.description, name=self.name + "description", enabled=False
+            value=self.description,
+            name=self.name + "description",
+            enabled=False,
         )
-        description.native.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        description.min_height = 250
+        description.native.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        description.native.setMarkdown(self.description)
         return description
 
 
@@ -48,7 +55,7 @@ def get_choices():
                 "clean",
                 "#1 Clean",
                 clean_widget,
-                "#1 Cleaning step:\nThis step performs lighting correction and mask inpainting for the black lines, afterwards a tophat filter and contrast clip are applied.",
+                """## Step 1: Cleaning\n### Consists of two subprocesses:\n- TilingCorrection: This step performs illumination correction on the tiles and inpaints the black lines.\n- Preprocessing: This step applies a tophat filter and enhances the contrast with a CLAHE function.""",
             ),
         ),
         (
@@ -57,7 +64,7 @@ def get_choices():
                 "segment",
                 "#2 Segment",
                 segment_widget,
-                "#2 Segmentation step description",
+                """## Step 2: Segmentation\n### Consists of one subprocess:\n- Segmentation: This step segments the nuclei or the whole cell with Cellpose.""",
             ),
         ),
         (
@@ -66,7 +73,7 @@ def get_choices():
                 "Allocate",
                 "#3 Allocate",
                 allocate_widget,
-                "#3 Allocation step description",
+                """## Step 3: Allocation\n### Consists of four subprocesses:\n - CreateAdata: Extracts the shapes of the cells and reads in the transcript file (.txt).\n - PreprocessAdata: This step calculates the QC metrics and performs normalization based on the size.\n - FilterOnSize: This step filters out any cells that fall outside the min-max size range. \n - Clustering: This step performs neighborhood analysis and leiden clustering.""",
             ),
         ),
         (
@@ -75,7 +82,7 @@ def get_choices():
                 "Annotate",
                 "#4 Annotate",
                 annotate_widget,
-                "#4 Annotation step description",
+                """## Step 4: Annotation\n### Consists of one subprocess:\n - ScoreGenes: This step annotates the cells based on the marker geneslist (.csv).""",
             ),
         ),
         (
@@ -84,7 +91,7 @@ def get_choices():
                 "Visualize",
                 "#5 Visualize",
                 visualize_widget,
-                "#5 Visualisation step description",
+                """## Step 5 Visualisation:\n### Consists of three subprocesses:\n - ClusterCleanliness: This step checks how well the clusters agree with the celltyping.\n - Enrichment: This step shows the enrichment between the different celltypes.\n - SaveData: This step saves the shapes objects as geojson and the AnnData in the h5ad file of the given folder.""",
             ),
         ),
     ]
@@ -96,10 +103,14 @@ def wizard_widget() -> None:
     TODO add next step button
     """
 
+    icon = Label(name="icon", value="Made by DaMBi")
+    print(os.getcwd())
+    icon.native.setPixmap(QPixmap("./src/napari_spongepy/widgets/dambi-white.png"))
     step = ComboBox(label="Step:", choices=get_choices(), name="step")
     container = Container(
         name="global",
         widgets=[
+            icon,
             step,
             get_choices()[0][1].get_description(),
             get_choices()[0][1].get_widget(),
@@ -120,7 +131,7 @@ def wizard_widget() -> None:
 
         # Hide other widgets
         for widget in list(container):
-            if widget.name not in ["step", name, name + "description"]:
+            if widget.name not in ["icon", "step", name, name + "description"]:
                 widget.visible = False
             else:
                 widget.visible = True

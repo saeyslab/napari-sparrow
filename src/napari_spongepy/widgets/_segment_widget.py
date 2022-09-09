@@ -18,6 +18,7 @@ import napari.types
 import numpy as np
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
+from napari.utils.notifications import show_info
 
 import napari_spongepy.utils as utils
 
@@ -83,7 +84,6 @@ def segment_widget(
     model_type: ModelOption = ModelOption.nuclei,
 ):
 
-    log.info(f"About to segment {image} using cellpose; device={device}")
     if image is None:
         raise ValueError("Please select an image")
     else:
@@ -99,7 +99,6 @@ def segment_widget(
         }
 
     worker = _segmentation_worker(image.data, method_fn, fn_kwargs=fn_kwargs)
-    log.info("Segmentation worker created")
 
     layer_name = utils.SEGMENT
 
@@ -115,7 +114,12 @@ def segment_widget(
             log.info(f"Adding {layer_name}")
 
         viewer.add_labels(img, visible=True, name=layer_name)
-        log.info("Segmenatation finished")
+        show_info("Segmentation finished")
 
     worker.returned.connect(add_labels)
+    show_info(
+        "Segmentation started" + ", CPU selected: might take some time"
+        if device == "cpu"
+        else ""
+    )
     worker.start()

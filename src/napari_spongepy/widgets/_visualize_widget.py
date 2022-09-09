@@ -10,6 +10,7 @@ import napari.types
 from anndata import AnnData
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
+from napari.utils.notifications import show_info
 
 import napari_spongepy.utils as utils
 from napari_spongepy import functions as fc
@@ -45,7 +46,7 @@ def visualize_widget(
     log.info(f"Data will be saved in {str(save_folder)}")
 
     try:
-        adata = viewer.layers[utils.SEGMENT].metadata["adata_annotate"]
+        adata = viewer.layers[utils.SEGMENT].metadata["adata_allocate"]
         mg_dict = viewer.layers[utils.SEGMENT].metadata["mg_dict"]
     except KeyError:
         raise RuntimeError("Please run previous steps first")
@@ -57,7 +58,9 @@ def visualize_widget(
     }
 
     worker = _visualisation_worker(visualizeImage, fn_kwargs)
-    log.info("Visualisation worker created")
 
-    worker.returned.connect(lambda: log.info("Visualisation finished"))
+    worker.returned.connect(
+        lambda: show_info(f"Visualisation finished, files saved in: {str(save_folder)}")
+    )
+    show_info("Visualisation started")
     worker.start()

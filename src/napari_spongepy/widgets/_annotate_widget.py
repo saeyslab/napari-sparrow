@@ -10,6 +10,7 @@ import napari.types
 from anndata import AnnData
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
+from napari.utils.notifications import show_info
 
 import napari_spongepy.utils as utils
 from napari_spongepy import functions as fc
@@ -21,12 +22,13 @@ current_widget = None
 
 def annotateImage(
     adata: AnnData, path_marker_genes: str, row_norm: bool = False
-) -> Tuple[dict, AnnData]:
-    return fc.scoreGenes(adata, path_marker_genes, row_norm)
+) -> dict:
+    mg_dict, _ = fc.scoreGenes(adata, path_marker_genes, row_norm)
+    return mg_dict
 
 
 @thread_worker(progress=True)
-def _annotation_worker(method: Callable, fn_kwargs) -> Tuple[dict, AnnData]:
+def _annotation_worker(method: Callable, fn_kwargs) -> dict:
     res = method(**fn_kwargs)
 
     return res
@@ -58,7 +60,6 @@ def annotate_widget(
     }
 
     worker = _annotation_worker(annotateImage, fn_kwargs)
-    log.info("Annotation worker created")
 
     def add_metadata(result: Tuple[dict, AnnData]):
         try:
@@ -68,9 +69,9 @@ def annotate_widget(
             # otherwise add it to the viewer
             log.info(f"Layer does not exist {utils.SEGMENT}")
 
-        layer.metadata["mg_dict"] = result[0]
-        layer.metadata["adata_annotate"] = result[1]
-        log.info("Annotation finished")
+        layer.metadata["mg_dict"] = result
+        show_info("Annotation finished")
 
     worker.returned.connect(add_metadata)
+    show_info("Annotation started")
     worker.start()

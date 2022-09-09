@@ -11,6 +11,7 @@ import numpy as np
 from anndata import AnnData
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
+from napari.utils.notifications import show_info
 
 import napari_spongepy.utils as utils
 from napari_spongepy import functions as fc
@@ -32,7 +33,7 @@ def allocateImage(
     adata = fc.create_adata_quick(path, img, masks, library_id)
     adata, _ = fc.preprocessAdata(adata, masks)
     adata, _ = fc.filter_on_size(adata, min_size, max_size)
-    fc.clustering(adata, pcs, neighbors, cluster_resolution)
+    adata = fc.clustering(adata, pcs, neighbors, cluster_resolution)
     return adata
 
 
@@ -84,7 +85,6 @@ def allocate_widget(
     }
 
     worker = _allocation_worker(allocateImage, fn_kwargs)
-    log.info("Allocationn worker Created")
 
     def add_metadata(result: AnnData):
         try:
@@ -95,7 +95,8 @@ def allocate_widget(
             log.info(f"Layer does not exist {utils.SEGMENT}")
 
         layer.metadata["adata_allocate"] = result
-        log.info("Allocation finished")
+        show_info("Allocation finished")
 
     worker.returned.connect(add_metadata)
+    show_info("Allocation started")
     worker.start()

@@ -13,6 +13,7 @@ import napari.utils
 import numpy as np
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
+from napari.utils.notifications import show_info
 
 import napari_spongepy.utils as utils
 
@@ -62,9 +63,6 @@ def clean_widget(
     contrast_clip: float = 3.5,
 ):
 
-    log.info(
-        f"About to clean {image}; size_tophat={size_tophat} contrast_clip={contrast_clip}"
-    )
     if image is None:
         raise ValueError("Please select an image")
 
@@ -74,7 +72,6 @@ def clean_widget(
     }
 
     worker = _clean_worker(image.data, method=cleanImage, fn_kwargs=fn_kwargs)
-    log.info("Cleaning worker created")
 
     def add_image(img, layer_name):
         try:
@@ -89,7 +86,8 @@ def clean_widget(
             log.info(f"Adding {layer_name}")
 
         viewer.add_image(img, name=layer_name)
-        log.info("Cleaning finished")
+        show_info("Cleaning finished")
 
     worker.returned.connect(lambda data: add_image(data, utils.CLEAN))
+    show_info("Cleaning started")
     worker.start()
