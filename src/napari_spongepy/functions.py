@@ -779,13 +779,13 @@ def clustercleanliness(
 
     # Create custom colormap for clusters
     if not colors:
-        colors = np.concatenate(
+        color = np.concatenate(
             (
                 plt.get_cmap("tab20c")(np.arange(20)),
                 plt.get_cmap("tab20b")(np.arange(20)),
             )
         )
-        colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
+        colors = [mpl.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)]
 
     adata.uns["maxScores_colors"] = colors
 
@@ -802,7 +802,7 @@ def clustercleanliness(
         for gene, indexes in gene_indexes.items():
             adata = remove_celltypes(gene, gene_celltypes, adata)
 
-        celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
+        celltypes_f = np.delete(celltypes, list(chain(gene_indexes.values())))
         celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
         color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
 
