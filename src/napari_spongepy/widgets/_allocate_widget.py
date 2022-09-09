@@ -94,8 +94,14 @@ def allocate_widget(
             # otherwise add it to the viewer
             log.info(f"Layer does not exist {utils.SEGMENT}")
 
-        layer.metadata["adata_allocate"] = result
+        layer.metadata["adata"] = result
+        layer.metadata["library_id"] = library_id
+        layer.metadata["labels_key"] = "cell_ID"
+        layer.metadata["points"] = result.uns["spatial"][library_id]["points"]
+        layer.metadata["point_diameter"] = 10
         show_info("Allocation finished")
+        viewer.scale_bar.visible = True
+        viewer.scale_bar.unit = "um"
 
     worker.returned.connect(add_metadata)
     show_info("Allocation started")

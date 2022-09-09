@@ -49,7 +49,7 @@ def annotate_widget(
     log.info(f"Marker file is {markers_file}")
 
     try:
-        adata = viewer.layers[utils.SEGMENT].metadata["adata_allocate"]
+        adata = viewer.layers[utils.SEGMENT].metadata["adata"]
     except KeyError:
         raise RuntimeError("Please run previous steps first")
 

@@ -46,7 +46,7 @@ def visualize_widget(
     log.info(f"Data will be saved in {str(save_folder)}")
 
     try:
-        adata = viewer.layers[utils.SEGMENT].metadata["adata_allocate"]
+        adata = viewer.layers[utils.SEGMENT].metadata["adata"]
         mg_dict = viewer.layers[utils.SEGMENT].metadata["mg_dict"]
     except KeyError:
         raise RuntimeError("Please run previous steps first")
