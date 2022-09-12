@@ -24,13 +24,13 @@ contributions:
     # display_name is the name shown in the napari menu
     - command: napari-spongepy.widgets.wizard_widget
       display_name: Wizard
-    - command: napari-spongepy.widgets.clean_widget
-      display_name: Clean
-    - command: napari-spongepy.widgets.segment_widget
-      display_name: Segment
-    - command: napari-spongepy.widgets.allocate_widget
-      display_name: Allocate
-    - command: napari-spongepy.widgets.annotate_widget
-      display_name: Annotate
-    - command: napari-spongepy.widgets.visualize_widget
-      display_name: Visualize
+    # - command: napari-spongepy.widgets.clean_widget
+    #   display_name: Clean
+    # - command: napari-spongepy.widgets.segment_widget
+    #   display_name: Segment
+    # - command: napari-spongepy.widgets.allocate_widget
+    #   display_name: Allocate
+    # - command: napari-spongepy.widgets.annotate_widget
+    #   display_name: Annotate
+    # - command: napari-spongepy.widgets.visualize_widget
+    #   display_name: Visualize

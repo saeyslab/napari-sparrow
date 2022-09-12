@@ -345,8 +345,8 @@ def create_adata_quick(
     polygons = polygons.dissolve(by="cells")
 
     # Allocate the transcripts
-    df = pd.read_csv(path, delimiter="\t", header=None)
-    df = df[(df[1] < masks.shape[0]) & (df[0] < masks.shape[1])]
+    in_df = pd.read_csv(path, delimiter="\t", header=None)
+    df = in_df[(in_df[1] < masks.shape[0]) & (in_df[0] < masks.shape[1])]
     df["cells"] = masks[df[1].values, df[0].values]
 
     # Calculate the mean of the transcripts for every cell
@@ -356,7 +356,7 @@ def create_adata_quick(
     # Create the anndata object
     adata = AnnData(cell_counts[cell_counts.index != 0])
     coordinates.index = coordinates.index.map(str)
-    adata.obsm["spatial"] = coordinates[coordinates.index != "0"]
+    adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
 
     # Add the polygons to the anndata object
     polygons_f = polygons[
@@ -364,6 +364,7 @@ def create_adata_quick(
     ]
     polygons_f.index = list(map(str, polygons_f.index))
     adata.obsm["polygons"] = polygons_f
+    adata.obs["cell_ID"] = [int(x) for x in adata.obsm["polygons"].index]
 
     # Add the figure to the anndata object
     adata.uns["spatial"] = {library_id: {}}
@@ -373,7 +374,14 @@ def create_adata_quick(
         "tissue_hires_scalef": 1,
         "spot_diameter_fullres": 75,
     }
-
+    adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
+    adata.uns["spatial"][library_id]["points"] = AnnData(in_df.values[:, 0:2])
+    adata.uns["spatial"][library_id]["points"].obs = pd.DataFrame(
+        {"gene": in_df.values[:, 3]}
+    )
+    # print(polygons)
+    # adata.uns["spatial"][library_id]["points"] = AnnData(np.array([[polygon.centroid.x, polygon.centroid.y] for polygon in polygons["geometry"]]))
+    # adata.obsm["spatial"] = np.array([[polygon.centroid.x, polygon.centroid.y] for polygon in polygons["geometry"]])
     return adata
 
 
@@ -527,8 +535,8 @@ def filter_on_size(
     adata.obsm["polygons"]["X"] = adata.obsm["polygons"].centroid.x
     adata.obsm["polygons"]["Y"] = adata.obsm["polygons"].centroid.y
     adata.obs["distance"] = np.sqrt(
-        np.square(adata.obsm["polygons"]["X"] - adata.obsm["spatial"][0])
-        + np.square(adata.obsm["polygons"]["Y"] - adata.obsm["spatial"][1])
+        np.square(adata.obsm["polygons"]["X"] - adata.obsm["spatial"][:, 0])
+        + np.square(adata.obsm["polygons"]["Y"] - adata.obsm["spatial"][:, 1])
     )
 
     # Filter cells based on size and distance
@@ -779,13 +787,15 @@ def clustercleanliness(
 
     # Create custom colormap for clusters
     if not colors:
-        colors = np.concatenate(
+        color = np.concatenate(
             (
                 plt.get_cmap("tab20c")(np.arange(20)),
                 plt.get_cmap("tab20b")(np.arange(20)),
             )
         )
-        colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
+        colors = [mpl.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)]
+
+    adata.uns["maxScores_colors"] = colors
 
     if gene_indexes:
         adata.obs["maxScoresSave"] = adata.obs.maxScores
@@ -800,9 +810,7 @@ def clustercleanliness(
         for gene, indexes in gene_indexes.items():
             adata = remove_celltypes(gene, gene_celltypes, adata)
 
-        adata.uns["maxScores_colors"] = colors
-
-        celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))
+        celltypes_f = np.delete(celltypes, list(chain(gene_indexes.values())))
         celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
         color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
 
@@ -896,7 +904,8 @@ def enrichment(adata: AnnData) -> AnnData:
     # Adaptations for saving
     adata.raw.var.index.names = ["genes"]
     adata.var.index.names = ["genes"]
-    adata.obsm["spatial"] = adata.obsm["spatial"].rename({0: "X", 1: "Y"}, axis=1)
+    # TODO: not used since napari spatialdata
+    # adata.obsm["spatial"] = adata.obsm["spatial"].rename({0: "X", 1: "Y"}, axis=1)
 
     # Calculate nhood enrichment
     sq.gr.spatial_neighbors(adata, coord_type="generic")

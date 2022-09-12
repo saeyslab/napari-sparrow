@@ -1,59 +1,142 @@
 """
 Napari widget for managing the other widgets and giving a general overview of the workflow.
 """
-from magicgui import magic_factory
-from napari.viewer import Viewer
+
+import os
+
+from magicgui.widgets import ComboBox, Container, Label, TextEdit
+from qtpy.QtGui import QPixmap
+from qtpy.QtWidgets import QSizePolicy
 
 from napari_spongepy.utils import get_pylogger
+from napari_spongepy.widgets import (
+    allocate_widget,
+    annotate_widget,
+    clean_widget,
+    segment_widget,
+    visualize_widget,
+)
 
 log = get_pylogger(__name__)
 
-current_widget = None
+
+class Step:
+    def __init__(self, name, label, widget, description):
+        self.name = name
+        self.label = label
+        self.widget = widget
+        self.description = description
+
+    def __str__(self):
+        return self.name
+
+    def get_widget(self):
+        widget = self.widget()
+        widget.name = self.name
+        return widget
+
+    def get_description(self):
+        description = TextEdit(
+            value=self.description,
+            name=self.name + "description",
+            enabled=False,
+        )
+        description.min_height = 250
+        description.native.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        description.native.setMarkdown(self.description)
+        return description
 
 
-def get_choices(prop_dropdown):
-    from napari_spongepy.widgets import (
-        allocate_widget,
-        annotate_widget,
-        clean_widget,
-        segment_widget,
-        visualize_widget,
-    )
-
+def get_choices():
     return [
-        # Use lambdas so that the function is only called when the step is changed and can be removed safely.
-        # TODO run call at startup so first widget loads immediately instead of empty option.
-        # TODO use Enums
-        ("#0 Load", None),
-        ("#1 Clean", lambda: clean_widget),
-        ("#2 Segment", lambda: segment_widget),
-        ("#3 Allocate", lambda: allocate_widget),
-        ("#4 Annotate", lambda: annotate_widget),
-        ("#4 Visualize", lambda: visualize_widget),
+        (
+            "Step 1: Clean",
+            Step(
+                "clean",
+                "#1 Clean",
+                clean_widget,
+                """## Step 1: Cleaning\n### Consists of two subprocesses:\n- TilingCorrection: This step performs illumination correction on the tiles and inpaints the black lines.\n- Preprocessing: This step applies a tophat filter and enhances the contrast with a CLAHE function.""",
+            ),
+        ),
+        (
+            "Step 2: Segment",
+            Step(
+                "segment",
+                "#2 Segment",
+                segment_widget,
+                """## Step 2: Segmentation\n### Consists of one subprocess:\n- Segmentation: This step segments the nuclei or the whole cell with Cellpose.""",
+            ),
+        ),
+        (
+            "Step 3: Allocate",
+            Step(
+                "Allocate",
+                "#3 Allocate",
+                allocate_widget,
+                """## Step 3: Allocation\n### Consists of four subprocesses:\n - CreateAdata: Extracts the shapes of the cells and reads in the transcript file (.txt).\n - PreprocessAdata: This step calculates the QC metrics and performs normalization based on the size.\n - FilterOnSize: This step filters out any cells that fall outside the min-max size range. \n - Clustering: This step performs neighborhood analysis and leiden clustering.""",
+            ),
+        ),
+        (
+            "Step 4: Annotate",
+            Step(
+                "Annotate",
+                "#4 Annotate",
+                annotate_widget,
+                """## Step 4: Annotation\n### Consists of one subprocess:\n - ScoreGenes: This step annotates the cells based on the marker geneslist (.csv).""",
+            ),
+        ),
+        (
+            "Step 5: Visualize",
+            Step(
+                "Visualize",
+                "#5 Visualize",
+                visualize_widget,
+                """## Step 5 Visualisation:\n### Consists of three subprocesses:\n - ClusterCleanliness: This step checks how well the clusters agree with the celltyping.\n - Enrichment: This step shows the enrichment between the different celltypes.\n - SaveData: This step saves the shapes objects as geojson and the AnnData in the h5ad file of the given folder.""",
+            ),
+        ),
     ]
 
 
-@magic_factory(
-    step={"choices": get_choices},
-    auto_call=True,
-)
-def wizard_widget(
-    viewer: Viewer,
-    step,
-) -> None:
+def wizard_widget() -> None:
     """
     Napari widget for managing the other widgets and giving a general overview of the workflow.
     TODO add next step button
     """
-    log.debug(step)
-    global current_widget
-    if current_widget:
-        viewer.window.remove_dock_widget(current_widget)
-    if step:
-        current_widget = viewer.window.add_dock_widget(
-            step()(), add_vertical_stretch=True
-        )
 
+    icon = Label(name="icon", value="Made by DaMBi")
+    log.info(f"Current working directory: {os.getcwd()}")
+    pixmap = QPixmap("./src/napari_spongepy/widgets/dambi-white.png")
+    icon.native.setPixmap(pixmap)
+    step = ComboBox(label="Step:", choices=get_choices(), name="step")
+    container = Container(
+        name="global",
+        widgets=[
+            icon,
+            step,
+            get_choices()[0][1].get_description(),
+            get_choices()[0][1].get_widget(),
+        ],
+        labels=False,
+    )
 
-if __name__ == "__main__":
-    print(123)
+    def step_changed(event):
+        """This is a callback that updates the current step
+        when the step menu selection changes
+        """
+        name = str(event)
+
+        # Add widget if not yet exists
+        if name not in [x.name for x in container._list]:
+            container.append(event.get_description())
+            container.append(event.get_widget())
+
+        # Hide other widgets
+        for widget in list(container):
+            if widget.name not in ["icon", "step", name, name + "description"]:
+                widget.visible = False
+            else:
+                widget.visible = True
+
+    step.changed.connect(step_changed)
+
+    return container

@@ -1,9 +1,17 @@
+"""
+Allocation widget for creating and preprocesing the adata object, filtering the cells and performing clustering.
+"""
 import pathlib
+from typing import Callable
 
 import napari
 import napari.layers
 import napari.types
+import numpy as np
+from anndata import AnnData
 from magicgui import magic_factory
+from napari.qt.threading import thread_worker
+from napari.utils.notifications import show_info
 
 import napari_spongepy.utils as utils
 from napari_spongepy import functions as fc
@@ -11,52 +19,90 @@ from napari_spongepy import functions as fc
 log = utils.get_pylogger(__name__)
 
 
-@magic_factory(call_button="Allocate")
+def allocateImage(
+    path: str,
+    img: np.ndarray,
+    masks: np.ndarray,
+    pcs: int,
+    neighbors: int,
+    library_id: str = "melanoma",
+    min_size: int = 100,
+    max_size: int = 100000,
+    cluster_resolution: float = 0.8,
+) -> AnnData:
+    adata = fc.create_adata_quick(path, img, masks, library_id)
+    adata, _ = fc.preprocessAdata(adata, masks)
+    adata, _ = fc.filter_on_size(adata, min_size, max_size)
+    adata = fc.clustering(adata, pcs, neighbors, cluster_resolution)
+    return adata
+
+
+@thread_worker(progress=True)
+def _allocation_worker(
+    method: Callable,
+    fn_kwargs,
+) -> AnnData:
+    res = method(**fn_kwargs)
+
+    return res
+
+
+@magic_factory(
+    call_button="Allocate",
+    transcripts_file={"widget_type": "FileEdit", "filter": "*.txt"},
+)
 def allocate_widget(
     viewer: napari.Viewer,
     transcripts_file: pathlib.Path = pathlib.Path(""),
+    library_id: str = "melanoma",
     min_size=500,
+    max_size=100000,
     pcs: int = 17,
     neighbors: int = 35,
-    spot_size: int = 70,
     cluster_resolution: float = 0.8,
 ):
-    ic = utils.get_ic()
 
-    img = ic[utils.CLEAN].data.squeeze()
-    masks = ic[utils.SEGMENT].data.squeeze()
+    if str(transcripts_file) in ["", "."]:
+        raise ValueError("Please select transcripts file (.txt)")
+    log.info(f"Transcripts file is {str(transcripts_file)}")
 
-    log.info(f"path is {transcripts_file}")
+    try:
+        img = viewer.layers[utils.CLEAN].data_raw
+        masks = viewer.layers[utils.SEGMENT].data_raw
+    except KeyError:
+        raise RuntimeError("Please run previous steps first")
 
-    adata = fc.create_adata_quick(str(transcripts_file), img, masks)
-    adata, _ = fc.preprocessAdata(adata, masks)
-    adata, _ = fc.filter_on_size(adata, min_size=min_size)
-    fc.clustering(adata, pcs, neighbors, spot_size, cluster_resolution)
+    fn_kwargs = {
+        "path": str(transcripts_file),
+        "img": img,
+        "masks": masks,
+        "pcs": pcs,
+        "neighbors": neighbors,
+        "library_id": library_id,
+        "min_size": min_size,
+        "max_size": max_size,
+        "cluster_resolution": cluster_resolution,
+    }
 
-    log.info(f"adata is {adata}")
+    worker = _allocation_worker(allocateImage, fn_kwargs)
 
+    def add_metadata(result: AnnData):
+        try:
+            # if the layer exists, update its data
+            layer = viewer.layers[utils.SEGMENT]
+        except KeyError:
+            # otherwise add it to the viewer
+            log.info(f"Layer does not exist {utils.SEGMENT}")
 
-if __name__ == "__main__":
-    from hydra import compose, initialize
-    from hydra.core.hydra_config import HydraConfig
+        layer.metadata["adata"] = result
+        layer.metadata["library_id"] = library_id
+        layer.metadata["labels_key"] = "cell_ID"
+        layer.metadata["points"] = result.uns["spatial"][library_id]["points"]
+        layer.metadata["point_diameter"] = 10
+        show_info("Allocation finished")
+        viewer.scale_bar.visible = True
+        viewer.scale_bar.unit = "um"
 
-    import napari_spongepy.pipeline_functions as pf
-
-    with initialize(version_base="1.2", config_path="../configs"):
-        cfg = compose(
-            config_name="pipeline",
-            overrides=[
-                "+dataset=resolve_liver",
-                "+segmentation=watershed",
-                "dataset.image=${dataset.data_dir}/subset_20272_slide1_A1-1_DAPI.tiff",
-            ],
-            return_hydra_config=True,
-        )
-        HydraConfig().set_config(cfg)
-
-    results: dict = {}
-    cfg, results = pf.clean(cfg, results)
-    cfg, results = pf.segment(cfg, results)
-
-    viewer = napari.Viewer()
-    allocate_widget(viewer=viewer, transcripts_file=cfg.dataset.coords)
+    worker.returned.connect(add_metadata)
+    show_info("Allocation started")
+    worker.start()

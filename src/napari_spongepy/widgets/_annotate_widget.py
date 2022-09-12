@@ -1,31 +1,77 @@
 """
-Napari widget for managing the other widgets and giving a general overview of the workflow.
+Annotation widget for scoring the genes, returns markergenes and adata objects.
 """
+import pathlib
+from typing import Callable, Tuple
+
+import napari
+import napari.layers
+import napari.types
+from anndata import AnnData
 from magicgui import magic_factory
-from napari.viewer import Viewer
+from napari.qt.threading import thread_worker
+from napari.utils.notifications import show_info
+
+import napari_spongepy.utils as utils
+from napari_spongepy import functions as fc
+
+log = utils.get_pylogger(__name__)
 
 current_widget = None
 
 
+def annotateImage(
+    adata: AnnData, path_marker_genes: str, row_norm: bool = False
+) -> dict:
+    mg_dict, _ = fc.scoreGenes(adata, path_marker_genes, row_norm)
+    return mg_dict
+
+
+@thread_worker(progress=True)
+def _annotation_worker(method: Callable, fn_kwargs) -> dict:
+    res = method(**fn_kwargs)
+
+    return res
+
+
 @magic_factory(
-    step={
-        "choices": [
-            # Use lambdas so that the function is only called when the step is changed and can be removed safely.
-            # TODO run call at startup so first widget loads immediately instead of empty option.
-            ("Start Here", None),
-            # TODO add rest of widgets
-        ]
-    },
-    auto_call=True,
-    layout="horizontal",
+    call_button="Annotate",
+    markers_file={"widget_type": "FileEdit", "filter": "*.csv"},
 )
 def annotate_widget(
-    viewer: Viewer,
-    step,
-) -> None:
-    if not step:
-        return
-    global current_widget
-    if current_widget:
-        viewer.window.remove_dock_widget(current_widget)
-    current_widget = viewer.window.add_dock_widget(step()())
+    viewer: napari.Viewer,
+    markers_file: pathlib.Path = pathlib.Path(""),
+    row_norm: bool = False,
+):
+
+    if str(markers_file) in ["", "."]:
+        raise ValueError("Please select marker file (.csv)")
+    log.info(f"Marker file is {markers_file}")
+
+    try:
+        adata = viewer.layers[utils.SEGMENT].metadata["adata"]
+    except KeyError:
+        raise RuntimeError("Please run previous steps first")
+
+    fn_kwargs = {
+        "adata": adata,
+        "path_marker_genes": str(markers_file),
+        "row_norm": row_norm,
+    }
+
+    worker = _annotation_worker(annotateImage, fn_kwargs)
+
+    def add_metadata(result: Tuple[dict, AnnData]):
+        try:
+            # if the layer exists, update its data
+            layer = viewer.layers[utils.SEGMENT]
+        except KeyError:
+            # otherwise add it to the viewer
+            log.info(f"Layer does not exist {utils.SEGMENT}")
+
+        layer.metadata["mg_dict"] = result
+        show_info("Annotation finished")
+
+    worker.returned.connect(add_metadata)
+    show_info("Annotation started")
+    worker.start()
