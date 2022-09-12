@@ -103,15 +103,19 @@ def clean_widget(
             viewer.layers.remove(layer)
 
             log.info(f"Refreshing {layer_name}")
-            # layer.refresh()
         except KeyError:
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        print(img.data.image.squeeze().to_numpy())
         viewer.add_image(
-            img.data.image.squeeze().to_numpy(), translate=left_corner, name=layer_name
+            img.data.image.squeeze().to_numpy(),
+            translate=left_corner if subset else None,
+            name=layer_name,
         )
+
+        viewer.layers[utils.CLEAN].metadata["ic"] = img
+        if subset:
+            viewer.layers[utils.CLEAN].metadata["left_corner"] = left_corner
         show_info("Cleaning finished")
 
     worker.returned.connect(lambda data: add_image(data, utils.CLEAN))

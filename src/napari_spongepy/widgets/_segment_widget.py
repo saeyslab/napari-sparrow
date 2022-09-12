@@ -113,7 +113,14 @@ def segment_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        viewer.add_labels(img, visible=True, name=layer_name)
+        viewer.add_labels(
+            img,
+            visible=True,
+            name=layer_name,
+            translate=viewer.layers[utils.CLEAN].metadata["left_corner"]
+            if "left_corner" in viewer.layers[utils.CLEAN].metadata
+            else None,
+        )
         show_info("Segmentation finished")
 
     worker.returned.connect(add_labels)
