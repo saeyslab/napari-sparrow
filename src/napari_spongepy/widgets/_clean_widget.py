@@ -32,11 +32,9 @@ def cleanImage(
     from napari_spongepy.functions import preprocessImage, tilingCorrection
 
     img = np.squeeze(img)
-    print(img)
     ic = sq.ImageContainer(img)
 
     img, _ = tilingCorrection(ic, left_corner, size)
-
     result = preprocessImage(img, contrast_clip, size_tophat)
 
     return result

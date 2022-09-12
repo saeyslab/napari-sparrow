@@ -34,16 +34,9 @@ def tilingCorrection(
     This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
     The illumination within the tiles is adjusted, afterwards the tiles are connected as a whole image by inpainting the lines between the tiles.
     """
-    print(img.data.image.data)
-    tiles = img.generate_equal_crops(size=2144, as_array="image")
+
     # Create the tiles
-    # tiles = np.array(
-    #     [
-    #         img.data.image.data[i : i + tile_size, j : j + tile_size]
-    #         for i in range(0, img.shape[0], tile_size)
-    #         for j in range(0, img.shape[1], tile_size)
-    #     ]
-    # )
+    tiles = img.generate_equal_crops(size=2144, as_array="image")
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
 
     # Measure the filters
@@ -129,7 +122,7 @@ def preprocessImage(
     img: sq.im.ImageContainer,
     contrast_clip: float = 2.5,
     size_tophat: int = None,
-) -> np.ndarray:
+) -> sq.im.ImageContainer:
     """Returns the new image
 
     This function performs the preprocessing of the image.
@@ -144,7 +137,6 @@ def preprocessImage(
             img.data.image.squeeze().to_numpy(), size_tophat
         )
         max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
-        # img -= max_of_min_t
         img = img.apply(
             {"0": lambda array: array - max_of_min_t},
             layer="image",
@@ -155,7 +147,6 @@ def preprocessImage(
 
     # Enhance the contrast
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
-    # img = clahe.apply(img)
     img = img.apply({"0": clahe.apply}, layer="image", drop=True, channel=0, copy=True)
 
     return img
