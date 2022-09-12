@@ -32,13 +32,10 @@ def cleanImage(
     from napari_spongepy.functions import preprocessImage, tilingCorrection
 
     img = np.squeeze(img)
-    img = sq.ImageContainer(img)
-    if left_corner is not None and size is not None:
-        img = img.crop_corner(*left_corner[::-1], size)
+    print(img)
+    ic = sq.ImageContainer(img)
 
-    # img = img[:4288, :4288]
-
-    img, _ = tilingCorrection(img)
+    img, _ = tilingCorrection(ic, left_corner, size)
 
     result = preprocessImage(img, contrast_clip, size_tophat)
 
@@ -113,7 +110,10 @@ def clean_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        viewer.add_image(img, name=layer_name)
+        print(img.data.image.squeeze().to_numpy())
+        viewer.add_image(
+            img.data.image.squeeze().to_numpy(), translate=left_corner, name=layer_name
+        )
         show_info("Cleaning finished")
 
     worker.returned.connect(lambda data: add_image(data, utils.CLEAN))

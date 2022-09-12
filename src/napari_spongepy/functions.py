@@ -24,22 +24,26 @@ from scipy import ndimage
 
 
 def tilingCorrection(
-    img: np.ndarray, tile_size: int = 2144
-) -> Tuple[np.ndarray, np.ndarray]:
+    img: sq.im.ImageContainer,
+    left_corner: Tuple[int, int] = None,
+    size: Tuple[int, int] = None,
+    tile_size: int = 2144,
+) -> Tuple[sq.im.ImageContainer, np.ndarray]:
     """Returns the corrected image and the flatfield array
 
     This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
     The illumination within the tiles is adjusted, afterwards the tiles are connected as a whole image by inpainting the lines between the tiles.
     """
-
+    print(img.data.image.data)
+    tiles = img.generate_equal_crops(size=2144, as_array="image")
     # Create the tiles
-    tiles = np.array(
-        [
-            img[i : i + tile_size, j : j + tile_size]
-            for i in range(0, img.shape[0], tile_size)
-            for j in range(0, img.shape[1], tile_size)
-        ]
-    )
+    # tiles = np.array(
+    #     [
+    #         img.data.image.data[i : i + tile_size, j : j + tile_size]
+    #         for i in range(0, img.shape[0], tile_size)
+    #         for j in range(0, img.shape[1], tile_size)
+    #     ]
+    # )
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
 
     # Measure the filters
@@ -61,8 +65,30 @@ def tilingCorrection(
         ]
     ).astype(np.uint16)
 
+    img = sq.im.ImageContainer(i_new, layer="image")
+    img.add_img(
+        img.apply(
+            lambda array: (array == 0).astype(np.uint8), new_layer="mask", copy=True
+        ),
+        layer="mask",
+    )
+
+    if size is not None and left_corner is not None:
+        img = img.crop_corner(*left_corner, size)
+
     # Perform inpainting
-    img = cv2.inpaint(i_new, (i_new == 0).astype(np.uint8), 55, cv2.INPAINT_NS)
+    img = img.apply(
+        {"0": cv2.inpaint},
+        layer="image",
+        drop=True,
+        channel=0,
+        copy=True,
+        fn_kwargs={
+            "inpaintMask": img.data.mask.squeeze().to_numpy(),
+            "inpaintRadius": 55,
+            "flags": cv2.INPAINT_NS,
+        },
+    )
 
     return img, flatfield
 
@@ -100,7 +126,7 @@ def tilingCorrectionPlot(
 
 
 def preprocessImage(
-    img: np.ndarray,
+    img: sq.im.ImageContainer,
     contrast_clip: float = 2.5,
     size_tophat: int = None,
 ) -> np.ndarray:
@@ -114,13 +140,23 @@ def preprocessImage(
 
     # Apply tophat filter
     if size_tophat is not None:
-        minimum_t = ndimage.minimum_filter(img, size_tophat)
+        minimum_t = ndimage.minimum_filter(
+            img.data.image.squeeze().to_numpy(), size_tophat
+        )
         max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
-        img -= max_of_min_t
+        # img -= max_of_min_t
+        img = img.apply(
+            {"0": lambda array: array - max_of_min_t},
+            layer="image",
+            drop=True,
+            channel=0,
+            copy=True,
+        )
 
     # Enhance the contrast
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
-    img = clahe.apply(img)
+    # img = clahe.apply(img)
+    img = img.apply({"0": clahe.apply}, layer="image", drop=True, channel=0, copy=True)
 
     return img
 
