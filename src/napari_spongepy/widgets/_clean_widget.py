@@ -4,13 +4,15 @@ microscopy images with nuclear stains. The goal of cleaning
 is to improve the image quality so that subsequent image segmentation
 will be more accurate.
 """
-from typing import Callable
+
+from typing import Any, Callable, Dict, Tuple
 
 import napari
 import napari.layers
 import napari.types
 import napari.utils
 import numpy as np
+import squidpy.im as sq
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
@@ -24,11 +26,17 @@ def cleanImage(
     img: np.ndarray,
     contrast_clip: float = 3.5,
     size_tophat: int = None,
+    left_corner: Tuple[int, int] = None,
+    size: Tuple[int, int] = None,
 ) -> np.ndarray:
     from napari_spongepy.functions import preprocessImage, tilingCorrection
 
     img = np.squeeze(img)
-    img = img[:4288, :4288]
+    img = sq.ImageContainer(img)
+    if left_corner is not None and size is not None:
+        img = img.crop_corner(*left_corner[::-1], size)
+
+    # img = img[:4288, :4288]
 
     img, _ = tilingCorrection(img)
 
@@ -43,8 +51,7 @@ def cleanImage(
 def _clean_worker(
     img: np.ndarray,
     method: Callable,
-    subset=None,
-    fn_kwargs=None,
+    fn_kwargs: Dict[str, Any],
 ) -> list[np.ndarray]:
     """
     clean image in a thread worker
@@ -59,6 +66,7 @@ def _clean_worker(
 def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
+    subset: napari.layers.Shapes,
     size_tophat: int = 85,
     contrast_clip: float = 3.5,
 ):
@@ -66,10 +74,30 @@ def clean_widget(
     if image is None:
         raise ValueError("Please select an image")
 
-    fn_kwargs = {
+    fn_kwargs: Dict[str, Any] = {
         "contrast_clip": contrast_clip,
         "size_tophat": size_tophat,
     }
+
+    if subset:
+        log.info(f"subset: {subset}")
+
+        if len(subset.shape_type) != 1 or subset.shape_type[0] != "rectangle":
+            raise ValueError("Please select one rectangular subset")
+
+        coordinates = np.array(subset.data[0])
+        left_corner = coordinates[coordinates.sum(axis=1).argmin()].astype(int)
+        size = (
+            int(coordinates[:, 0].max() - coordinates[:, 0].min()),
+            int(coordinates[:, 1].max() - coordinates[:, 1].min()),
+        )
+
+        fn_kwargs = {
+            "contrast_clip": contrast_clip,
+            "size_tophat": size_tophat,
+            "left_corner": left_corner,
+            "size": size,
+        }
 
     worker = _clean_worker(image.data, method=cleanImage, fn_kwargs=fn_kwargs)
 
