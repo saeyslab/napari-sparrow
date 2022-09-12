@@ -104,8 +104,9 @@ def wizard_widget() -> None:
     """
 
     icon = Label(name="icon", value="Made by DaMBi")
-    print(os.getcwd())
-    icon.native.setPixmap(QPixmap("./src/napari_spongepy/widgets/dambi-white.png"))
+    log.info(f"Current working directory: {os.getcwd()}")
+    pixmap = QPixmap("./src/napari_spongepy/widgets/dambi-white.png")
+    icon.native.setPixmap(pixmap)
     step = ComboBox(label="Step:", choices=get_choices(), name="step")
     container = Container(
         name="global",
