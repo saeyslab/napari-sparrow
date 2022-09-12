@@ -353,7 +353,7 @@ def linewidth(r: bool) -> float:
 
 
 def create_adata_quick(
-    path: str, img: np.ndarray, masks: np.ndarray, library_id: str = "melanoma"
+    path: str, ic: sq.im.ImageContainer, masks: np.ndarray, library_id: str = "melanoma"
 ) -> AnnData:
     """Returns the AnnData object with transcript and polygon data.
 
@@ -373,7 +373,18 @@ def create_adata_quick(
 
     # Allocate the transcripts
     in_df = pd.read_csv(path, delimiter="\t", header=None)
-    df = in_df[(in_df[1] < masks.shape[0]) & (in_df[0] < masks.shape[1])]
+    df = in_df[
+        (
+            ic.data.attrs["coords"].x0
+            < in_df[1]
+            < masks.shape[0] + ic.data.attrs["coords"].x0
+        )
+        & (
+            ic.data.attrs["coords"].y0
+            < in_df[0]
+            < masks.shape[1] + ic.data.attrs["coords"].y0
+        )
+    ]
     df["cells"] = masks[df[1].values, df[0].values]
 
     # Calculate the mean of the transcripts for every cell
@@ -396,7 +407,9 @@ def create_adata_quick(
     # Add the figure to the anndata object
     adata.uns["spatial"] = {library_id: {}}
     adata.uns["spatial"][library_id]["images"] = {}
-    adata.uns["spatial"][library_id]["images"] = {"hires": img}
+    adata.uns["spatial"][library_id]["images"] = {
+        "hires": ic.data.image.squeeze().to_numpy()
+    }
     adata.uns["spatial"][library_id]["scalefactors"] = {
         "tissue_hires_scalef": 1,
         "spot_diameter_fullres": 75,
@@ -406,9 +419,7 @@ def create_adata_quick(
     adata.uns["spatial"][library_id]["points"].obs = pd.DataFrame(
         {"gene": in_df.values[:, 3]}
     )
-    # print(polygons)
-    # adata.uns["spatial"][library_id]["points"] = AnnData(np.array([[polygon.centroid.x, polygon.centroid.y] for polygon in polygons["geometry"]]))
-    # adata.obsm["spatial"] = np.array([[polygon.centroid.x, polygon.centroid.y] for polygon in polygons["geometry"]])
+
     return adata
 
 
