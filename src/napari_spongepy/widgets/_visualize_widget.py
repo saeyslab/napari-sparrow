@@ -20,7 +20,6 @@ log = utils.get_pylogger(__name__)
 
 def visualizeImage(adata: AnnData, genes: List[str], save_folder: str):
     adata, _ = fc.clustercleanliness(adata, genes)
-
     adata = fc.enrichment(adata)
     fc.save_data(adata, save_folder + "/polygons.geojson", save_folder + "/adata.h5ad")
 
@@ -30,6 +29,9 @@ def _visualisation_worker(
     method: Callable,
     fn_kwargs,
 ):
+    """
+    save data in a thread worker
+    """
     method(**fn_kwargs)
 
 
@@ -41,10 +43,12 @@ def visualize_widget(
     viewer: napari.Viewer,
     save_folder: pathlib.Path = pathlib.Path(""),
 ):
+    # Check if a directory was passed
     if str(save_folder) in ["", "."]:
         raise ValueError("Please select output folder")
     log.info(f"Data will be saved in {str(save_folder)}")
 
+    # Load data from previous layer
     try:
         adata = viewer.layers[utils.SEGMENT].metadata["adata"]
         mg_dict = viewer.layers[utils.SEGMENT].metadata["mg_dict"]

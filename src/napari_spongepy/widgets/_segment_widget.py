@@ -46,8 +46,11 @@ def segmentImage(
     from napari_spongepy.functions import segmentation
 
     img = np.squeeze(img)
-    ic = sq.ImageContainer(img).crop_corner(*left_corner, size)
-    img = ic.data.image.squeeze().to_numpy()
+
+    # Convert image to imageContainer and crop
+    if left_corner and size:
+        ic = sq.ImageContainer(img).crop_corner(*left_corner, size)
+        img = ic.data.image.squeeze().to_numpy()
 
     mask, _, _ = segmentation(
         img,
@@ -68,10 +71,12 @@ def _segmentation_worker(
     img: np.ndarray,
     method: Callable,
     fn_kwargs=None,
-) -> list[np.ndarray]:
-    res = method(img, **fn_kwargs)
+) -> np.ndarray:
+    """
+    segment image in a thread worker
+    """
 
-    return res
+    return method(img, **fn_kwargs)
 
 
 @magic_factory(
@@ -105,9 +110,9 @@ def segment_widget(
         "channels": channels,
     }
 
+    # Subset shape
     if subset:
-        log.info(f"subset: {subset}")
-
+        # Check if shapes layer only holds one shape and shape is rectangle
         if len(subset.shape_type) != 1 or subset.shape_type[0] != "rectangle":
             raise ValueError("Please select one rectangular subset")
 
@@ -121,6 +126,7 @@ def segment_widget(
         fn_kwargs["left_corner"] = left_corner
         fn_kwargs["size"] = size
 
+        # If we select the cleaned image which is cropped, adjust for corner coordinates offset
         if "left_corner" in viewer.layers[image.name].metadata:
             fn_kwargs["left_corner"] = (
                 left_corner - viewer.layers[image.name].metadata["left_corner"]
@@ -141,6 +147,7 @@ def segment_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
+        # Translate image to appear on selected region
         viewer.add_labels(
             img,
             visible=True,

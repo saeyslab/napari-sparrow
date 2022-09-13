@@ -2,7 +2,7 @@
 Annotation widget for scoring the genes, returns markergenes and adata objects.
 """
 import pathlib
-from typing import Callable, Tuple
+from typing import Callable
 
 import napari
 import napari.layers
@@ -17,8 +17,6 @@ from napari_spongepy import functions as fc
 
 log = utils.get_pylogger(__name__)
 
-current_widget = None
-
 
 def annotateImage(
     adata: AnnData, path_marker_genes: str, row_norm: bool = False
@@ -29,9 +27,10 @@ def annotateImage(
 
 @thread_worker(progress=True)
 def _annotation_worker(method: Callable, fn_kwargs) -> dict:
-    res = method(**fn_kwargs)
-
-    return res
+    """
+    annotate data with marker genes in a thread worker
+    """
+    return method(**fn_kwargs)
 
 
 @magic_factory(
@@ -43,11 +42,12 @@ def annotate_widget(
     markers_file: pathlib.Path = pathlib.Path(""),
     row_norm: bool = False,
 ):
-
+    # Check if a file was passed
     if str(markers_file) in ["", "."]:
         raise ValueError("Please select marker file (.csv)")
-    log.info(f"Marker file is {markers_file}")
+    log.info(f"Marker file is {str(markers_file)}")
 
+    # Load data from previous layers
     try:
         adata = viewer.layers[utils.SEGMENT].metadata["adata"]
     except KeyError:
@@ -61,14 +61,14 @@ def annotate_widget(
 
     worker = _annotation_worker(annotateImage, fn_kwargs)
 
-    def add_metadata(result: Tuple[dict, AnnData]):
+    def add_metadata(result: dict):
         try:
-            # if the layer exists, update its data
+            # check if the previous layer exists
             layer = viewer.layers[utils.SEGMENT]
         except KeyError:
-            # otherwise add it to the viewer
             log.info(f"Layer does not exist {utils.SEGMENT}")
 
+        # Store data in previous layer
         layer.metadata["mg_dict"] = result
         show_info("Annotation finished")
 

@@ -2,7 +2,6 @@
 Napari widget for managing the other widgets and giving a general overview of the workflow.
 """
 
-import os
 
 from magicgui.widgets import ComboBox, Container, Label, TextEdit
 from qtpy.QtGui import QPixmap
@@ -20,6 +19,7 @@ from napari_spongepy.widgets import (
 log = get_pylogger(__name__)
 
 
+# Class for step widgets
 class Step:
     def __init__(self, name, label, widget, description):
         self.name = name
@@ -48,6 +48,7 @@ class Step:
         return description
 
 
+# Step as choices
 def get_choices():
     return [
         (
@@ -101,14 +102,17 @@ def get_choices():
 def wizard_widget() -> None:
     """
     Napari widget for managing the other widgets and giving a general overview of the workflow.
-    TODO add next step button
     """
 
+    # Set DaMBi Icon
     icon = Label(name="icon", value="Made by DaMBi")
-    log.info(f"Current working directory: {os.getcwd()}")
     pixmap = QPixmap("./src/napari_spongepy/widgets/dambi-white.png")
     icon.native.setPixmap(pixmap)
+
+    # Step selector
     step = ComboBox(label="Step:", choices=get_choices(), name="step")
+
+    # Global container holds all widgets
     container = Container(
         name="global",
         widgets=[
