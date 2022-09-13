@@ -30,9 +30,10 @@ def allocateImage(
     min_size: int = 100,
     max_size: int = 100000,
     cluster_resolution: float = 0.8,
+    n_comps: int = 50,
 ) -> AnnData:
     adata = fc.create_adata_quick(path, ic, masks, library_id)
-    adata, _ = fc.preprocessAdata(adata, masks)
+    adata, _ = fc.preprocessAdata(adata, masks, n_comps=n_comps)
     adata, _ = fc.filter_on_size(adata, min_size, max_size)
     adata = fc.clustering(adata, pcs, neighbors, cluster_resolution)
     return adata
@@ -61,6 +62,7 @@ def allocate_widget(
     pcs: int = 17,
     neighbors: int = 35,
     cluster_resolution: float = 0.8,
+    n_components: int = 50,
 ):
 
     if str(transcripts_file) in ["", "."]:
@@ -83,6 +85,7 @@ def allocate_widget(
         "min_size": min_size,
         "max_size": max_size,
         "cluster_resolution": cluster_resolution,
+        "n_comps": n_components,
     }
 
     worker = _allocation_worker(allocateImage, fn_kwargs)
