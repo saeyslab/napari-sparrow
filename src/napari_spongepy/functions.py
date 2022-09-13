@@ -1,5 +1,6 @@
 # %load_ext autoreload
 # %autoreload 2
+import warnings
 from itertools import chain
 from typing import List, Optional, Tuple
 
@@ -667,7 +668,12 @@ def scoreGenes(
 
     # Score all cells for all celltypes
     for key, value in genes_dict.items():
-        sc.tl.score_genes(adata, value, score_name=key)
+        try:
+            sc.tl.score_genes(adata, value, score_name=key)
+        except ValueError:
+            warnings.warn(
+                f"Markergenes {value} not present in region, celltype {key} not found"
+            )
 
     # Delete genes from marker genes and genes dict
     if del_genes:
