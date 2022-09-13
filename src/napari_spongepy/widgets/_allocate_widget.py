@@ -44,9 +44,11 @@ def _allocation_worker(
     method: Callable,
     fn_kwargs,
 ) -> AnnData:
-    res = method(**fn_kwargs)
+    """
+    allocate transcripts in a thread worker
+    """
 
-    return res
+    return method(**fn_kwargs)
 
 
 @magic_factory(
@@ -64,11 +66,12 @@ def allocate_widget(
     cluster_resolution: float = 0.8,
     n_components: int = 50,
 ):
-
+    # Check if a file was passed
     if str(transcripts_file) in ["", "."]:
         raise ValueError("Please select transcripts file (.txt)")
     log.info(f"Transcripts file is {str(transcripts_file)}")
 
+    # Load data from previous layers
     try:
         ic = viewer.layers[utils.CLEAN].metadata["ic"]
         masks = viewer.layers[utils.SEGMENT].data_raw
@@ -92,18 +95,20 @@ def allocate_widget(
 
     def add_metadata(result: AnnData):
         try:
-            # if the layer exists, update its data
+            # check if the previous layer exists
             layer = viewer.layers[utils.SEGMENT]
         except KeyError:
-            # otherwise add it to the viewer
             log.info(f"Layer does not exist {utils.SEGMENT}")
 
+        # Store data in previous layer
         layer.metadata["adata"] = result
         layer.metadata["library_id"] = library_id
         layer.metadata["labels_key"] = "cell_ID"
         layer.metadata["points"] = result.uns["spatial"][library_id]["points"]
         layer.metadata["point_diameter"] = 10
         show_info("Allocation finished")
+
+        # Options for napari-spatialData plugin
         viewer.scale_bar.visible = True
         viewer.scale_bar.unit = "um"
 
