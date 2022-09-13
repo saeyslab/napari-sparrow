@@ -71,7 +71,8 @@ def _segmentation_worker(
 
 @magic_factory(
     call_button="Segment",
-    cellprob_threshold={"widget_type": "SpinBox", "min": -50, "max": 100},
+    cell_threshold={"widget_type": "SpinBox", "min": -50, "max": 100},
+    channels={"layout": "vertival"},
 )
 def segment_widget(
     viewer: napari.Viewer,
@@ -80,8 +81,9 @@ def segment_widget(
     min_size: int = 80,
     flow_threshold: float = 0.8,
     diameter: int = 50,
-    cellprob_threshold: int = -2,
+    cell_threshold: int = -2,
     model_type: ModelOption = ModelOption.nuclei,
+    channels: List[int] = [0, 0],
 ):
 
     if image is None:
@@ -93,9 +95,9 @@ def segment_widget(
             "min_size": min_size,
             "flow_threshold": flow_threshold,
             "diameter": diameter,
-            "cellprob_threshold": cellprob_threshold,
+            "cellprob_threshold": cell_threshold,
             "model_type": model_type.value,
-            "channels": [0, 0],
+            "channels": channels,
         }
 
     worker = _segmentation_worker(image.data, method_fn, fn_kwargs=fn_kwargs)

@@ -39,9 +39,10 @@ class Step:
         description = TextEdit(
             value=self.description,
             name=self.name + "description",
-            enabled=False,
+            enabled=True,
         )
-        description.min_height = 250
+        description.native.setReadOnly(True)
+        # description.min_height = 250
         description.native.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         description.native.setMarkdown(self.description)
         return description
@@ -117,7 +118,9 @@ def wizard_widget() -> None:
             get_choices()[0][1].get_widget(),
         ],
         labels=False,
+        layout="vertical",
     )
+    container.native.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 
     def step_changed(event):
         """This is a callback that updates the current step

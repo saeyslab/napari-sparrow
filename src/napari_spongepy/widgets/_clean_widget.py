@@ -24,6 +24,7 @@ log = utils.get_pylogger(__name__)
 
 def cleanImage(
     img: np.ndarray,
+    tile_size: int = 2144,
     contrast_clip: float = 3.5,
     size_tophat: int = None,
     left_corner: Tuple[int, int] = None,
@@ -34,7 +35,7 @@ def cleanImage(
     img = np.squeeze(img)
     ic = sq.ImageContainer(img)
 
-    img, _ = tilingCorrection(ic, left_corner, size)
+    img, _ = tilingCorrection(ic, left_corner, size, tile_size)
     result = preprocessImage(img, contrast_clip, size_tophat)
 
     return result
@@ -62,14 +63,16 @@ def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
     subset: napari.layers.Shapes,
-    size_tophat: int = 85,
+    tile_size: int = 2144,
     contrast_clip: float = 3.5,
+    size_tophat: int = 85,
 ):
 
     if image is None:
         raise ValueError("Please select an image")
 
     fn_kwargs: Dict[str, Any] = {
+        "tile_size": tile_size,
         "contrast_clip": contrast_clip,
         "size_tophat": size_tophat,
     }
@@ -88,6 +91,7 @@ def clean_widget(
         )
 
         fn_kwargs = {
+            "tile_size": tile_size,
             "contrast_clip": contrast_clip,
             "size_tophat": size_tophat,
             "left_corner": left_corner,
