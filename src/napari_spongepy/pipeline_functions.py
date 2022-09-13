@@ -1,3 +1,4 @@
+import squidpy.im as sq
 from omegaconf import DictConfig
 from skimage import io
 
@@ -9,26 +10,28 @@ log = utils.get_pylogger(__name__)
 
 def clean(cfg: DictConfig, results: dict) -> DictConfig:
     img = io.imread(cfg.dataset.image)
+    ic = sq.ImageContainer(img)
 
     # Perform tilingCorrection on whole image
     if cfg.clean.tilingCorrection:
-        img_correct, flatfield = fc.tilingCorrection(img=img)
+        left_corner = cfg.left_corner if cfg.left_corner in cfg else None
+        size = cfg.size if cfg.size else None
+        ic_correct, flatfield = fc.tilingCorrection(
+            ic, left_corner, size, cfg.clean.tile_size
+        )
         if "tiling_correction" in cfg.paths:
             log.info(f"Writing tiling plots to {cfg.paths.tiling_correction}")
             fc.tilingCorrectionPlot(
-                img_correct, flatfield, img, cfg.paths.tiling_correction
+                ic_correct.data.image.squeeze().to_numpy(),
+                flatfield,
+                img,
+                cfg.paths.tiling_correction,
             )
-        img = img_correct
-
-    # Image subset for faster processing
-    if cfg.subset:
-        subset = utils.parse_subset(cfg.subset)
-        log.info(f"Subset is {subset}")
-        img = img[subset]
+        ic = ic_correct
 
     # Preprocess Image
-    img_preprocess = fc.preprocessImage(
-        img=img,
+    ic_preprocess = fc.preprocessImage(
+        img=ic,
         size_tophat=cfg.clean.size_tophat,
         contrast_clip=cfg.clean.contrast_clip,
     )
@@ -36,10 +39,13 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
     if "preprocess" in cfg.paths:
         log.info(f"Writing preprocess plots to {cfg.paths.preprocess}")
         fc.preprocessImagePlot(
-            img_preprocess, img, cfg.clean.small_size_vis, cfg.paths.preprocess
+            ic_preprocess.data.image.squeeze().to_numpy(),
+            img,
+            cfg.clean.small_size_vis,
+            cfg.paths.preprocess,
         )
 
-    results = {"preprocessimg": img_preprocess}
+    results = {"preprocessimg": ic_preprocess}
 
     return cfg, results
 
@@ -47,7 +53,8 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
 def segment(cfg: DictConfig, results: dict) -> DictConfig:
     import numpy as np
 
-    img = results["preprocessimg"]
+    ic = results["preprocessimg"]
+    img = ic.data.image.squeeze().to_numpy()
 
     masks, masks_i, polygons = fc.segmentation(
         img,

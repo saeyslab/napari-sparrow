@@ -26,10 +26,14 @@ defaults:
   # debugging config (enable through command line, e.g. `python train.py debug=default)
   - debug: null
 
-# set to index to subset the data
-subset: []
+# Create subset of the image and data based on image pixels
+# Size: [int, int] = [height, width]
+size: null
+# Left_corner: [int, int] = [Y, X]
+left_corner: null
 
-device: "cuda:0"
+
+device: "cpu"
 
 
 # Result dict
