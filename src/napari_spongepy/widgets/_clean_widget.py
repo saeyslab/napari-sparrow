@@ -77,9 +77,9 @@ def clean_widget(
         "size_tophat": size_tophat,
     }
 
+    # Subset shape
     if subset:
-        log.info(f"subset: {subset}")
-
+        # Check if shapes layer only holds one shape and shape is rectangle
         if len(subset.shape_type) != 1 or subset.shape_type[0] != "rectangle":
             raise ValueError("Please select one rectangular subset")
 
@@ -111,6 +111,7 @@ def clean_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
+        # Translate image to appear on selected region
         viewer.add_image(
             img.data.image.squeeze().to_numpy(),
             translate=left_corner if subset else None,
