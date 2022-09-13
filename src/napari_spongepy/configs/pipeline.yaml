@@ -35,6 +35,9 @@ device: "cuda:0"
 # Result dict
 result: null
 
+# If using cache for Dask nodes, disabled by default to avoid serialization
+cache: False
+
 # task name, determines output directory path
 task_name: "segment"
 

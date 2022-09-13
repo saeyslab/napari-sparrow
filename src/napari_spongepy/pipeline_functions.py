@@ -41,7 +41,7 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
 
     results = {"preprocessimg": img_preprocess}
 
-    return cfg, results
+    return results
 
 
 def segment(cfg: DictConfig, results: dict) -> DictConfig:
@@ -76,7 +76,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
         np.save(cfg.paths.masks, masks)
     results["segmentationmasks"] = masks
 
-    return cfg, results
+    return results
 
 
 def allocate(cfg: DictConfig, results: dict) -> DictConfig:
@@ -149,7 +149,7 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
 
     results["adata"] = adata
 
-    return cfg, results
+    return results
 
 
 def annotate(cfg: DictConfig, results: dict) -> DictConfig:
@@ -170,7 +170,7 @@ def annotate(cfg: DictConfig, results: dict) -> DictConfig:
     results["adata"] = adata
     results["mg_dict"] = mg_dict
 
-    return cfg, results
+    return results
 
 
 def visualize(cfg: DictConfig, results: dict) -> DictConfig:
@@ -202,4 +202,4 @@ def visualize(cfg: DictConfig, results: dict) -> DictConfig:
     fc.save_data(adata, cfg.paths.geojson, cfg.paths.h5ad)
     log.info("Pipeline finished")
 
-    return cfg, results
+    return results

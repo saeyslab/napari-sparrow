@@ -5,6 +5,7 @@ spatial
 logs
 .env
 .autoenv
+*cache*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
