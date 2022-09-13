@@ -72,7 +72,7 @@ def _segmentation_worker(
 @magic_factory(
     call_button="Segment",
     cell_threshold={"widget_type": "SpinBox", "min": -50, "max": 100},
-    channels={"layout": "vertival"},
+    channels={"layout": "vertical", "options": {"min": 0, "max": 3}},
 )
 def segment_widget(
     viewer: napari.Viewer,
