@@ -364,6 +364,9 @@ def create_adata_quick(
 
     # Create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
+    polygons["geometry"] = polygons["geometry"].translate(
+        float(ic.data.attrs["coords"].x0), float(ic.data.attrs["coords"].y0)
+    )
 
     polygons["border_color"] = polygons.geometry.map(border_color)
     polygons["linewidth"] = polygons.geometry.map(linewidth)
@@ -373,19 +376,18 @@ def create_adata_quick(
 
     # Allocate the transcripts
     in_df = pd.read_csv(path, delimiter="\t", header=None)
+    # Changed for subset
     df = in_df[
-        (
-            ic.data.attrs["coords"].x0
-            < in_df[1]
-            < masks.shape[0] + ic.data.attrs["coords"].x0
-        )
-        & (
-            ic.data.attrs["coords"].y0
-            < in_df[0]
-            < masks.shape[1] + ic.data.attrs["coords"].y0
-        )
+        (ic.data.attrs["coords"].y0 < in_df[1])
+        & (in_df[1] < masks.shape[0] + ic.data.attrs["coords"].y0)
+        & (ic.data.attrs["coords"].x0 < in_df[0])
+        & (in_df[0] < masks.shape[1] + ic.data.attrs["coords"].x0)
     ]
-    df["cells"] = masks[df[1].values, df[0].values]
+
+    df["cells"] = masks[
+        df[1].values - ic.data.attrs["coords"].y0,
+        df[0].values - ic.data.attrs["coords"].x0,
+    ]
 
     # Calculate the mean of the transcripts for every cell
     coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
@@ -581,7 +583,6 @@ def filter_on_size(
     adata = adata[adata.obs["nucleusSize"] < max_size, :]
     adata = adata[adata.obs["nucleusSize"] > min_size, :]
     adata = adata[adata.obs["distance"] < 70, :]
-
     adata.obsm["polygons"] = geopandas.GeoDataFrame(
         adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
     )
