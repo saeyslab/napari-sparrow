@@ -10,12 +10,13 @@ Setting "Render Images async" is needed to remove jank from rendering.
 """
 
 from enum import Enum
-from typing import Callable, List
+from typing import Callable, List, Tuple
 
 import napari
 import napari.layers
 import napari.types
 import numpy as np
+import squidpy.im as sq
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
@@ -39,10 +40,14 @@ def segmentImage(
     cellprob_threshold: int = 0,
     model_type: str = "nuclei",
     channels: List[int] = [0, 0],
+    left_corner: Tuple[int, int] = None,
+    size: Tuple[int, int] = None,
 ) -> np.ndarray:
     from napari_spongepy.functions import segmentation
 
     img = np.squeeze(img)
+    ic = sq.ImageContainer(img).crop_corner(*left_corner, size)
+    img = ic.data.image.squeeze().to_numpy()
 
     mask, _, _ = segmentation(
         img,
@@ -77,6 +82,7 @@ def _segmentation_worker(
 def segment_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
+    subset: napari.layers.Shapes,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.8,
@@ -88,19 +94,39 @@ def segment_widget(
 
     if image is None:
         raise ValueError("Please select an image")
-    else:
-        method_fn = segmentImage
-        fn_kwargs = {
-            "device": device,
-            "min_size": min_size,
-            "flow_threshold": flow_threshold,
-            "diameter": diameter,
-            "cellprob_threshold": cell_threshold,
-            "model_type": model_type.value,
-            "channels": channels,
-        }
 
-    worker = _segmentation_worker(image.data, method_fn, fn_kwargs=fn_kwargs)
+    fn_kwargs = {
+        "device": device,
+        "min_size": min_size,
+        "flow_threshold": flow_threshold,
+        "diameter": diameter,
+        "cellprob_threshold": cell_threshold,
+        "model_type": model_type.value,
+        "channels": channels,
+    }
+
+    if subset:
+        log.info(f"subset: {subset}")
+
+        if len(subset.shape_type) != 1 or subset.shape_type[0] != "rectangle":
+            raise ValueError("Please select one rectangular subset")
+
+        coordinates = np.array(subset.data[0])
+        left_corner = coordinates[coordinates.sum(axis=1).argmin()].astype(int)
+        size = (
+            int(coordinates[:, 0].max() - coordinates[:, 0].min()),
+            int(coordinates[:, 1].max() - coordinates[:, 1].min()),
+        )
+
+        fn_kwargs["left_corner"] = left_corner
+        fn_kwargs["size"] = size
+
+        if "left_corner" in viewer.layers[image.name].metadata:
+            fn_kwargs["left_corner"] = (
+                left_corner - viewer.layers[image.name].metadata["left_corner"]
+            )
+
+    worker = _segmentation_worker(image.data, segmentImage, fn_kwargs=fn_kwargs)
 
     layer_name = utils.SEGMENT
 
@@ -119,10 +145,11 @@ def segment_widget(
             img,
             visible=True,
             name=layer_name,
-            translate=viewer.layers[utils.CLEAN].metadata["left_corner"]
-            if "left_corner" in viewer.layers[utils.CLEAN].metadata
-            else None,
+            translate=left_corner if subset else None,
         )
+
+        if subset:
+            viewer.layers[utils.SEGMENT].metadata["left_corner"] = left_corner
         show_info("Segmentation finished")
 
     worker.returned.connect(add_labels)
