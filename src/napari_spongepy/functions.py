@@ -1,5 +1,6 @@
 # %load_ext autoreload
 # %autoreload 2
+import warnings
 from itertools import chain
 from typing import List, Optional, Tuple
 
@@ -24,8 +25,11 @@ from scipy import ndimage
 
 
 def tilingCorrection(
-    img: np.ndarray, tile_size: int = 2144
-) -> Tuple[np.ndarray, np.ndarray]:
+    img: sq.im.ImageContainer,
+    left_corner: Tuple[int, int] = None,
+    size: Tuple[int, int] = None,
+    tile_size: int = 2144,
+) -> Tuple[sq.im.ImageContainer, np.ndarray]:
     """Returns the corrected image and the flatfield array
 
     This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
@@ -33,13 +37,7 @@ def tilingCorrection(
     """
 
     # Create the tiles
-    tiles = np.array(
-        [
-            img[i : i + tile_size, j : j + tile_size]
-            for i in range(0, img.shape[0], tile_size)
-            for j in range(0, img.shape[1], tile_size)
-        ]
-    )
+    tiles = img.generate_equal_crops(size=2144, as_array="image")
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
 
     # Measure the filters
@@ -61,8 +59,30 @@ def tilingCorrection(
         ]
     ).astype(np.uint16)
 
+    img = sq.im.ImageContainer(i_new, layer="image")
+    img.add_img(
+        img.apply(
+            lambda array: (array == 0).astype(np.uint8), new_layer="mask", copy=True
+        ),
+        layer="mask",
+    )
+
+    if size is not None and left_corner is not None:
+        img = img.crop_corner(*left_corner, size)
+
     # Perform inpainting
-    img = cv2.inpaint(i_new, (i_new == 0).astype(np.uint8), 55, cv2.INPAINT_NS)
+    img = img.apply(
+        {"0": cv2.inpaint},
+        layer="image",
+        drop=True,
+        channel=0,
+        copy=True,
+        fn_kwargs={
+            "inpaintMask": img.data.mask.squeeze().to_numpy(),
+            "inpaintRadius": 55,
+            "flags": cv2.INPAINT_NS,
+        },
+    )
 
     return img, flatfield
 
@@ -100,10 +120,10 @@ def tilingCorrectionPlot(
 
 
 def preprocessImage(
-    img: np.ndarray,
+    img: sq.im.ImageContainer,
     contrast_clip: float = 2.5,
     size_tophat: int = None,
-) -> np.ndarray:
+) -> sq.im.ImageContainer:
     """Returns the new image
 
     This function performs the preprocessing of the image.
@@ -114,13 +134,21 @@ def preprocessImage(
 
     # Apply tophat filter
     if size_tophat is not None:
-        minimum_t = ndimage.minimum_filter(img, size_tophat)
+        minimum_t = ndimage.minimum_filter(
+            img.data.image.squeeze().to_numpy(), size_tophat
+        )
         max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
-        img -= max_of_min_t
+        img = img.apply(
+            {"0": lambda array: array - max_of_min_t},
+            layer="image",
+            drop=True,
+            channel=0,
+            copy=True,
+        )
 
     # Enhance the contrast
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
-    img = clahe.apply(img)
+    img = img.apply({"0": clahe.apply}, layer="image", drop=True, channel=0, copy=True)
 
     return img
 
@@ -326,7 +354,7 @@ def linewidth(r: bool) -> float:
 
 
 def create_adata_quick(
-    path: str, img: np.ndarray, masks: np.ndarray, library_id: str = "melanoma"
+    path: str, ic: sq.im.ImageContainer, masks: np.ndarray, library_id: str = "melanoma"
 ) -> AnnData:
     """Returns the AnnData object with transcript and polygon data.
 
@@ -337,6 +365,9 @@ def create_adata_quick(
 
     # Create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
+    polygons["geometry"] = polygons["geometry"].translate(
+        float(ic.data.attrs["coords"].x0), float(ic.data.attrs["coords"].y0)
+    )
 
     polygons["border_color"] = polygons.geometry.map(border_color)
     polygons["linewidth"] = polygons.geometry.map(linewidth)
@@ -346,8 +377,18 @@ def create_adata_quick(
 
     # Allocate the transcripts
     in_df = pd.read_csv(path, delimiter="\t", header=None)
-    df = in_df[(in_df[1] < masks.shape[0]) & (in_df[0] < masks.shape[1])]
-    df["cells"] = masks[df[1].values, df[0].values]
+    # Changed for subset
+    df = in_df[
+        (ic.data.attrs["coords"].y0 < in_df[1])
+        & (in_df[1] < masks.shape[0] + ic.data.attrs["coords"].y0)
+        & (ic.data.attrs["coords"].x0 < in_df[0])
+        & (in_df[0] < masks.shape[1] + ic.data.attrs["coords"].x0)
+    ]
+
+    df["cells"] = masks[
+        df[1].values - ic.data.attrs["coords"].y0,
+        df[0].values - ic.data.attrs["coords"].x0,
+    ]
 
     # Calculate the mean of the transcripts for every cell
     coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
@@ -369,7 +410,9 @@ def create_adata_quick(
     # Add the figure to the anndata object
     adata.uns["spatial"] = {library_id: {}}
     adata.uns["spatial"][library_id]["images"] = {}
-    adata.uns["spatial"][library_id]["images"] = {"hires": img}
+    adata.uns["spatial"][library_id]["images"] = {
+        "hires": ic.data.image.squeeze().to_numpy()
+    }
     adata.uns["spatial"][library_id]["scalefactors"] = {
         "tissue_hires_scalef": 1,
         "spot_diameter_fullres": 75,
@@ -379,9 +422,7 @@ def create_adata_quick(
     adata.uns["spatial"][library_id]["points"].obs = pd.DataFrame(
         {"gene": in_df.values[:, 3]}
     )
-    # print(polygons)
-    # adata.uns["spatial"][library_id]["points"] = AnnData(np.array([[polygon.centroid.x, polygon.centroid.y] for polygon in polygons["geometry"]]))
-    # adata.obsm["spatial"] = np.array([[polygon.centroid.x, polygon.centroid.y] for polygon in polygons["geometry"]])
+
     return adata
 
 
@@ -543,7 +584,6 @@ def filter_on_size(
     adata = adata[adata.obs["nucleusSize"] < max_size, :]
     adata = adata[adata.obs["nucleusSize"] > min_size, :]
     adata = adata[adata.obs["distance"] < 70, :]
-
     adata.obsm["polygons"] = geopandas.GeoDataFrame(
         adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
     )
@@ -628,7 +668,12 @@ def scoreGenes(
 
     # Score all cells for all celltypes
     for key, value in genes_dict.items():
-        sc.tl.score_genes(adata, value, score_name=key)
+        try:
+            sc.tl.score_genes(adata, value, score_name=key)
+        except ValueError:
+            warnings.warn(
+                f"Markergenes {value} not present in region, celltype {key} not found"
+            )
 
     # Delete genes from marker genes and genes dict
     if del_genes:

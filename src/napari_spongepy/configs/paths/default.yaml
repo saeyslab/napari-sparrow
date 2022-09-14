@@ -16,5 +16,6 @@ log_dir: ${paths.work_dir}/logs/
 # use it to store all files generated during the run, like ckpts and metrics
 output_dir: ${hydra:runtime.output_dir}
 
-# default to null for all output paths
+# default output files
 h5ad: ${paths.output_dir}/adata.h5ad
+geojson: ${paths.output_dir}/adata.geojson
