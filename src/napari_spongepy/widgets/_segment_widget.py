@@ -48,7 +48,7 @@ def segmentImage(
     img = np.squeeze(img)
 
     # Convert image to imageContainer and crop
-    if left_corner and size:
+    if left_corner is not None and size is not None:
         ic = sq.ImageContainer(img).crop_corner(*left_corner, size)
         img = ic.data.image.squeeze().to_numpy()
 
