@@ -21,7 +21,8 @@ defaults:
 
   # optional local config for machine/user specific settings
   # it's optional since it doesn't need to exist and is excluded from version control
-  - optional local: default
+  - optional local@_global_: default
+  - optional experiment@_global_: default
 
   # debugging config (enable through command line, e.g. `python train.py debug=default)
   - debug: null
