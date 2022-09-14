@@ -204,7 +204,7 @@ def preprocessImagePlot(
 
 
 def segmentation(
-    img: np.ndarray,
+    img: sq.im.ImageContainer,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
@@ -212,7 +212,7 @@ def segmentation(
     cellprob_threshold: int = 0,
     model_type: str = "nuclei",
     channels: List[int] = [0, 0],
-) -> Tuple[np.ndarray, np.ndarray, geopandas.GeoDataFrame]:
+) -> Tuple[np.ndarray, np.ndarray, geopandas.GeoDataFrame, sq.im.ImageContainer]:
     """Returns the segmentation masks, the image masks and the polygons
 
     This function segments the data, using the cellpose algorithm.
@@ -232,7 +232,7 @@ def segmentation(
     # Perform cellpose segmentation
     model = models.Cellpose(device=torch.device(device), model_type=model_type)
     masks, _, _, _ = model.eval(
-        img,
+        img.data.image.squeeze().to_numpy(),
         diameter=diameter,
         channels=channels,
         min_size=min_size,
@@ -249,7 +249,9 @@ def segmentation(
     polygons["cells"] = polygons.index
     polygons = polygons.dissolve(by="cells")
 
-    return masks, mask_i, polygons
+    img.add_img(masks, layer="segment_cellpose")
+
+    return masks, mask_i, polygons, img
 
 
 def segmentationPlot(
@@ -590,6 +592,25 @@ def filter_on_size(
     filtered = start - adata.shape[0]
 
     return adata, filtered
+
+
+def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
+    sq.im.calculate_image_features(
+        adata,
+        ic,
+        layer="image",
+        features="segmentation",
+        key_added="segmentation_features",
+        features_kwargs={
+            "segmentation": {
+                "label_layer": "segment_cellpose",
+                "props": ["label", "area", "mean_intensity"],
+                "channels": [0],
+            }
+        },
+    )
+
+    return adata
 
 
 def clustering(

@@ -42,18 +42,18 @@ def segmentImage(
     channels: List[int] = [0, 0],
     left_corner: Tuple[int, int] = None,
     size: Tuple[int, int] = None,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, sq.ImageContainer]:
     from napari_spongepy.functions import segmentation
 
     img = np.squeeze(img)
+    ic = sq.ImageContainer(img)
 
     # Convert image to imageContainer and crop
     if left_corner and size:
-        ic = sq.ImageContainer(img).crop_corner(*left_corner, size)
-        img = ic.data.image.squeeze().to_numpy()
+        ic = ic.crop_corner(*left_corner, size)
 
-    mask, _, _ = segmentation(
-        img,
+    mask, _, _, ic = segmentation(
+        ic,
         device,
         min_size,
         flow_threshold,
@@ -63,7 +63,7 @@ def segmentImage(
         channels,
     )
 
-    return mask
+    return mask, ic
 
 
 @thread_worker(progress=True)
@@ -71,7 +71,7 @@ def _segmentation_worker(
     img: np.ndarray,
     method: Callable,
     fn_kwargs=None,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, sq.ImageContainer]:
     """
     segment image in a thread worker
     """
@@ -136,7 +136,7 @@ def segment_widget(
 
     layer_name = utils.SEGMENT
 
-    def add_labels(img):
+    def add_labels(img, ic):
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]
@@ -155,6 +155,7 @@ def segment_widget(
             translate=left_corner if subset else None,
         )
 
+        viewer.layers[utils.SEGMENT].metadata["ic"] = ic
         if subset:
             viewer.layers[utils.SEGMENT].metadata["left_corner"] = left_corner
         show_info("Segmentation finished")

@@ -35,6 +35,7 @@ def allocateImage(
     adata = fc.create_adata_quick(path, ic, masks, library_id)
     adata, _ = fc.preprocessAdata(adata, masks, n_comps=n_comps)
     adata, _ = fc.filter_on_size(adata, min_size, max_size)
+    adata = fc.extract(ic, adata)
     adata = fc.clustering(adata, pcs, neighbors, cluster_resolution)
     return adata
 

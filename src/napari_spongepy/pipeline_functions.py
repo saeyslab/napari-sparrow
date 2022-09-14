@@ -56,8 +56,8 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
     ic = results["preprocessimg"]
     img = ic.data.image.squeeze().to_numpy()
 
-    masks, masks_i, polygons = fc.segmentation(
-        img,
+    masks, masks_i, polygons, ic = fc.segmentation(
+        ic,
         cfg.device,
         cfg.segmentation.min_size,
         cfg.segmentation.flow_threshold,
@@ -82,6 +82,7 @@ def segment(cfg: DictConfig, results: dict) -> DictConfig:
         log.info(f"Writing masks to {cfg.paths.masks}")
         np.save(cfg.paths.masks, masks)
     results["segmentationmasks"] = masks
+    results["preprocessimg"] = ic
 
     return cfg, results
 
@@ -132,6 +133,8 @@ def allocate(cfg: DictConfig, results: dict) -> DictConfig:
             cfg.allocate.distance_crd or None,
             output=cfg.paths.distance,
         )
+
+    adata = fc.extract(img, adata)
 
     adata = fc.clustering(
         adata,
