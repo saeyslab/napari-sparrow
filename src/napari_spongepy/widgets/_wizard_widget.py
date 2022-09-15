@@ -57,7 +57,7 @@ def get_choices():
                 "clean",
                 "#1 Clean",
                 clean_widget,
-                """## Step 1: Cleaning\n### Consists of two subprocesses:\n- TilingCorrection: This step performs illumination correction on the tiles and inpaints the black lines.\n- Preprocessing: This step applies a tophat filter and enhances the contrast with a CLAHE function.""",
+                """## Step 1: Cleaning\n### Improves image quality:\n- Select an image\n- Select a subset of the image by adding a rectangular shapes layer\n - The tilesize of the image\n - The contrast adjusment based on OpenCV CLAHE\n - The tophat filter improves object separation""",
             ),
         ),
         (
@@ -66,7 +66,7 @@ def get_choices():
                 "segment",
                 "#2 Segment",
                 segment_widget,
-                """## Step 2: Segmentation\n### Consists of one subprocess:\n- Segmentation: This step segments the nuclei or the whole cell with Cellpose.""",
+                """## Step 2: Segmentation\n### Segments the cells from the image:\n- Select an image\n - Select a subset of the image by adding a rectangular shapes layer\n - Select a device, either cpu or cuda:0\n - Minimum amount of pixels in mask\n - Shape of the mask filter, higher means less round\n - Mean expected diameter\n - Threshold amount mask kept, smaller means more\n - Model type\n - Channel selection for images with multiple channels""",
             ),
         ),
         (
