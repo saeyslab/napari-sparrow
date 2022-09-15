@@ -1,3 +1,5 @@
+""" This file holds all the general functions that are used to build up the pipeline and the notebooks. The functions are odered by their occurence in the pipeline from top to bottom."""
+
 # %load_ext autoreload
 # %autoreload 2
 import warnings
@@ -595,6 +597,7 @@ def filter_on_size(
 
 
 def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
+    """This function performs segmenation feature extraction and adds cell area and mean intensity to the annData object under obsm segmentation_features."""
     sq.im.calculate_image_features(
         adata,
         ic,
