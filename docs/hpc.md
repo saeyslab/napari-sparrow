@@ -74,7 +74,7 @@ spongepy +dataset=resolve_liver
 Tune the parameters in the local config for the right amount of computational resources.
 You have to pass the `--multirun` flag when submitting a job. For more info, see the documentation of the [Hydra Submitit Launcher plugin](https://hydra.cc/docs/plugins/submitit_launcher/).
 ```
-spongepy +dataset=resolve_liver subset=\'0:100,0:100\' +segmentation=watershed --multirun
+spongepy +dataset=resolve_liver subset=\'0:2144,0:2144\' --multirun
 ```
 
 ## Organize all experiment configs
