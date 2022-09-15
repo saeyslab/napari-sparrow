@@ -35,7 +35,7 @@ This development environment is supported for:
 - MacOS 12.3 with an M1 Pro
 
 ## Testing
-### Pytest
+### Script testing
 In order to run the test suite, we use the package pytest. The config file is part of `pyproject.yaml` and specifies the paths of the folders and files to be tested.
 You can run all tests by executing the command ```pytest``` in the root of the project.
 The default configuration uses `-n=auto` for parallel testing.
@@ -48,7 +48,7 @@ Do a type test:
 mypy --ignore-missing-imports src/
 ```
 
-## Automated checks
+## Automated commit checks
 
 Install a pre-commit hook to run all configured checks in `.pre-commit-config.yaml`:
 ```
