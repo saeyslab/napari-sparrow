@@ -876,7 +876,7 @@ def clustercleanliness(
         for gene, indexes in gene_indexes.items():
             adata = remove_celltypes(gene, gene_celltypes, adata)
 
-        celltypes_f = np.delete(celltypes, list(chain(gene_indexes.values())))
+        celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))  # type: ignore
         celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
         color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
 
