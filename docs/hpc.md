@@ -105,9 +105,8 @@ Use this newly defined dataset in a new experiment configuration at `config/expe
 
 defaults:
   - override /dataset: resolve_liver2
-  - override /segmentation: watershed
 
-subset: '0:100,0:100'
+subset: '0:2144,0:2144'
 ```
 
 Now running the experiment can be done using only the name of the experiment:

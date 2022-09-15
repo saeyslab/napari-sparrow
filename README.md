@@ -103,7 +103,7 @@ In the log you will see the location of the experiment folder, with the input pa
 
 Run a cellpose segmentation on a small amount of test data with:
 ```
-spongepy left_corner=[0, 0] size=[2144, 2144]
+spongepy subset=\'0:2144,0:2144\'
 ```
 
 Perform multirun segmentation, [see hpc](/docshpc.md), on a dataset with:
