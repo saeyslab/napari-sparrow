@@ -74,7 +74,7 @@ def allocate_widget(
 
     # Load data from previous layers
     try:
-        ic = viewer.layers[utils.CLEAN].metadata["ic"]
+        ic = viewer.layers[utils.SEGMENT].metadata["ic"]
         masks = viewer.layers[utils.SEGMENT].data_raw
     except KeyError:
         raise RuntimeError("Please run previous steps first")

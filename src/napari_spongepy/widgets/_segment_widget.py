@@ -32,7 +32,7 @@ class ModelOption(Enum):
 
 
 def segmentImage(
-    img: np.ndarray,
+    ic: sq.ImageContainer,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
@@ -45,13 +45,9 @@ def segmentImage(
 ) -> Tuple[np.ndarray, sq.ImageContainer]:
     from napari_spongepy.functions import segmentation
 
-    img = np.squeeze(img)
-    ic = sq.ImageContainer(img)
-
-    # Convert image to imageContainer and crop
+    # Crop imageContainer
     if left_corner is not None and size is not None:
-        ic = sq.ImageContainer(img).crop_corner(*left_corner, size)
-        img = ic.data.image.squeeze().to_numpy()
+        ic = ic.crop_corner(*left_corner, size)
 
     mask, _, _, ic = segmentation(
         ic,
@@ -127,17 +123,22 @@ def segment_widget(
         fn_kwargs["left_corner"] = left_corner
         fn_kwargs["size"] = size
 
+    # Load imageContainer from previous layer
+    if image.name == utils.CLEAN:
+        ic = viewer.layers[image.name].metadata["ic"]
+
         # If we select the cleaned image which is cropped, adjust for corner coordinates offset
-        if "left_corner" in viewer.layers[image.name].metadata:
-            fn_kwargs["left_corner"] = (
-                left_corner - viewer.layers[image.name].metadata["left_corner"]
+        if subset:
+            fn_kwargs["left_corner"] = left_corner - np.array(
+                [ic.data.attrs["coords"].y0, ic.data.attrs["coords"].x0]
             )
+    # Create new imageContainer
+    else:
+        ic = sq.ImageContainer(image.data_raw)
 
-    worker = _segmentation_worker(image.data, segmentImage, fn_kwargs=fn_kwargs)
+    worker = _segmentation_worker(ic, segmentImage, fn_kwargs=fn_kwargs)
 
-    layer_name = utils.SEGMENT
-
-    def add_labels(img, ic):
+    def add_label(mask: np.ndarray, ic: sq.ImageContainer, layer_name: str):
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]
@@ -150,18 +151,16 @@ def segment_widget(
 
         # Translate image to appear on selected region
         viewer.add_labels(
-            img,
+            mask,
             visible=True,
             name=layer_name,
-            translate=left_corner if subset else None,
+            translate=[ic.data.attrs["coords"].y0, ic.data.attrs["coords"].x0],
         )
 
         viewer.layers[utils.SEGMENT].metadata["ic"] = ic
-        if subset:
-            viewer.layers[utils.SEGMENT].metadata["left_corner"] = left_corner
         show_info("Segmentation finished")
 
-    worker.returned.connect(add_labels)
+    worker.returned.connect(lambda data: add_label(*data, utils.SEGMENT))  # type: ignore
     show_info(
         "Segmentation started" + ", CPU selected: might take some time"
         if device == "cpu"
