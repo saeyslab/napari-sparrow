@@ -75,7 +75,7 @@ def get_choices():
                 "Allocate",
                 "#3 Allocate",
                 allocate_widget,
-                """## Step 3: Allocation\n### Consists of four subprocesses:\n - CreateAdata: Extracts the shapes of the cells and reads in the transcript file (.txt).\n - PreprocessAdata: This step calculates the QC metrics and performs normalization based on the size.\n - FilterOnSize: This step filters out any cells that fall outside the min-max size range. \n - Clustering: This step performs neighborhood analysis and leiden clustering.""",
+                """## Step 3: Allocation\n### Allocates transcripts to cells:\n - Select the transcript file (.txt)\n - Enter the library name, will be used in AnnData\n - Minimum size of cells, smaller filtered out\n - Maximum size of cells, larger filtered out\n - Use this many PCs for neighborhood graph\n - The size of local neighborhood used for manifold approximation for neighborhood graph\n - Cluster resolution controls the coarseness of the leiden clustering\n - Number of components to compute in principal component analysis""",
             ),
         ),
         (
@@ -84,7 +84,7 @@ def get_choices():
                 "Annotate",
                 "#4 Annotate",
                 annotate_widget,
-                """## Step 4: Annotation\n### Consists of one subprocess:\n - ScoreGenes: This step annotates the cells based on the marker geneslist (.csv).""",
+                """## Step 4: Annotation\n### Annotates cells with celltype:\n - Marker genes file with marker genes per celltype (.csv)\n - Normalize rows""",
             ),
         ),
         (
@@ -93,7 +93,7 @@ def get_choices():
                 "Visualize",
                 "#5 Visualize",
                 visualize_widget,
-                """## Step 5 Visualisation:\n### Consists of three subprocesses:\n - ClusterCleanliness: This step checks how well the clusters agree with the celltyping.\n - Enrichment: This step shows the enrichment between the different celltypes.\n - SaveData: This step saves the shapes objects as geojson and the AnnData in the h5ad file of the given folder.""",
+                """## Step 5 Visualisation:\n### Checks cluster cleanliness and saves data\n - Select the output directory""",
             ),
         ),
     ]
