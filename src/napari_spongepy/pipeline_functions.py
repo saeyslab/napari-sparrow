@@ -18,13 +18,16 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
     img = io.imread(cfg.dataset.image)
     ic = sq.ImageContainer(img)
 
+    # Image subset for faster processing
+    left_corner, size = None, None
+    if cfg.subset:
+        left_corner, size = utils.parse_subset(cfg.subset)
+        log.info(f"Subset is {str(cfg.subset)}")
+
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
 
         # Left_corner and size for subsetting the image
-        left_corner = cfg.left_corner if cfg.left_corner in cfg else None
-        size = cfg.size if cfg.size else None
-
         ic_correct, flatfield = fc.tilingCorrection(
             ic, left_corner, size, cfg.clean.tile_size
         )
