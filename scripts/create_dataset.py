@@ -1,3 +1,5 @@
+""" This file is used to create a large dataset config folder for the spongepy mutlirun analysis, see docs/hpc.md."""
+
 import argparse
 import logging
 from pathlib import Path

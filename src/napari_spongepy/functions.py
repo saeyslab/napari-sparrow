@@ -1,3 +1,5 @@
+""" This file holds all the general functions that are used to build up the pipeline and the notebooks. The functions are odered by their occurence in the pipeline from top to bottom."""
+
 # %load_ext autoreload
 # %autoreload 2
 import warnings
@@ -204,7 +206,7 @@ def preprocessImagePlot(
 
 
 def segmentation(
-    img: np.ndarray,
+    img: sq.im.ImageContainer,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
@@ -212,7 +214,7 @@ def segmentation(
     cellprob_threshold: int = 0,
     model_type: str = "nuclei",
     channels: List[int] = [0, 0],
-) -> Tuple[np.ndarray, np.ndarray, geopandas.GeoDataFrame]:
+) -> Tuple[np.ndarray, np.ndarray, geopandas.GeoDataFrame, sq.im.ImageContainer]:
     """Returns the segmentation masks, the image masks and the polygons
 
     This function segments the data, using the cellpose algorithm.
@@ -232,7 +234,7 @@ def segmentation(
     # Perform cellpose segmentation
     model = models.Cellpose(device=torch.device(device), model_type=model_type)
     masks, _, _, _ = model.eval(
-        img,
+        img.data.image.squeeze().to_numpy(),
         diameter=diameter,
         channels=channels,
         min_size=min_size,
@@ -249,7 +251,9 @@ def segmentation(
     polygons["cells"] = polygons.index
     polygons = polygons.dissolve(by="cells")
 
-    return masks, mask_i, polygons
+    img.add_img(masks, layer="segment_cellpose")
+
+    return masks, mask_i, polygons, img
 
 
 def segmentationPlot(
@@ -592,6 +596,26 @@ def filter_on_size(
     return adata, filtered
 
 
+def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
+    """This function performs segmenation feature extraction and adds cell area and mean intensity to the annData object under obsm segmentation_features."""
+    sq.im.calculate_image_features(
+        adata,
+        ic,
+        layer="image",
+        features="segmentation",
+        key_added="segmentation_features",
+        features_kwargs={
+            "segmentation": {
+                "label_layer": "segment_cellpose",
+                "props": ["label", "area", "mean_intensity"],
+                "channels": [0],
+            }
+        },
+    )
+
+    return adata
+
+
 def clustering(
     adata: AnnData, pcs: int, neighbors: int, cluster_resolution: float = 0.8
 ) -> AnnData:
@@ -855,7 +879,7 @@ def clustercleanliness(
         for gene, indexes in gene_indexes.items():
             adata = remove_celltypes(gene, gene_celltypes, adata)
 
-        celltypes_f = np.delete(celltypes, list(chain(gene_indexes.values())))
+        celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))  # type: ignore
         celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
         color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
 

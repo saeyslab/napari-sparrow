@@ -28,10 +28,7 @@ defaults:
   - debug: null
 
 # Create subset of the image and data based on image pixels
-# Size: [int, int] = [height, width]
-size: null
-# Left_corner: [int, int] = [Y, X]
-left_corner: null
+subset: []
 
 
 device: "cpu"

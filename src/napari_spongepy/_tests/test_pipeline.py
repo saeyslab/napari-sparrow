@@ -1,3 +1,4 @@
+"""This file tests the entire pipeline and should be used for development purposes."""
 from hydra.core.hydra_config import HydraConfig
 
 from napari_spongepy.single import main

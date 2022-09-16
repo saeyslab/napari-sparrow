@@ -3,10 +3,6 @@ Napari widget for cell segmentation of
 cleaned (Resolve) spatial transcriptomics
 microscopy images with nuclear stains.
 Segmentation is performed with Squidpy ImageContainer and segment.
-Setting "Enable async tiling" is needed to see intermediate results.
-> The tiles do not seem to be computed
-Setting "Render Images async" is needed to remove jank from rendering.
-> However, this messes with the cache and needlessly does segmentation on movement
 """
 
 from enum import Enum
@@ -32,7 +28,7 @@ class ModelOption(Enum):
 
 
 def segmentImage(
-    img: np.ndarray,
+    ic: sq.ImageContainer,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
@@ -42,18 +38,16 @@ def segmentImage(
     channels: List[int] = [0, 0],
     left_corner: Tuple[int, int] = None,
     size: Tuple[int, int] = None,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, sq.ImageContainer]:
+    """Function representing the segmentation step, this calls the segmentation function."""
     from napari_spongepy.functions import segmentation
 
-    img = np.squeeze(img)
-
-    # Convert image to imageContainer and crop
+    # Crop imageContainer
     if left_corner is not None and size is not None:
-        ic = sq.ImageContainer(img).crop_corner(*left_corner, size)
-        img = ic.data.image.squeeze().to_numpy()
+        ic = ic.crop_corner(*left_corner, size)
 
-    mask, _, _ = segmentation(
-        img,
+    mask, _, _, ic = segmentation(
+        ic,
         device,
         min_size,
         flow_threshold,
@@ -63,7 +57,7 @@ def segmentImage(
         channels,
     )
 
-    return mask
+    return mask, ic
 
 
 @thread_worker(progress=True)
@@ -71,7 +65,7 @@ def _segmentation_worker(
     img: np.ndarray,
     method: Callable,
     fn_kwargs=None,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, sq.ImageContainer]:
     """
     segment image in a thread worker
     """
@@ -96,6 +90,7 @@ def segment_widget(
     model_type: ModelOption = ModelOption.nuclei,
     channels: List[int] = [0, 0],
 ):
+    """This function represents the segment widget and is called by the wizard to create the widget."""
 
     if image is None:
         raise ValueError("Please select an image")
@@ -126,17 +121,23 @@ def segment_widget(
         fn_kwargs["left_corner"] = left_corner
         fn_kwargs["size"] = size
 
+    # Load imageContainer from previous layer
+    if image.name == utils.CLEAN:
+        ic = viewer.layers[image.name].metadata["ic"]
+
         # If we select the cleaned image which is cropped, adjust for corner coordinates offset
-        if "left_corner" in viewer.layers[image.name].metadata:
-            fn_kwargs["left_corner"] = (
-                left_corner - viewer.layers[image.name].metadata["left_corner"]
+        if subset:
+            fn_kwargs["left_corner"] = left_corner - np.array(
+                [ic.data.attrs["coords"].y0, ic.data.attrs["coords"].x0]
             )
+    # Create new imageContainer
+    else:
+        ic = sq.ImageContainer(image.data_raw)
 
-    worker = _segmentation_worker(image.data, segmentImage, fn_kwargs=fn_kwargs)
+    worker = _segmentation_worker(ic, segmentImage, fn_kwargs=fn_kwargs)
 
-    layer_name = utils.SEGMENT
-
-    def add_labels(img):
+    def add_label(mask: np.ndarray, ic: sq.ImageContainer, layer_name: str):
+        """Add the label to the napari viewer, overwrite if it already exists."""
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]
@@ -149,17 +150,16 @@ def segment_widget(
 
         # Translate image to appear on selected region
         viewer.add_labels(
-            img,
+            mask,
             visible=True,
             name=layer_name,
-            translate=left_corner if subset else None,
+            translate=[ic.data.attrs["coords"].y0, ic.data.attrs["coords"].x0],
         )
 
-        if subset:
-            viewer.layers[utils.SEGMENT].metadata["left_corner"] = left_corner
+        viewer.layers[utils.SEGMENT].metadata["ic"] = ic
         show_info("Segmentation finished")
 
-    worker.returned.connect(add_labels)
+    worker.returned.connect(lambda data: add_label(*data, utils.SEGMENT))  # type: ignore
     show_info(
         "Segmentation started" + ", CPU selected: might take some time"
         if device == "cpu"

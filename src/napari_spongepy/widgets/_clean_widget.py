@@ -30,11 +30,10 @@ def cleanImage(
     left_corner: Tuple[int, int] = None,
     size: Tuple[int, int] = None,
 ) -> np.ndarray:
+    """Function representing the cleaning step, this calls all the needed functions to improve the image quality."""
     from napari_spongepy.functions import preprocessImage, tilingCorrection
 
-    img = np.squeeze(img)
     ic = sq.ImageContainer(img)
-
     img, _ = tilingCorrection(ic, left_corner, size, tile_size)
     result = preprocessImage(img, contrast_clip, size_tophat)
 
@@ -67,6 +66,7 @@ def clean_widget(
     contrast_clip: float = 3.5,
     size_tophat: int = 85,
 ):
+    """This function represents the clean widget and is called by the wizard to create the widget."""
 
     if image is None:
         raise ValueError("Please select an image")
@@ -98,9 +98,10 @@ def clean_widget(
             "size": size,
         }
 
-    worker = _clean_worker(image.data, method=cleanImage, fn_kwargs=fn_kwargs)
+    worker = _clean_worker(image.data_raw, method=cleanImage, fn_kwargs=fn_kwargs)
 
-    def add_image(img, layer_name):
+    def add_image(ic, layer_name):
+        """Add the image to the napari viewer, overwrite if it already exists."""
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]
@@ -113,14 +114,12 @@ def clean_widget(
 
         # Translate image to appear on selected region
         viewer.add_image(
-            img.data.image.squeeze().to_numpy(),
-            translate=left_corner if subset else None,
+            ic.data.image.squeeze().to_numpy(),
+            translate=[ic.data.attrs["coords"].y0, ic.data.attrs["coords"].x0],
             name=layer_name,
         )
 
-        viewer.layers[utils.CLEAN].metadata["ic"] = img
-        if subset:
-            viewer.layers[utils.CLEAN].metadata["left_corner"] = left_corner
+        viewer.layers[utils.CLEAN].metadata["ic"] = ic
         show_info("Cleaning finished")
 
     worker.returned.connect(lambda data: add_image(data, utils.CLEAN))

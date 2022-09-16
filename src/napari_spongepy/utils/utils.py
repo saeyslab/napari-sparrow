@@ -2,11 +2,15 @@ def parse_subset(subset):
     """
     e.g $ spongepy subset=\'0:100,0:100\'
     >>> parse_subset('0:100,0:100')
-    (slice(0, 100, 1), slice(0, 100, 1))
+    return left corner and size ([0, 0], [100, 100])
+
     """
-    return tuple(
-        slice(int(x.split(":")[0]), int(x.split(":")[1]), 1) for x in subset.split(",")
-    )
+    left_corner = []
+    size = []
+    for x in subset.split(","):
+        left_corner.append(int(x.split(":")[0]))
+        size.append(int(x.split(":")[1]) - left_corner[-1])
+    return left_corner, size
 
 
 def ic_to_da(

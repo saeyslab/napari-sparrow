@@ -1,5 +1,5 @@
-# this file acts as a robust starting point for launching hydra runs and multiruns
-# can be run from any place
+"""" This file acts as a starting point for running the pipeline for single sample analysis.
+It can be run from any place with the command: 'spongepy'. """
 
 
 import warnings
@@ -10,9 +10,10 @@ from omegaconf import DictConfig
 
 
 def check_config(cfg: DictConfig):
+    """Checks if all paths and dataset paths are existing files, raise assertionError if not."""
     from pathlib import Path
 
-    # check all mandatory paths
+    # Check if all mandatory paths exist
     for p in [
         cfg.paths.data_dir,
         cfg.dataset.data_dir,
@@ -25,16 +26,18 @@ def check_config(cfg: DictConfig):
 
 @hydra.main(version_base="1.2", config_path="configs", config_name="pipeline.yaml")
 def main(cfg: DictConfig) -> None:
+    """Main function for the single pipeline which checks the supplied paths first and then calls all five steps from the pipeline functions."""
     from napari_spongepy import pipeline_functions as pf
 
-    # check the config
+    # Checks the config paths, see the src/napari_spongepy/configs and local configs folder for settings
     check_config(cfg)
 
     # Supress _core_genes futerewarnings
     warnings.simplefilter(action="ignore", category=FutureWarning)
 
-    # The pipeline consist of 5 steps:
+    # The actual pipeline which consists of 5 steps:
     results: dict[str, Any] = {}
+
     # Clean
     cfg, results = pf.clean(cfg, results)
 

@@ -95,15 +95,20 @@ Run experiments from the CLI using [Hydra](https://hydra.cc).
 spongepy --help
 ```
 
-Run a watershed segmentation on a small amount of test data with:
+Run a cellpose segmentation on the dataset configured in the configs with:
 ```
-spongepy subset=\'0:100,0:100\' +segmentation=watershed
+spongepy
 ```
 In the log you will see the location of the experiment folder, with the input parameters, logs and output files.
 
-Run both a watershed and a cellpose segmentation on a small amount of test data with:
+Run a cellpose segmentation on a small amount of test data with:
 ```
-spongepy subset=\'0:100,0:100\' +segmentation={watershed,cellpose} --multirun
+spongepy subset=\'0:2144,0:2144\'
+```
+
+Perform multirun segmentation, [see hpc](/docshpc.md), on a dataset with:
+```
+spongepy -cd configs/ms_melanoma dataset='glob(*A1*)' -m
 ```
 
 ## Contributing
