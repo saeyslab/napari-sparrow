@@ -1,3 +1,4 @@
+"""This file tests the napari widgets and should be used for development purposes."""
 from skimage.data import cell
 
 from napari_spongepy.widgets import clean_widget, segment_widget
@@ -21,6 +22,7 @@ from napari_spongepy.widgets import clean_widget, segment_widget
 
 
 def test_clean_widget(make_napari_viewer, caplog):
+    """Tests if the clean widget works."""
     viewer = make_napari_viewer()
     viewer.add_image(cell())
 
@@ -34,6 +36,7 @@ def test_clean_widget(make_napari_viewer, caplog):
 
 
 def test_segment_widget(make_napari_viewer, caplog):
+    """Test if the segmentation widget works."""
     viewer = make_napari_viewer()
     viewer.add_image(cell())
 
