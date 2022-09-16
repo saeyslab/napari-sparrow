@@ -21,21 +21,29 @@ log = get_pylogger(__name__)
 
 # Class for step widgets
 class Step:
+    """This class represents the steps of the plugin.
+    It consists of a name, a label, the widget itself and a description about the arguments.
+    """
+
     def __init__(self, name, label, widget, description):
+        """Initalisation of steps."""
         self.name = name
         self.label = label
         self.widget = widget
         self.description = description
 
     def __str__(self):
+        """Return the name of the step."""
         return self.name
 
     def get_widget(self):
+        """Return the widget of the step."""
         widget = self.widget()
         widget.name = self.name
         return widget
 
     def get_description(self):
+        """Return the descript of the step as a read only textEdit with markdown text."""
         description = TextEdit(
             value=self.description,
             name=self.name + "description",
@@ -50,6 +58,7 @@ class Step:
 
 # Step as choices
 def get_choices():
+    """This function represents the choices that will be displayed in the selection menu of the Wizard widget."""
     return [
         (
             "Step 1: Clean",
