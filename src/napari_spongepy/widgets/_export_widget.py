@@ -18,8 +18,8 @@ from napari_spongepy import functions as fc
 log = utils.get_pylogger(__name__)
 
 
-def visualizeImage(adata: AnnData, genes: List[str], save_folder: str):
-    """Function representing the visualisation step, this calls all the needed functions to save the data to a directory."""
+def exportImage(adata: AnnData, genes: List[str], save_folder: str):
+    """Function representing the exporting step, this calls all the needed functions to save the data to a directory."""
 
     adata, _ = fc.clustercleanliness(adata, genes)
     adata = fc.enrichment(adata)
@@ -27,7 +27,7 @@ def visualizeImage(adata: AnnData, genes: List[str], save_folder: str):
 
 
 @thread_worker(progress=True)
-def _visualisation_worker(
+def _exporting_worker(
     method: Callable,
     fn_kwargs,
 ):
@@ -38,14 +38,14 @@ def _visualisation_worker(
 
 
 @magic_factory(
-    call_button="Visualize",
+    call_button="Export",
     save_folder={"widget_type": "FileEdit", "mode": "d"},
 )
-def visualize_widget(
+def export_widget(
     viewer: napari.Viewer,
     save_folder: pathlib.Path = pathlib.Path(""),
 ):
-    """This function represents the visualisation widget and is called by the wizard to create the widget."""
+    """This function represents the export widget and is called by the wizard to create the widget."""
 
     # Check if a directory was passed
     if str(save_folder) in ["", "."]:
@@ -65,11 +65,11 @@ def visualize_widget(
         "save_folder": str(save_folder),
     }
 
-    worker = _visualisation_worker(visualizeImage, fn_kwargs)
+    worker = _exporting_worker(exportImage, fn_kwargs)
 
     # Show finished message on screen
     worker.returned.connect(
-        lambda: show_info(f"Visualisation finished, files saved in: {str(save_folder)}")
+        lambda: show_info(f"Exporting finished, files saved in: {str(save_folder)}")
     )
-    show_info("Visualisation started")
+    show_info("Exporting started")
     worker.start()

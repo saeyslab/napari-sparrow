@@ -12,8 +12,8 @@ from napari_spongepy.widgets import (
     allocate_widget,
     annotate_widget,
     clean_widget,
+    export_widget,
     segment_widget,
-    visualize_widget,
 )
 
 log = get_pylogger(__name__)
@@ -97,12 +97,12 @@ def get_choices():
             ),
         ),
         (
-            "Step 5: Visualize",
+            "Step 5: Export",
             Step(
-                "Visualize",
-                "#5 Visualize",
-                visualize_widget,
-                """## Step 5 Visualisation:\n### Checks cluster cleanliness and saves data\n - Select the output directory""",
+                "Export",
+                "#5 Export",
+                export_widget,
+                """## Step 5 Export:\n### Checks cluster cleanliness and saves data\n - Select the output directory""",
             ),
         ),
     ]
