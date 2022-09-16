@@ -118,7 +118,7 @@ def wizard_widget() -> None:
         widgets=[
             icon,
             step,
-            get_choices()[0][1].get_description(),
+            get_choices()[0][1].get_description(),  # Set first step on startup
             get_choices()[0][1].get_widget(),
         ],
         labels=False,

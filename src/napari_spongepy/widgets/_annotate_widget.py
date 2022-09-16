@@ -21,6 +21,8 @@ log = utils.get_pylogger(__name__)
 def annotateImage(
     adata: AnnData, path_marker_genes: str, row_norm: bool = False
 ) -> dict:
+    """Function representing the annotation step, this calls all the needed functions to annotate the cells with the celltype."""
+
     mg_dict, _ = fc.scoreGenes(adata, path_marker_genes, row_norm)
     return mg_dict
 
@@ -42,6 +44,8 @@ def annotate_widget(
     markers_file: pathlib.Path = pathlib.Path(""),
     row_norm: bool = False,
 ):
+    """This function represents the annotation widget and is called by the wizard to create the widget."""
+
     # Check if a file was passed
     if str(markers_file) in ["", "."]:
         raise ValueError("Please select marker file (.csv)")
@@ -62,6 +66,8 @@ def annotate_widget(
     worker = _annotation_worker(annotateImage, fn_kwargs)
 
     def add_metadata(result: dict):
+        """Add the metadata to the previous layer, this way it becomes available in the next steps."""
+
         try:
             # check if the previous layer exists
             layer = viewer.layers[utils.SEGMENT]

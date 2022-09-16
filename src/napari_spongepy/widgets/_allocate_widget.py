@@ -32,6 +32,8 @@ def allocateImage(
     cluster_resolution: float = 0.8,
     n_comps: int = 50,
 ) -> AnnData:
+    """Function representing the allocation step, this calls all the needed functions to allocate the transcripts to the cells."""
+
     adata = fc.create_adata_quick(path, ic, masks, library_id)
     adata, _ = fc.preprocessAdata(adata, masks, n_comps=n_comps)
     adata, _ = fc.filter_on_size(adata, min_size, max_size)
@@ -67,6 +69,8 @@ def allocate_widget(
     cluster_resolution: float = 0.8,
     n_components: int = 50,
 ):
+    """This function represents the allocate widget and is called by the wizard to create the widget."""
+
     # Check if a file was passed
     if str(transcripts_file) in ["", "."]:
         raise ValueError("Please select transcripts file (.txt)")
@@ -95,6 +99,8 @@ def allocate_widget(
     worker = _allocation_worker(allocateImage, fn_kwargs)
 
     def add_metadata(result: AnnData):
+        """Add the metadata to the previous layer, this way it becomes available in the next steps."""
+
         try:
             # check if the previous layer exists
             layer = viewer.layers[utils.SEGMENT]

@@ -30,6 +30,7 @@ def cleanImage(
     left_corner: Tuple[int, int] = None,
     size: Tuple[int, int] = None,
 ) -> np.ndarray:
+    """Function representing the cleaning step, this calls all the needed functions to improve the image quality."""
     from napari_spongepy.functions import preprocessImage, tilingCorrection
 
     ic = sq.ImageContainer(img)
@@ -65,6 +66,7 @@ def clean_widget(
     contrast_clip: float = 3.5,
     size_tophat: int = 85,
 ):
+    """This function represents the clean widget and is called by the wizard to create the widget."""
 
     if image is None:
         raise ValueError("Please select an image")
@@ -99,6 +101,7 @@ def clean_widget(
     worker = _clean_worker(image.data_raw, method=cleanImage, fn_kwargs=fn_kwargs)
 
     def add_image(ic, layer_name):
+        """Add the image to the napari viewer, overwrite if it already exists."""
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]

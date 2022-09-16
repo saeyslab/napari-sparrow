@@ -19,6 +19,8 @@ log = utils.get_pylogger(__name__)
 
 
 def visualizeImage(adata: AnnData, genes: List[str], save_folder: str):
+    """Function representing the visualisation step, this calls all the needed functions to save the data to a directory."""
+
     adata, _ = fc.clustercleanliness(adata, genes)
     adata = fc.enrichment(adata)
     fc.save_data(adata, save_folder + "/polygons.geojson", save_folder + "/adata.h5ad")
@@ -43,6 +45,8 @@ def visualize_widget(
     viewer: napari.Viewer,
     save_folder: pathlib.Path = pathlib.Path(""),
 ):
+    """This function represents the visualisation widget and is called by the wizard to create the widget."""
+
     # Check if a directory was passed
     if str(save_folder) in ["", "."]:
         raise ValueError("Please select output folder")
@@ -63,6 +67,7 @@ def visualize_widget(
 
     worker = _visualisation_worker(visualizeImage, fn_kwargs)
 
+    # Show finished message on screen
     worker.returned.connect(
         lambda: show_info(f"Visualisation finished, files saved in: {str(save_folder)}")
     )

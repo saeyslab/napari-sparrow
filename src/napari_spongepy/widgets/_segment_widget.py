@@ -3,10 +3,6 @@ Napari widget for cell segmentation of
 cleaned (Resolve) spatial transcriptomics
 microscopy images with nuclear stains.
 Segmentation is performed with Squidpy ImageContainer and segment.
-Setting "Enable async tiling" is needed to see intermediate results.
-> The tiles do not seem to be computed
-Setting "Render Images async" is needed to remove jank from rendering.
-> However, this messes with the cache and needlessly does segmentation on movement
 """
 
 from enum import Enum
@@ -43,6 +39,7 @@ def segmentImage(
     left_corner: Tuple[int, int] = None,
     size: Tuple[int, int] = None,
 ) -> Tuple[np.ndarray, sq.ImageContainer]:
+    """Function representing the segmentation step, this calls the segmentation function."""
     from napari_spongepy.functions import segmentation
 
     # Crop imageContainer
@@ -93,6 +90,7 @@ def segment_widget(
     model_type: ModelOption = ModelOption.nuclei,
     channels: List[int] = [0, 0],
 ):
+    """This function represents the segment widget and is called by the wizard to create the widget."""
 
     if image is None:
         raise ValueError("Please select an image")
@@ -139,6 +137,7 @@ def segment_widget(
     worker = _segmentation_worker(ic, segmentImage, fn_kwargs=fn_kwargs)
 
     def add_label(mask: np.ndarray, ic: sq.ImageContainer, layer_name: str):
+        """Add the label to the napari viewer, overwrite if it already exists."""
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]
