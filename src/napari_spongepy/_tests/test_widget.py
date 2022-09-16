@@ -23,6 +23,7 @@ from napari_spongepy.widgets import clean_widget, segment_widget
 
 def test_clean_widget(make_napari_viewer, caplog):
     """Tests if the clean widget works."""
+
     viewer = make_napari_viewer()
     viewer.add_image(cell())
 
@@ -30,13 +31,14 @@ def test_clean_widget(make_napari_viewer, caplog):
     my_widget = clean_widget()
 
     # if we "call" this object, it'll execute our function
-    my_widget(viewer.layers[0])
+    my_widget(viewer, viewer.layers[0], tile_size=110)
 
-    assert "About to clean" in caplog.text
+    assert "Cleaning started" in caplog.text
 
 
 def test_segment_widget(make_napari_viewer, caplog):
     """Test if the segmentation widget works."""
+    device = "cpu"
     viewer = make_napari_viewer()
     viewer.add_image(cell())
 
@@ -44,7 +46,11 @@ def test_segment_widget(make_napari_viewer, caplog):
     my_widget = segment_widget()
 
     # if we "call" this object, it'll execute our function
-    my_widget(viewer.layers[0])
+    my_widget(viewer, viewer.layers[0], device=device)
 
     # read captured logging and check that it's as we expected
-    assert "About to segment" in caplog.text
+    assert (
+        "Segmentation started" + ", CPU selected: might take some time"
+        if device == "cpu"
+        else "" in caplog.text
+    )

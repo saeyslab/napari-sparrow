@@ -12,11 +12,7 @@ def cfg_pipeline_global() -> DictConfig:
     with initialize(version_base="1.2", config_path="../configs"):
         cfg = compose(
             config_name="pipeline",
-            overrides=[
-                "+dataset=resolve_liver",
-                "+segmentation=watershed",
-                "dataset.image=${dataset.data_dir}/subset_20272_slide1_A1-1_DAPI.tiff",
-            ],
+            overrides=["dataset=resolve_liver", "subset='0:100,0:100'"],
             return_hydra_config=True,
         )
         HydraConfig().set_config(cfg)

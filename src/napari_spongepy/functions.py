@@ -39,7 +39,7 @@ def tilingCorrection(
     """
 
     # Create the tiles
-    tiles = img.generate_equal_crops(size=2144, as_array="image")
+    tiles = img.generate_equal_crops(size=tile_size, as_array="image")
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
 
     # Measure the filters
