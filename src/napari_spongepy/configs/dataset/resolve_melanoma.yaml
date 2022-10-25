@@ -1,5 +1,0 @@
-data_dir: ${paths.data_dir}/resolve_melanoma
-dtype: tiff
-image: ${dataset.data_dir}/20263-slide1_A1-1_DAPI.tiff
-coords: ${dataset.data_dir}/20263-slide1_A1-1_results.txt
-markers: ${dataset.data_dir}/for_Ranks_matrix.csv

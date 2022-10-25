@@ -12,9 +12,9 @@ line_length = 88
 [tool.pytest.ini_options]
 minversion = 6.0
 # show extra info for all except passes, low verbosity, auto parallel, no warnings and run tests in package
-addopts = "-ra -q -n=auto --disable-warnings --pyargs napari_spongepy"
+addopts = "-ra -q -n=auto --disable-warnings --pyargs napari_sparrow"
 testpaths = [
     # notebook paths for --nbmake option
-    "experiments/script_liver_spongepy.ipynb",
-    "experiments/script_plant_spongepy.ipynb",
+    "experiments/script_liver_sparrow.ipynb",
+    "experiments/script_plant_sparrow.ipynb",
 ]

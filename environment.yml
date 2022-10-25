@@ -1,4 +1,4 @@
-name: napari-spongepy
+name: napari-sparrow
 channels:
   - pytorch
   - conda-forge

@@ -5,8 +5,8 @@
 First clone the GitHub repo and set it as the current directory:
 
 ```bash
-git clone https://github.com/saeyslab/napari-spongepy.git
-cd napari-spongepy
+git clone https://github.com/saeyslab/napari-sparrow.git
+cd napari-sparrow
 ```
 
 Then set up a conda virtual environment and install the plugin. For GPU support other than CUDA, comment out the `cudatoolkit` line in `environment.yml` and follow the [PyTorch](https://pytorch.org/get-started/locally/) instructions.
@@ -17,7 +17,7 @@ conda env create -f environment.yml
 # or Mamba
 mamba env update -f environment.yml --prune
 
-conda activate napari-spongepy
+conda activate napari-sparrow
 pip install -e '.[testing]'
 ```
 

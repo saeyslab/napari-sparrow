@@ -16,7 +16,7 @@ It is best to start working on an interactive debugging cluster and submit large
 hpc$ ml switch cluster/slaking
 hpc$ ml load CUDA
 hpc$ mamba env update -f environment.yml
-hpc$ conda activate napari-spongepy
+hpc$ conda activate napari-sparrow
 hpc$ pip install -e .
 hpc$ pip install hydra-submitit-launcher
 ```
@@ -60,13 +60,13 @@ hydra:
 
 Check the configuration has no errors:
 ```
-HYDRA_FULL_ERROR=1 spongepy --cfg job
+HYDRA_FULL_ERROR=1 sparrow --cfg job
 ```
 
 Run on a dataset on the login node (only for testing, no big jobs!).
 If it fails on `pthread_create()` due to the CPU thread limit on login nodes, you should switch to an interactive cluster (e.g. slaking).
 ```
-spongepy +dataset=resolve_liver
+sparrow +dataset=resolve_liver
 ```
 
 ## Submit batch jobs
@@ -74,7 +74,7 @@ spongepy +dataset=resolve_liver
 Tune the parameters in the local config for the right amount of computational resources.
 You have to pass the `--multirun` flag when submitting a job. For more info, see the documentation of the [Hydra Submitit Launcher plugin](https://hydra.cc/docs/plugins/submitit_launcher/).
 ```
-spongepy +dataset=resolve_liver subset=\'0:2144,0:2144\' --multirun
+sparrow +dataset=resolve_liver subset=\'0:2144,0:2144\' --multirun
 ```
 
 ## Organize all experiment configs
@@ -111,7 +111,7 @@ subset: '0:2144,0:2144'
 
 Now running the experiment can be done using only the name of the experiment:
 ```
-spongepy +experiment=liver_small
+sparrow +experiment=liver_small
 ```
 
 By creating multiple experiment configs, experiments can be cleanly defined by composing existing configs and overwriting only a few new parameters.
@@ -120,7 +120,7 @@ By creating multiple experiment configs, experiments can be cleanly defined by c
 
 Multiple experiment can be run using a comma or the [glob syntax]().
 ```bash
-spongepy +experiment=liver_small,brain_small -m
+sparrow +experiment=liver_small,brain_small -m
 ```
 
 For large batches, create the an extra folder of configs programmatically using `scripts/create_dataset.py` based on the folder structure in the dataset.
@@ -130,10 +130,10 @@ python scripts/create_dataset.py -f /srv/scratch/data/spatial/resolve_melanoma -
 
 You can then run all are part of the datasets by pointing to this additional config folder.
 ```bash
-spongepy -cd configs/ms_melanoma dataset='glob(*A1*)' -m
+sparrow -cd configs/ms_melanoma dataset='glob(*A1*)' -m
 ```
 
 Alternatively, you can supply argmuments in the commandline using bash functions like find, sed and paste:
 ```bash
-spongepy dataset=$(find src/napari_spongepy/configs/dataset/multisample_resolve_melanoma  -name '*.yaml' | sed -E 's@.*/(.*/.*)$@\1@g' | paste -sd ',' -) paths=output -m
+sparrow dataset=$(find src/napari_sparrow/configs/dataset/multisample_resolve_melanoma  -name '*.yaml' | sed -E 's@.*/(.*/.*)$@\1@g' | paste -sd ',' -) paths=output -m
 ```
