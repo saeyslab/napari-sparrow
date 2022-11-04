@@ -1,0 +1,7 @@
+data_dir: ${paths.data_dir}/resolve_brain
+dtype: tiff
+image: ${dataset.data_dir}/33075-974_A2-1_DAPI.tiff
+coords: ${dataset.data_dir}/33075-974_A2-1_results.txt
+brightfield: ${dataset.data_dir}/33075-974_A2-1_brightfield.tiff
+raw: ${dataset.data_dir}/33075-974_A2-1_raw.tiff
+markers: ${dataset.data_dir}/Resolve_marker_updated.csv

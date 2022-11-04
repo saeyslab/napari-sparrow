@@ -1,0 +1,21 @@
+defaults:
+  - default
+
+# output file names
+masks: ${paths.output_dir}/masks.npy
+geojson: ${paths.output_dir}/adata.geojson
+h5ad: ${paths.output_dir}/adata.h5ad
+
+# Plots:
+tiling_correction: ${paths.output_dir}/plot_tiling_correction
+preprocess: ${paths.output_dir}/plot_preprocess
+segmentation: ${paths.output_dir}/plot_segmentation
+polygons: ${paths.output_dir}/plot_polygons
+preprocess_adata: ${paths.output_dir}/plot_preprocess_adata
+total_counts: ${paths.output_dir}/plot_shapes_total_counts
+distance: ${paths.output_dir}/plot_shapes_distance
+cluster: ${paths.output_dir}/plot_clustering
+leiden: ${paths.output_dir}/plot_shapes_leiden
+score_genes: ${paths.output_dir}/plot_score_genes
+cluster_cleanliness: ${paths.output_dir}/plot_cluster_cleanliness
+nhood: ${paths.output_dir}/plot_nhood_enrichment
