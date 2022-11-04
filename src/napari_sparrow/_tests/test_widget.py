@@ -1,6 +1,7 @@
 """This file tests the napari widgets and should be used for development purposes."""
 from skimage.data import cell
-from sparrow.widgets import clean_widget, segment_widget
+
+from napari_sparrow.widgets import clean_widget, segment_widget
 
 # # make_napari_viewer is a pytest fixture that returns a napari viewer object
 # # capsys is a pytest fixture that captures stdout and stderr output streams

@@ -6,8 +6,9 @@ Napari widget for managing the other widgets and giving a general overview of th
 from magicgui.widgets import ComboBox, Container, Label, TextEdit
 from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import QSizePolicy
-from sparrow.utils import get_pylogger
-from sparrow.widgets import (
+
+from napari_sparrow.utils import get_pylogger
+from napari_sparrow.widgets import (
     allocate_widget,
     annotate_widget,
     clean_widget,

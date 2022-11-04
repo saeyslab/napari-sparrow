@@ -1,5 +1,6 @@
-from sparrow.utils.pylogger import get_pylogger
 from squidpy.im import ImageContainer
+
+from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 

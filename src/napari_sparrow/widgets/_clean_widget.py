@@ -31,7 +31,7 @@ def cleanImage(
     size: Tuple[int, int] = None,
 ) -> np.ndarray:
     """Function representing the cleaning step, this calls all the needed functions to improve the image quality."""
-    from sparrow.functions import preprocessImage, tilingCorrection
+    from napari_sparrow.functions import preprocessImage, tilingCorrection
 
     ic = sq.ImageContainer(img)
     img, _ = tilingCorrection(ic, left_corner, size, tile_size)

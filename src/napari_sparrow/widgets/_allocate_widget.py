@@ -13,9 +13,9 @@ from anndata import AnnData
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
-from sparrow import functions as fc
 
 import napari_sparrow.utils as utils
+from napari_sparrow import functions as fc
 
 log = utils.get_pylogger(__name__)
 

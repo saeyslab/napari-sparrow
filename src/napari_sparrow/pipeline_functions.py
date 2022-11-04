@@ -4,8 +4,9 @@ Some steps consist of multiple substeps from the functions file. """
 import squidpy.im as sq
 from omegaconf import DictConfig
 from skimage import io
-from sparrow import functions as fc
-from sparrow import utils
+
+from napari_sparrow import functions as fc
+from napari_sparrow import utils
 
 log = utils.get_pylogger(__name__)
 

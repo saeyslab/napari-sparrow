@@ -40,7 +40,7 @@ def segmentImage(
     size: Tuple[int, int] = None,
 ) -> Tuple[np.ndarray, sq.ImageContainer]:
     """Function representing the segmentation step, this calls the segmentation function."""
-    from sparrow.functions import segmentation
+    from napari_sparrow.functions import segmentation
 
     # Crop imageContainer
     if left_corner is not None and size is not None:

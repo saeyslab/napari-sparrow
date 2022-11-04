@@ -27,7 +27,7 @@ def check_config(cfg: DictConfig):
 @hydra.main(version_base="1.2", config_path="configs", config_name="pipeline.yaml")
 def main(cfg: DictConfig) -> None:
     """Main function for the single pipeline which checks the supplied paths first and then calls all five steps from the pipeline functions."""
-    from sparrow import pipeline_functions as pf
+    from napari_sparrow import pipeline_functions as pf
 
     # Checks the config paths, see the src/napari_sparrow/configs and local configs folder for settings
     check_config(cfg)
