@@ -1,0 +1,6 @@
+# @package _global_
+
+defaults:
+   - override /dataset: resolve_liver
+
+subset: '1:2144,0:2144'

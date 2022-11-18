@@ -2,7 +2,7 @@
 # ${hydra:runtime.cwd}
 # Use current cwd path, because interpolation error otherwise at sweep dir https://github.com/facebookresearch/hydra/issues/2247
 # Alternative is to use pyrootutils as in https://github.com/ashleve/lightning-hydra-template
-work_dir: "./"
+work_dir: "/user/gent/436/vsc43666/vscdata"
 
 # path to data directory
 data_dir: ${paths.work_dir}/data/

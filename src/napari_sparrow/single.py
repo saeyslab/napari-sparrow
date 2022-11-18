@@ -21,7 +21,7 @@ def check_config(cfg: DictConfig):
         cfg.dataset.coords,
         cfg.paths.output_dir,
     ]:
-        assert Path(p).exists()
+        assert Path(p).exists(), f"Path {p} does not exist"
 
 
 @hydra.main(version_base="1.2", config_path="configs", config_name="pipeline.yaml")
