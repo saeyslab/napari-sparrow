@@ -428,9 +428,76 @@ def create_adata_quick(
     )
 
     return adata
-
-
 def plot_shapes(
+    adata,
+    column: str = None,
+    cmap: str = "magma",
+    img=None,
+    img_layer='image',
+    alpha: float = 0.5,
+    crd=None,
+    output: str = None,
+) -> None:
+    
+     """This function plots the anndata on the shapes of the cells. Xarray is used, the coloring happens by the column of the obs defined in the function. The Colormap of the annadata is used if the column equals such file. 
+     An image and an imagelayer can be provided. The images is expected to be a sq.imagecontainer. If none is given, the image is extracted from the anndata object."""
+    
+    if img==None:
+        img= sq.im.ImageContainer(adata.uns["spatial"]["melanoma"]["images"]["hires"], layer="image")
+        
+    Xmax=img.data.sizes['x']
+    Ymax=img.data.sizes['y']    
+    img=img.data.assign_coords({'x':np.arange(Xmax),'y':np.arange(Ymax)})  
+    
+    if crd==None:
+        crd=[0,Xmax,0,Ymax]
+        
+    if column is not None:
+        if column + "_colors" in adata.uns:
+            cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+                "new_map",
+                adata.uns[column + "_colors"],
+                N=len(adata.uns[column + "_colors"]),
+            ) 
+        column=adata[adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].index,:].obs[column]
+
+    else:
+        cmap=None
+    
+    fig, ax = plt.subplots(1, 1, figsize=(20, 20))
+
+    img[img_layer].squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[0],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax,add_colorbar=False)
+
+    adatap.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
+            ax=ax,
+            edgecolor="white",
+            column=column,
+            linewidth=adatap.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].linewidth,
+            alpha=alpha,
+            legend=True,
+            aspect=1,
+            cmap=cmap,
+            )
+    
+    ax.axes.set_aspect('equal')
+    ax.set_xlim(crd[0], crd[1])
+    ax.set_ylim(crd[2], crd[3])
+    ax.invert_yaxis()
+    ax.set_title("")
+    #ax.axes.xaxis.set_visible(False)
+    #ax.axes.yaxis.set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+
+    # Save the plot to ouput
+    if output:
+        plt.close(fig)
+        fig.savefig(output + ".png")
+
+
+def plot_shapes_deprecated(
     adata: AnnData,
     column: str = None,
     cmap: str = "magma",
