@@ -428,6 +428,7 @@ def create_adata_quick(
     )
 
     return adata
+
 def plot_shapes(
     adata,
     column: str = None,
@@ -438,9 +439,6 @@ def plot_shapes(
     crd=None,
     output: str = None,
 ) -> None:
-    
-     """This function plots the anndata on the shapes of the cells. Xarray is used, the coloring happens by the column of the obs defined in the function. The Colormap of the annadata is used if the column equals such file. 
-     An image and an imagelayer can be provided. The images is expected to be a sq.imagecontainer. If none is given, the image is extracted from the anndata object."""
     
     if img==None:
         img= sq.im.ImageContainer(adata.uns["spatial"]["melanoma"]["images"]["hires"], layer="image")
@@ -468,11 +466,11 @@ def plot_shapes(
 
     img[img_layer].squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[0],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax,add_colorbar=False)
 
-    adatap.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
+    adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
             ax=ax,
             edgecolor="white",
             column=column,
-            linewidth=adatap.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].linewidth,
+            linewidth=adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].linewidth,
             alpha=alpha,
             legend=True,
             aspect=1,
@@ -495,7 +493,6 @@ def plot_shapes(
     if output:
         plt.close(fig)
         fig.savefig(output + ".png")
-
 
 def plot_shapes_deprecated(
     adata: AnnData,
