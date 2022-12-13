@@ -466,6 +466,7 @@ def plot_shapes(
             alpha=alpha,
             legend=True,
             cmap=cmap,
+            aspect=1
         )
 
     # Plot full AnnData object
@@ -482,6 +483,7 @@ def plot_shapes(
             alpha=alpha,
             legend=True,
             color="blue",
+            aspect=1
         )
 
     ax.axes.xaxis.set_visible(False)
