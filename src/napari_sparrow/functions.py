@@ -24,6 +24,8 @@ from basicpy import BaSiC
 from cellpose import models
 from rasterio import features
 from scipy import ndimage
+import dask.dataframe as dd
+
 
 
 def tilingCorrection(
@@ -245,18 +247,19 @@ def segmentation(
 
     # Create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
-    polygons["border_color"] = polygons.geometry.map(border_color)
+    #polygons["border_color"] = polygons.geometry.map(border_color)
     polygons["linewidth"] = polygons.geometry.map(linewidth)
-    polygons["color"] = polygons.geometry.map(color)
+    #polygons["color"] = polygons.geometry.map(color)
     polygons["cells"] = polygons.index
     polygons = polygons.dissolve(by="cells")
+    polygons.index = list(map(str, polygons.index))
 
     img.add_img(masks, layer="segment_cellpose")
 
     return masks, mask_i, polygons, img
 
 
-def segmentationPlot(
+def segmentationPlot_deprecated(
     img: np.ndarray,
     mask_i: np.ndarray,
     polygons: geopandas.GeoDataFrame,
@@ -319,6 +322,61 @@ def segmentationPlot(
         plt.close(fig)
         fig.savefig(output + ".png")
 
+def segmentationPlot(
+    ic,
+    mask_i=None,
+    polygons: geopandas.GeoDataFrame=None,
+    crd=None,
+    channels=[0,0],
+    small_size_vis=None,
+    img_layer='image',
+    output: str = None,
+) -> None:
+    if output:
+        plt.ioff()
+    if small_size_vis:
+        crd=small_size_vis
+    if polygons is None:
+        raise ValueError("No polygons are given as input") 
+    if type(ic)==np.ndarray:
+        ic = sq.im.ImageContainer(ic)
+        
+    Xmax=ic.data.sizes['x']
+    Ymax=ic.data.sizes['y']    
+    ic=ic.data.assign_coords({'x':np.arange(Xmax),'y':np.arange(Ymax)})  
+    #crd=small_size_vis
+    #crd=[2000,3500,1000,2500]
+    if crd==None:
+        crd=[0,Ymax,0,Xmax]
+    fig, ax = plt.subplots(1, 2, figsize=(20, 20))
+    ic[img_layer].squeeze().sel(x=slice(crd[2],crd[3]),y=slice(crd[0],crd[1])).plot.imshow(cmap='gray', robust=True, ax=ax[0],add_colorbar=False)
+    ic[img_layer].squeeze().sel(x=slice(crd[2],crd[3]),y=slice(crd[0],crd[1])).plot.imshow(cmap='gray', robust=True, ax=ax[1],add_colorbar=False)
+    polygons.cx[crd[2]:crd[3],crd[0]:crd[1]].plot(
+            ax=ax[1],
+            edgecolor="white",
+            linewidth=1,
+            alpha=0.5,
+            legend=True,
+            aspect=1,
+            )
+    for i in range(len(ax)):
+        ax[i].axes.set_aspect('equal')
+        ax[i].set_xlim(crd[2], crd[3])
+        ax[i].set_ylim(crd[0], crd[1])
+        ax[i].invert_yaxis()
+        ax[i].set_title("")
+        #ax.axes.xaxis.set_visible(False)
+        #ax.axes.yaxis.set_visible(False)
+        ax[i].spines["top"].set_visible(False)
+        ax[i].spines["right"].set_visible(False)
+        ax[i].spines["bottom"].set_visible(False)
+        ax[i].spines["left"].set_visible(False)
+    
+    # Save the plot to ouput
+    if output:
+        plt.close(fig)
+        fig.savefig(output + ".png")            
+        
 
 def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
     """Returns the polygons as GeoDataFrame
@@ -332,7 +390,7 @@ def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
 
     # Extract the polygons from the mask
     for shape, value in features.shapes(
-        mask.astype(np.int16),
+        mask.astype(np.int32),
         mask=(mask > 0),
         transform=rasterio.Affine(1.0, 0, 0, 0, 1.0, 0),
     ):
@@ -436,12 +494,15 @@ def plot_shapes(
     img=None,
     img_layer='image',
     alpha: float = 0.5,
+    library_id='melanoma',
     crd=None,
     output: str = None,
+    vmin=None,
+    vmax=None,
 ) -> None:
     
     if img==None:
-        img= sq.im.ImageContainer(adata.uns["spatial"]["melanoma"]["images"]["hires"], layer="image")
+        img= sq.im.ImageContainer(adata.uns["spatial"][library_id]["images"]["hires"], layer="image")
         
     Xmax=img.data.sizes['x']
     Ymax=img.data.sizes['y']    
@@ -457,24 +518,36 @@ def plot_shapes(
                 adata.uns[column + "_colors"],
                 N=len(adata.uns[column + "_colors"]),
             ) 
-        column=adata[adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].index,:].obs[column]
-
+        if column in adata.obs.columns:    
+            column=adata[adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].index,:].obs[column]
+        elif column in adata.var.index:
+            column=adata[adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].index,:].X[:,np.where(adata.var.index==column)[0][0]]
+        else: 
+            print('The column defined in the function isnt a column in obs, nor is it a gene name, the plot is made without taking into account this value.')
+            column= None
+            cmap=None
     else:
         cmap=None
+    if vmin!=None:
+        vmin=np.percentile(column,vmin)
+    if vmax!=None:
+        vmax=np.percentile(column,vmax)    
     
     fig, ax = plt.subplots(1, 1, figsize=(20, 20))
 
-    img[img_layer].squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[0],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax,add_colorbar=False)
+    img[img_layer].squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax,add_colorbar=False)
 
     adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
             ax=ax,
             edgecolor="white",
             column=column,
-            linewidth=adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].linewidth,
+            linewidth=1,
             alpha=alpha,
             legend=True,
             aspect=1,
             cmap=cmap,
+            vmax=vmax,#np.percentile(column,vmax),
+            vmin=vmin,#np.percentile(column,vmin)
             )
     
     ax.axes.set_aspect('equal')
@@ -493,6 +566,8 @@ def plot_shapes(
     if output:
         plt.close(fig)
         fig.savefig(output + ".png")
+
+
 
 def plot_shapes_deprecated(
     adata: AnnData,
@@ -583,13 +658,14 @@ def preprocessAdata(
     # Filter cells and genes
     sc.pp.filter_cells(adata, min_counts=10)
     sc.pp.filter_genes(adata, min_cells=5)
-    adata.raw = adata
+    adata.raw= adata
 
     # Normalize nucleus size
-    if nuc_size_norm:
-        _, counts = np.unique(mask, return_counts=True)
-        adata.obs["nucleusSize"] = [counts[int(index)] for index in adata.obs.index]
-        adata.X = (adata.X.T / adata.obs.nucleusSize.values).T
+    
+    _, counts = np.unique(mask, return_counts=True)
+    adata.obs["nucleusSize"] = [counts[int(index)] for index in adata.obs.index]
+    if nuc_size_norm:   
+        adata.X = (adata.X.T*100 / adata.obs.nucleusSize.values).T
 
         sc.pp.log1p(adata)
         sc.pp.scale(adata, max_value=10)
@@ -795,6 +871,7 @@ def scoreGenesPlot(
     scoresper_cluster: pd.DataFrame,
     filter_index: int = 5,
     output: str = None,
+    library_id='melanoma'
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the maxscores."""
 
@@ -825,8 +902,8 @@ def scoreGenesPlot(
 
     # Plot maxScores and cleanliness columns of AnnData object
     adata.uns["maxScores_colors"] = colors
-    plot_shapes(adata, column="maxScores", output=output + "2" if output else None)
-    plot_shapes(adata, column="Cleanliness", output=output + "3" if output else None)
+    plot_shapes(adata, column="maxScores", output=output + "2" if output else None,library_id=library_id)
+    plot_shapes(adata, column="Cleanliness", output=output + "3" if output else None,library_id=library_id)
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
     sc.pl.heatmap(
@@ -964,6 +1041,7 @@ def clustercleanlinessPlot(
     crop_coord: List[int] = [0, 2000, 0, 2000],
     color_dict: dict = None,
     output: str = None,
+    library_id='melanoma'
 ) -> None:
     """This function plots the clustercleanliness as barplots, the images with colored celltypes and the clusters."""
 
@@ -1004,7 +1082,7 @@ def clustercleanlinessPlot(
 
     # Plot images with colored celltypes
     plot_shapes(
-        adata, column="maxScores", alpha=0.8, output=output + "1" if output else None
+        adata, column="maxScores", alpha=0.8, output=output + "1" if output else None, library_id=library_id
     )
     plot_shapes(
         adata,
@@ -1012,6 +1090,7 @@ def clustercleanlinessPlot(
         crd=crop_coord,
         alpha=0.8,
         output=output + "2" if output else None,
+        library_id=library_id
     )
 
     # Plot clusters
@@ -1076,3 +1155,45 @@ def save_data(adata: AnnData, output_geojson: str, output_h5ad: str):
 
     # Write AnnData object to h5ad file
     adata.write(output_h5ad)
+
+def micron_to_pixels(df, offset_x=45_000,offset_y=45_000,pixelSize=None):
+    if pixelSize:
+        df[x] /= pixelSize
+        df[y] /= pixelSize
+    if offset_x:
+            df['x'] -= offset_x
+    if offset_y:        
+            df['y'] -= offset_y
+
+    return df
+    
+def read_in_stereoSeq(path_genes,xcol='x',ycol='y',genecol='geneID',countcol='MIDCount',skiprows=0,offset=None):
+    """This function read in Stereoseq input data to a dask datafrmae with predefined column names. 
+    As we are working with BGI data, a column with counts is added."""
+    in_df=dd.read_csv(path_genes,delimiter='\t',skiprows=skiprows)
+    in_df=in_df.rename(columns={xcol:'x',ycol:'y',genecol:'gene',countcol:'counts'})
+    if offset:
+        in_df=micron_to_pixels(in_df,offset_x=offset[0],offset_y=offset[1])
+    in_df=in_df.loc[:,['x','y','gene','counts']]
+    
+    in_df=in_df.dropna()
+    return in_df
+
+def read_in_RESOLVE(path_coordinates,xcol=0,ycol=1,genecol=3,filterGenes=None):
+    
+    """The output of this function gives all locations of interesting transcripts in pixel coordinates matching the input image. Dask Dataframe contains columns x,y, and gene"""
+    
+    
+    in_df = dd.read_csv(path_coordinates, delimiter="\t", header=None)
+    in_df=in_df.rename(columns={xcol:'x',ycol:'y',genecol:'gene'})
+    in_df=in_df.loc[:,['x','y','gene']]
+    in_df=in_df.dropna()
+    
+    if filterGenes:
+        for i in filter_genes:
+            in_df=in_df[in_df['gene'].str.contains(i)==False]
+            
+            
+    return in_df
+
+    
