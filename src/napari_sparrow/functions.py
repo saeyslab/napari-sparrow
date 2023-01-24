@@ -26,6 +26,43 @@ from rasterio import features
 from scipy import ndimage
 import dask.dataframe as dd
 
+import xarray as xr
+import dask
+import numpy as np
+import hvplot.xarray
+import numpy as np
+from longsgis import voronoiDiagram4plg
+from shapely.geometry import Polygon
+from shapely.geometry.polygon import LinearRing
+
+
+def read_in_zarr(path_to_zarr_file,zyx_order=[0,1,2]):
+    """This function read in a zarr file containing the tissue image. If a z-stack is present, automatically, a z-projection is performed.
+     A quidpy imagecontainer is returned."""
+    da = dask.array.from_zarr(path_to_zarr_file)
+    da = xr.DataArray(
+    da, 
+    dims=('z', 'y', 'x'),
+    coords={
+        "z": np.arange(da.shape[zyx_order[0]]),
+        "y": np.arange(da.shape[zyx_order[1]]), 
+        "x": np.arange(da.shape[zyx_order[2]]),
+    }
+    )
+    if da.z.shape[0]>1:
+        da=da.max(dim='z')
+    ic = sq.im.ImageContainer(da)    
+
+    return ic
+
+def create_subset_image(ic,crd):
+    """Reads in sq image container and returns a subset in a sq.imagecontainer"""
+    Xmax=ic.data.sizes['x']
+    Ymax=ic.data.sizes['y']    
+    img=ic.data.assign_coords({'x':np.arange(Xmax),'y':np.arange(Ymax)})  
+    I_small=img['image'].sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3]))
+    ic_test= sq.im.ImageContainer(I_small)
+    return ic_test
 
 
 def tilingCorrection(
@@ -206,8 +243,45 @@ def preprocessImagePlot(
             plt.close(fig2)
             fig2.savefig(output + "1.png")
 
-
+def cellpose(img, min_size=80,cellprob_threshold=-4, flow_threshold=0.85, diameter=100, model_type="cyto",channels=[1,0],device='cpu'):
+    model = models.Cellpose(model_type=model_type,device=torch.device(device))
+    masks, _, _, _ = model.eval(
+        img,
+        diameter=diameter,
+        channels=channels,
+        min_size=min_size,
+        flow_threshold=flow_threshold,
+        cellprob_threshold=cellprob_threshold,
+    )
+    return masks   
+            
 def segmentation(
+    img: sq.im.ImageContainer,
+    device: str = "cpu",
+    min_size: int = 80,
+    flow_threshold: float = 0.6,
+    diameter: int = 55,
+    cellprob_threshold: int = 0,
+    model_type: str = "nuclei",
+    channels =[0, 0],
+    ): 
+
+    
+    sq.im.segment(img=img, layer="image", method=cellpose,chunks='auto',min_size=min_size,cellprob_threshold=cellprob_threshold, flow_threshold=flow_threshold, diameter=diameter, model_type=model_type,channels=channels,device=device)
+    masks=img.data.segmented_custom.squeeze().to_numpy()
+    mask_i = np.ma.masked_where(masks == 0, masks)
+
+    # Create the polygon shapes of the different cells
+    polygons = mask_to_polygons_layer(masks)
+    #polygons["border_color"] = polygons.geometry.map(fc.border_color)
+    polygons["linewidth"] = polygons.geometry.map(linewidth)
+    #polygons["color"] = polygons.geometry.map(fc.color)
+    polygons["cells"] = polygons.index
+    polygons = polygons.dissolve(by="cells")
+    return masks, mask_i, polygons, img            
+            
+
+def segmentationDeprecated(
     img: sq.im.ImageContainer,
     device: str = "cpu",
     min_size: int = 80,
@@ -414,7 +488,101 @@ def linewidth(r: bool) -> float:
     """Select linewidth 1 if true else 0.5."""
     return 1 if r else 0.5
 
+def delete_overlap(voronoi,polygons):
+    
+    I1,I2=voronoi.sindex.query_bulk(voronoi['geometry'], predicate="overlaps")  
+    
+    voronoi2=voronoi['geometry'].copy()
+    
+    for cell1, cell2 in zip(I1,I2):
+        
+        if cell1!=cell2:
+            voronoi.geometry[cell1]=voronoi.geometry[cell1].intersection(voronoi2[cell1].difference(voronoi2[cell2]))
+            voronoi.geometry[cell2]=voronoi.geometry[cell2].intersection(voronoi2[cell2].difference(voronoi2[cell1]))
+            
+    voronoi['geometry']=voronoi.geometry.union(polygons.geometry)
+    return voronoi
 
+def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id: str = "spatial_transcriptomics",radius=0,polygons=None, verbose=False
+    ):
+    
+    # Create the polygon shapes for the mask
+    if polygons is None:
+        polygons = fc.mask_to_polygons_layer(masks)
+        polygons["cells"] = polygons.index
+        polygons = polygons.dissolve(by="cells")
+    polygons.index = list(map(str, polygons.index))
+    
+    #calculate new mask based on radius    
+    if radius!=0:
+        boundary=Polygon([(0,0),(ic.shape[1]+200,0),(ic.shape[1]+200,ic.shape[0]+200),(0,ic.shape[0]+200)])
+        polygons['geometry']=polygons.simplify(2)
+        vd = voronoiDiagram4plg(polygons, boundary)
+        voronoi=geopandas.sjoin(vd,polygons,predicate='contains',how='left')
+        voronoi.index=voronoi.index_right
+        voronoi=delete_overlap(voronoi,polygons)
+
+        buffered=polygons.buffer(distance=radius)
+        intersected=voronoi.intersection(buffered)
+        polygons.geometry=intersected
+        
+        masks=rasterio.features.rasterize( #it should be possible to give every shape  number. You need to give the value with it as input. 
+            zip(buffered.geometry,buffered.index.values.astype(float)), 
+            out_shape=[ic.shape[0],ic.shape[1]],dtype='uint32')    
+        
+    # adapt transcripts file     
+    ddf = ddf[
+    (ic.data.attrs["coords"].y0 < ddf['y'])
+    & (ddf['y'] < masks.shape[0] + ic.data.attrs["coords"].y0)
+    & (ic.data.attrs["coords"].x0 < ddf['x'])
+    & (ddf['x'] < masks.shape[1] + ic.data.attrs["coords"].x0)
+    ]
+    if verbose:
+        print('Started df calculation')
+
+    df=ddf.compute()
+    if verbose:
+        print('df calculated')
+    df["cells"] = masks[
+        df['y'].values.astype(int) - ic.data.attrs["coords"].y0,
+        df['x'].values.astype(int) - ic.data.attrs["coords"].x0,
+    ]
+    if masks is None:
+        masks=ic.data.segment_cellpose.squeeze().to_numpy()
+    # Calculate the mean of the transcripts for every cell
+    coordinates = df.groupby(["cells"]).mean().loc[:, ['x', 'y']]
+    cell_counts = df.groupby(["cells", "gene"]).size().unstack(fill_value=0)
+    print('finished groupbe')
+        # Create the anndata object
+    adata = AnnData(cell_counts[cell_counts.index != 0])
+    coordinates.index = coordinates.index.map(str)
+    adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
+    if verbose:
+        print('created anndata object')
+    # Add the polygons to the anndata object
+    polygons["linewidth"] = polygons.geometry.map(linewidth)
+
+    polygons_f = polygons[
+        np.isin(polygons.index.values, adata.obs.index.values)
+    ]
+    #polygons_f.index = list(map(str, polygons_f.index))
+    adata.obsm["polygons"] = polygons_f
+    adata.obs["cell_ID"] = [int(x) for x in adata.obsm["polygons"].index]
+
+    # Add the figure to the anndata object
+    adata.uns["spatial"] = {library_id: {}}
+    adata.uns["spatial"][library_id]["images"] = {}
+    adata.uns["spatial"][library_id]["images"] = {
+        "hires": ic.data.image.squeeze().to_numpy()
+        #"segmentation":ic.data.segment_cellpose.squeeze().to_numpy()
+    }
+    adata.uns["spatial"][library_id]["scalefactors"] = {
+        "tissue_hires_scalef": 1,
+        "spot_diameter_fullres": 75,
+    }
+    #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
+
+    return adata,df
 def create_adata_quick(
     path: str, ic: sq.im.ImageContainer, masks: np.ndarray, library_id: str = "melanoma"
 ) -> AnnData:
@@ -501,6 +669,8 @@ def plot_shapes(
     vmax=None,
 ) -> None:
     
+    adata.obsm['polygons']=geopandas.GeoDataFrame(adata.obsm['polygons'],geometry=adata.obsm['polygons']['geometry'])
+    
     if img==None:
         img= sq.im.ImageContainer(adata.uns["spatial"][library_id]["images"]["hires"], layer="image")
         
@@ -568,79 +738,6 @@ def plot_shapes(
         fig.savefig(output + ".png")
 
 
-
-def plot_shapes_deprecated(
-    adata: AnnData,
-    column: str = None,
-    cmap: str = "magma",
-    alpha: float = 0.5,
-    crd: List[int] = None,
-    output: str = None,
-) -> None:
-    """This function plots the anndata on the shapes of the cells."""
-
-    # disable interactive mode
-    if output:
-        plt.ioff()
-
-    # Only plot specific column
-    if column is not None:
-        if column + "_colors" in adata.uns:
-            cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
-                "new_map",
-                adata.uns[column + "_colors"],
-                N=len(adata.uns[column + "_colors"]),
-            )
-
-        fig, ax = plt.subplots(1, 1, figsize=(20, 20))
-        ax.imshow(
-            adata.uns["spatial"]["melanoma"]["images"]["hires"],
-            cmap="gray",
-        )
-        adata.obsm["polygons"].plot(
-            ax=ax,
-            column=adata.obs[column],
-            edgecolor="white",
-            linewidth=adata.obsm["polygons"].linewidth,
-            alpha=alpha,
-            legend=True,
-            cmap=cmap,
-        )
-
-    # Plot full AnnData object
-    else:
-        fig, ax = plt.subplots(1, 1, figsize=(20, 20))
-        ax.imshow(
-            adata.uns["spatial"]["melanoma"]["images"]["hires"],
-            cmap="gray",
-        )
-        adata.obsm["polygons"].plot(
-            ax=ax,
-            edgecolor="white",
-            linewidth=adata.obsm["polygons"].linewidth,
-            alpha=alpha,
-            legend=True,
-            color="blue",
-        )
-
-    ax.axes.xaxis.set_visible(False)
-    ax.axes.yaxis.set_visible(False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["bottom"].set_visible(False)
-    ax.spines["left"].set_visible(False)
-
-    # Plot small part of the image
-    if crd is not None:
-        ax.set_xlim(crd[0], crd[1])
-        ax.set_ylim(crd[2], crd[3])
-
-    # Save the plot to ouput
-    if output:
-        plt.close(fig)
-        fig.savefig(output + ".png")
-
-
 def preprocessAdata(
     adata: AnnData, mask: np.ndarray, nuc_size_norm: bool = True, n_comps: int = 50
 ) -> Tuple[AnnData, AnnData]:
@@ -662,8 +759,8 @@ def preprocessAdata(
 
     # Normalize nucleus size
     
-    _, counts = np.unique(mask, return_counts=True)
-    adata.obs["nucleusSize"] = [counts[int(index)] for index in adata.obs.index]
+    indices, counts = np.unique(mask, return_counts=True)
+    adata.obs["nucleusSize"] = [counts[np.where(indices==int(index))][0] for index in adata.obs.index]
     if nuc_size_norm:   
         adata.X = (adata.X.T*100 / adata.obs.nucleusSize.values).T
 
@@ -693,7 +790,7 @@ def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) 
     fig, axs = plt.subplots(1, 2, figsize=(15, 4))
     sns.histplot(adata_orig.obs["total_counts"], kde=False, ax=axs[0])
     sns.histplot(adata_orig.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
-
+    plt.show()
     plt.scatter(adata.obs["nucleusSize"], adata.obs["total_counts"])
     plt.title = "cellsize vs cellcount"
 
@@ -1143,13 +1240,14 @@ def save_data(adata: AnnData, output_geojson: str, output_h5ad: str):
     """Saves the ploygons to output_geojson as GeoJson object and the rest of the AnnData object to output_h5ad as h5ad file."""
 
     # Save polygons to geojson
-    del adata.obsm["polygons"]["color"]
+    if color in adata.obsm["polygons"]:
+        del adata.obsm["polygons"]["color"]
     adata.obsm["polygons"]["geometry"].to_file(output_geojson, driver="GeoJSON")
     adata.obsm["polygons"] = pd.DataFrame(
         {
             "linewidth": adata.obsm["polygons"]["linewidth"],
-            "X": adata.obsm["polygons"]["X"],
-            "Y": adata.obsm["polygons"]["Y"],
+             #"X": adata.obsm["polygons"]["X"],
+            #"Y": adata.obsm["polygons"]["Y"],
         }
     )
 
@@ -1195,5 +1293,31 @@ def read_in_RESOLVE(path_coordinates,xcol=0,ycol=1,genecol=3,filterGenes=None):
             
             
     return in_df
+
+def read_in_Vizgen(path_genes,xcol='global_x',ycol='global_y',genecol='gene',skiprows=None,offset=None, bbox=None,pixelSize=None,filterGenes=None):
+    """This function read in Vizgen input data to a dask datafrmae with predefined column names. """
+    
+    in_df=dd.read_csv(path_genes,skiprows=skiprows)
+    in_df=in_df.loc[:,[xcol,ycol,genecol]]
+
+    in_df=in_df.rename(columns={xcol:'x',ycol:'y',genecol:'gene'})
+
+    if bbox:
+        in_df['x']-=bbox[0]
+        in_df['y']-=bbox[1]
+    if pixelSize:
+        in_df['x'] /= pixelSize
+        in_df['y'] /= pixelSize
+    if offset:
+            in_df['x'] -= offset[0]   
+            in_df['y'] -= offset[1]
+    
+    in_df=in_df.dropna()
+    
+    if filterGenes:
+        for i in filterGenes:
+            in_df=in_df[in_df['gene'].str.contains(i)==False]
+    return in_df
+
 
     
