@@ -499,7 +499,9 @@ def delete_overlap(voronoi,polygons):
         if cell1!=cell2:
             voronoi.geometry[cell1]=voronoi.geometry[cell1].intersection(voronoi2[cell1].difference(voronoi2[cell2]))
             voronoi.geometry[cell2]=voronoi.geometry[cell2].intersection(voronoi2[cell2].difference(voronoi2[cell1]))
-            
+    polygons=polygons.buffer(distance=0) 
+    voronoi=voronoi.buffer(distance=0)        
+
     voronoi['geometry']=voronoi.geometry.union(polygons.geometry)
     return voronoi
 
@@ -508,7 +510,7 @@ def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id:
     
     # Create the polygon shapes for the mask
     if polygons is None:
-        polygons = fc.mask_to_polygons_layer(masks)
+        polygons = mask_to_polygons_layer(masks)
         polygons["cells"] = polygons.index
         polygons = polygons.dissolve(by="cells")
     polygons.index = list(map(str, polygons.index))
@@ -527,7 +529,7 @@ def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id:
         polygons.geometry=intersected
         
         masks=rasterio.features.rasterize( #it should be possible to give every shape  number. You need to give the value with it as input. 
-            zip(buffered.geometry,buffered.index.values.astype(float)), 
+            zip(intersected.geometry,intersected.index.values.astype(float)), 
             out_shape=[ic.shape[0],ic.shape[1]],dtype='uint32')    
         
     # adapt transcripts file     
@@ -552,7 +554,9 @@ def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id:
     # Calculate the mean of the transcripts for every cell
     coordinates = df.groupby(["cells"]).mean().loc[:, ['x', 'y']]
     cell_counts = df.groupby(["cells", "gene"]).size().unstack(fill_value=0)
-    print('finished groupbe')
+    if verbose: 
+        
+        print('finished groupby')
         # Create the anndata object
     adata = AnnData(cell_counts[cell_counts.index != 0])
     coordinates.index = coordinates.index.map(str)
@@ -1277,13 +1281,15 @@ def read_in_stereoSeq(path_genes,xcol='x',ycol='y',genecol='geneID',countcol='MI
     in_df=in_df.dropna()
     return in_df
 
-def read_in_RESOLVE(path_coordinates,xcol=0,ycol=1,genecol=3,filterGenes=None):
+def read_in_RESOLVE(path_coordinates,xcol=0,ycol=1,genecol=3,filterGenes=None,offset=None):
     
     """The output of this function gives all locations of interesting transcripts in pixel coordinates matching the input image. Dask Dataframe contains columns x,y, and gene"""
     
     
     in_df = dd.read_csv(path_coordinates, delimiter="\t", header=None)
     in_df=in_df.rename(columns={xcol:'x',ycol:'y',genecol:'gene'})
+    if offset:
+        in_df=micron_to_pixels(in_df,offset_x=offset[0],offset_y=offset[1])
     in_df=in_df.loc[:,['x','y','gene']]
     in_df=in_df.dropna()
     
