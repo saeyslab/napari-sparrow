@@ -488,21 +488,16 @@ def linewidth(r: bool) -> float:
     """Select linewidth 1 if true else 0.5."""
     return 1 if r else 0.5
 
-def delete_overlap(voronoi,polygons):
-    
+def delete_overlap(voronoi,polygons):    
     I1,I2=voronoi.sindex.query_bulk(voronoi['geometry'], predicate="overlaps")  
-    
-    voronoi2=voronoi['geometry'].copy()
-    
-    for cell1, cell2 in zip(I1,I2):
-        
-        if cell1!=cell2:
-            voronoi.geometry[cell1]=voronoi.geometry[cell1].intersection(voronoi2[cell1].difference(voronoi2[cell2]))
-            voronoi.geometry[cell2]=voronoi.geometry[cell2].intersection(voronoi2[cell2].difference(voronoi2[cell1]))
-    polygons=polygons.buffer(distance=0) 
-    voronoi=voronoi.buffer(distance=0)        
+    voronoi2=voronoi.copy()
 
-    voronoi['geometry']=voronoi.geometry.union(polygons.geometry)
+    for cell1, cell2 in zip(I1,I2):
+
+        #if cell1!=cell2:
+        voronoi.geometry.iloc[cell1]=voronoi.iloc[cell1].geometry.intersection(voronoi2.iloc[cell1].geometry.difference(voronoi2.iloc[cell2].geometry))
+        voronoi.geometry.iloc[cell2]=voronoi.iloc[cell2].geometry.intersection(voronoi2.iloc[cell2].geometry.difference(voronoi2.iloc[cell1].geometry))
+    voronoi['geometry']=voronoi.geometry.union(polygons.geometry) 
     return voronoi
 
 def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id: str = "spatial_transcriptomics",radius=0,polygons=None, verbose=False
@@ -522,10 +517,11 @@ def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id:
         vd = voronoiDiagram4plg(polygons, boundary)
         voronoi=geopandas.sjoin(vd,polygons,predicate='contains',how='left')
         voronoi.index=voronoi.index_right
+        voronoi=voronoi[~voronoi.index.duplicated(keep='first')]
         voronoi=delete_overlap(voronoi,polygons)
 
-        buffered=polygons.buffer(distance=radius)
-        intersected=voronoi.intersection(buffered)
+        buffered=polygons.buffer(distance=20)
+        intersected=voronoi.sort_index().intersection(buffered.sort_index())
         polygons.geometry=intersected
         
         masks=rasterio.features.rasterize( #it should be possible to give every shape  number. You need to give the value with it as input. 
