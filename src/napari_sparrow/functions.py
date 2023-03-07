@@ -817,13 +817,19 @@ def filter_on_size(
     adata.obsm["polygons"]["X"] = adata.obsm["polygons"].centroid.x
     adata.obsm["polygons"]["Y"] = adata.obsm["polygons"].centroid.y
     adata.obs["distance"] = np.sqrt(
-        np.square(adata.obsm["polygons"]["X"] - adata.obsm["spatial"][:, 0])
-        + np.square(adata.obsm["polygons"]["Y"] - adata.obsm["spatial"][:, 1])
+        np.square(adata.obsm["polygons"]["X"] - adata.obsm["spatial"].iloc[:, 0])
+        + np.square(adata.obsm["polygons"]["Y"] - adata.obsm["spatial"].iloc[:, 1])
     )
 
     # Filter cells based on size and distance
-    adata = adata[adata.obs["nucleusSize"] < max_size, :]
-    adata = adata[adata.obs["nucleusSize"] > min_size, :]
+    #adata = adata[adata.obs["nucleusSize"] < max_size, :]
+    #adata = adata[adata.obs["nucleusSize"] > min_size, :]
+    adata=adata[adata.obsm['polygons'].area>min_size,:]
+    adata.obsm["polygons"] = geopandas.GeoDataFrame(
+        adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
+    )
+    adata=adata[adata.obsm['polygons'].area<max_size,:]
+
     adata = adata[adata.obs["distance"] < 70, :]
     adata.obsm["polygons"] = geopandas.GeoDataFrame(
         adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
