@@ -34,6 +34,8 @@ import numpy as np
 from longsgis import voronoiDiagram4plg
 from shapely.geometry import Polygon
 from shapely.geometry.polygon import LinearRing
+from scipy.ndimage.filters import gaussian_filter
+
 
 
 def read_in_zarr(path_to_zarr_file,zyx_order=[0,1,2]):
@@ -78,9 +80,15 @@ def tilingCorrection(
     """
 
     # Create the tiles
-    tiles = img.generate_equal_crops(size=2144, as_array="image")
+    tiles = img.generate_equal_crops(size=tile_size, as_array="image")
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
-
+    #create the masks for inpainting 
+    i_mask = (np.block(
+        [
+            list(tiles[i : i + (img.shape[1] // tile_size)])
+            for i in range(0, len(tiles), img.shape[1] // tile_size)
+        ]
+    ).astype(np.uint16)==0)
     # Measure the filters
     # BaSiC has no support for gpu devices, see https://github.com/peng-lab/BaSiCPy/issues/101
     basic = BaSiC(epsilon=1e-06)
@@ -99,12 +107,12 @@ def tilingCorrection(
             for i in range(0, len(tiles_corrected), img.shape[1] // tile_size)
         ]
     ).astype(np.uint16)
+    
+    
 
     img = sq.im.ImageContainer(i_new, layer="image")
     img.add_img(
-        img.apply(
-            lambda array: (array == 0).astype(np.uint8), new_layer="mask", copy=True
-        ),
+        i_mask.astype(np.uint8),
         layer="mask",
     )
 
