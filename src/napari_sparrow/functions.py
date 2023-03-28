@@ -524,6 +524,7 @@ def preprocessAdata(
     adata.raw = adata
 
     # Normalize nucleus size
+    # TODO: this fails if there is no shape for a cell (like in Baysor?)
     if nuc_size_norm:
         _, counts = np.unique(mask, return_counts=True)
         adata.obs["nucleusSize"] = [counts[int(index)] for index in adata.obs.index]
