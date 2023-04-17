@@ -527,8 +527,7 @@ def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id:
         voronoi.index=voronoi.index_right
         voronoi=voronoi[~voronoi.index.duplicated(keep='first')]
         voronoi=delete_overlap(voronoi,polygons)
-
-        buffered=polygons.buffer(distance=20)
+        buffered=polygons.buffer(distance=radius)
         intersected=voronoi.sort_index().intersection(buffered.sort_index())
         polygons.geometry=intersected
         
@@ -635,7 +634,7 @@ def create_adata_quick(
     # Create the anndata object
     adata = AnnData(cell_counts[cell_counts.index != 0])
     coordinates.index = coordinates.index.map(str)
-    adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
+    adata.obsm["spatial"] = coordinates[coordinates.index != "0"]#.values
 
     # Add the polygons to the anndata object
     polygons_f = polygons[
@@ -825,8 +824,8 @@ def filter_on_size(
     adata.obsm["polygons"]["X"] = adata.obsm["polygons"].centroid.x
     adata.obsm["polygons"]["Y"] = adata.obsm["polygons"].centroid.y
     adata.obs["distance"] = np.sqrt(
-        np.square(adata.obsm["polygons"]["X"] - adata.obsm["spatial"].iloc[:, 0])
-        + np.square(adata.obsm["polygons"]["Y"] - adata.obsm["spatial"].iloc[:, 1])
+        np.square(adata.obsm["polygons"]["X"] - adata.obsm["spatial"][:, 0])
+        + np.square(adata.obsm["polygons"]["Y"] - adata.obsm["spatial"][:, 1])
     )
 
     # Filter cells based on size and distance
@@ -916,6 +915,7 @@ def scoreGenes(
     row_norm: bool = False,
     repl_columns: dict[str, str] = None,
     del_genes: List[str] = None,
+    input_dict=False
 ) -> Tuple[dict, pd.DataFrame]:
     """Returns genes dict and the score sper cluster
 
@@ -925,21 +925,27 @@ def scoreGenes(
     """
 
     # Load marker genes from csv
-    df_markers = pd.read_csv(path_marker_genes, index_col=0)
-
+    if input_dict:
+        df_markers=pd.read_csv(path_marker_genes,header=None,index_col=0)
+        df_markers=df_markers.T
+        genes_dict=df_markers.to_dict('list')
+        for i in genes_dict:
+            genes_dict[i]=[x for x in genes_dict[i] if str(x)!='nan']
     # Replace column names in marker genes
-    if repl_columns:
-        for column, replace in repl_columns.items():
-            df_markers.columns = df_markers.columns.str.replace(column, replace)
+    else:
+        df_markers = pd.read_csv(path_marker_genes, index_col=0)
+        if repl_columns:
+            for column, replace in repl_columns.items():
+                df_markers.columns = df_markers.columns.str.replace(column, replace)
 
-    # Create genes dict with all marker genes for every celltype
-    genes_dict = {}
-    for i in df_markers:
-        genes = []
-        for row, value in enumerate(df_markers[i]):
-            if value > 0:
-                genes.append(df_markers.index[row])
-        genes_dict[i] = genes
+        # Create genes dict with all marker genes for every celltype
+        genes_dict = {}
+        for i in df_markers:
+            genes = []
+            for row, value in enumerate(df_markers[i]):
+                if value > 0:
+                    genes.append(df_markers.index[row])
+            genes_dict[i] = genes
 
     # Score all cells for all celltypes
     for key, value in genes_dict.items():
