@@ -82,6 +82,8 @@ def tilingCorrection(
     # Create the tiles
     tiles = img.generate_equal_crops(size=tile_size, as_array="image")
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
+    black=np.array([1 if ~np.any(tile-1) else 0 for tile in tiles]) # determine if 
+
     #create the masks for inpainting 
     i_mask = (np.block(
         [
@@ -89,15 +91,19 @@ def tilingCorrection(
             for i in range(0, len(tiles), img.shape[1] // tile_size)
         ]
     ).astype(np.uint16)==0)
-    # Measure the filters
-    # BaSiC has no support for gpu devices, see https://github.com/peng-lab/BaSiCPy/issues/101
-    basic = BaSiC(epsilon=1e-06)
+    if tiles.shape[0]<5:
+        print('There aren\'t enough tiles to perform tiling correction (less than 5). This step will be skipped.')
+        tiles_corrected=tiles
+        flatfield=None
+    else:
+        basic = BaSiC(smoothness_flatfield=1)
+        basic.fit(tiles)
+        flatfield = basic.flatfield
+        tiles_corrected = basic.transform(tiles)
 
-    basic.fit(tiles)
-    flatfield = basic.flatfield
-    tiles_corrected = basic.transform(tiles)
+
     tiles_corrected = np.array(
-        [tile + 1 if ~np.any(tile) else tile for tile in tiles_corrected]
+        [tiles[number] if black[number]==1 else tile for number,tile in enumerate(tiles_corrected)]
     )
 
     # Stitch the tiles back together
@@ -107,7 +113,7 @@ def tilingCorrection(
             for i in range(0, len(tiles_corrected), img.shape[1] // tile_size)
         ]
     ).astype(np.uint16)
-    
+
     
 
     img = sq.im.ImageContainer(i_new, layer="image")
@@ -146,14 +152,15 @@ def tilingCorrectionPlot(
         plt.ioff()
 
     # Tile correction overlay
-    fig1, ax1 = plt.subplots(1, 1, figsize=(20, 10))
-    ax1.imshow(flatfield, cmap="gray")
-    ax1.set_title("Correction performed per tile")
+    if flatfield is not None:
+        fig1, ax1 = plt.subplots(1, 1, figsize=(20, 10))
+        ax1.imshow(flatfield, cmap="gray")
+        ax1.set_title("Correction performed per tile")
 
-    # Save the plot to ouput
-    if output:
-        plt.close(fig1)
-        fig1.savefig(output + "0.png")
+        # Save the plot to ouput
+        if output:
+            plt.close(fig1)
+            fig1.savefig(output + "0.png")
 
     # Original and corrected image
     fig2, ax2 = plt.subplots(1, 2, figsize=(20, 10))
@@ -561,7 +568,7 @@ def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id:
         
         print('finished groupby')
         # Create the anndata object
-    adata = AnnData(cell_counts[cell_counts.index != 0])
+    adata = AnnData(cell_counts[cell_counts.index != 0],dtype='int64')
     coordinates.index = coordinates.index.map(str)
     adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
     if verbose:
