@@ -38,7 +38,7 @@ from scipy.ndimage.filters import gaussian_filter
 
 
 
-def read_in_zarr(path_to_zarr_file,zyx_order=[0,1,2]):
+def read_in_zarr(path_to_zarr_file,zyx_order=[0,1,2],subset=None):
     """This function read in a zarr file containing the tissue image. If a z-stack is present, automatically, a z-projection is performed.
      A quidpy imagecontainer is returned."""
     da = dask.array.from_zarr(path_to_zarr_file)
@@ -53,6 +53,8 @@ def read_in_zarr(path_to_zarr_file,zyx_order=[0,1,2]):
     )
     if da.z.shape[0]>1:
         da=da.max(dim='z')
+    if subset:    
+        da=da[subset[0]:subset[1],subset[2]:subset[3]]    
     ic = sq.im.ImageContainer(da)    
 
     return ic
@@ -259,7 +261,8 @@ def preprocessImagePlot(
             fig2.savefig(output + "1.png")
 
 def cellpose(img, min_size=80,cellprob_threshold=-4, flow_threshold=0.85, diameter=100, model_type="cyto",channels=[1,0],device='cpu'):
-    model = models.Cellpose(model_type=model_type,device=torch.device(device))
+    gpu=torch.cuda.is_available()
+    model = models.Cellpose(gpu=gpu,model_type=model_type,device=torch.device(device))
     masks, _, _, _ = model.eval(
         img,
         diameter=diameter,
@@ -985,8 +988,8 @@ def scoreGenes(
 
     scores = (temp[1] - temp[0]) / ((temp[1] + temp[0]) / 2)
     adata.obs["Cleanliness"] = scores.values
-    adata.obs["maxScores"] = scoresper_cluster.idxmax(axis=1)
-
+    adata.obs["annotation"] = scoresper_cluster.idxmax(axis=1)
+    adata.obs["annotation"] = adata.obs["annotation"].astype('category')
     return genes_dict, scoresper_cluster
 
 
@@ -997,7 +1000,7 @@ def scoreGenesPlot(
     output: str = None,
     library_id='melanoma'
 ) -> None:
-    """This function plots the cleanliness and the leiden score next to the maxscores."""
+    """This function plots the cleanliness and the leiden score next to the annotation."""
 
     # Custom colormap:
     colors = np.concatenate(
@@ -1009,24 +1012,24 @@ def scoreGenesPlot(
     if output:
         plt.ioff()
 
-    # Plot cleanliness and leiden next to maxscores
-    sc.pl.umap(adata, color=["Cleanliness", "maxScores"], show=not output)
+    # Plot cleanliness and leiden next to annotation
+    sc.pl.umap(adata, color=["Cleanliness", "annotation"], show=not output)
 
     # Save the plot to ouput
     if output:
         plt.savefig(output + "0.png", bbox_inches="tight")
         plt.close()
-        sc.pl.umap(adata, color=["leiden", "maxScores"], show=False)
+        sc.pl.umap(adata, color=["leiden", "annotation"], show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
         plt.close()
 
     # Display plot
     else:
-        sc.pl.umap(adata, color=["leiden", "maxScores"])
+        sc.pl.umap(adata, color=["leiden", "annotation"])
 
-    # Plot maxScores and cleanliness columns of AnnData object
-    adata.uns["maxScores_colors"] = colors
-    plot_shapes(adata, column="maxScores", output=output + "2" if output else None,library_id=library_id)
+    # Plot annotation and cleanliness columns of AnnData object
+    adata.uns["annotation_colors"] = colors
+    plot_shapes(adata, column="annotation", output=output + "2" if output else None,library_id=library_id)
     plot_shapes(adata, column="Cleanliness", output=output + "3" if output else None,library_id=library_id)
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
@@ -1089,18 +1092,18 @@ def annotate_maxscore(types: str, indexes: dict, adata: AnnData) -> AnnData:
 
     Adds types to the Anndata maxscore category.
     """
-    adata.obs.maxScores = adata.obs.maxScores.cat.add_categories([types])
-    for i, val in enumerate(adata.obs.maxScores):
+    adata.obs.annotation = adata.obs.annotation.cat.add_categories([types])
+    for i, val in enumerate(adata.obs.annotation):
         if val in indexes[types]:
-            adata.obs.maxScores[i] = types
+            adata.obs.annotation[i] = types
     return adata
 
 
 def remove_celltypes(types: str, indexes: dict, adata: AnnData) -> AnnData:
     """Returns the AnnData object."""
     for index in indexes[types]:
-        if index in adata.obs.maxScores.cat.categories:
-            adata.obs.maxScores = adata.obs.maxScores.cat.remove_categories(index)
+        if index in adata.obs.annotation.cat.categories:
+            adata.obs.annotation = adata.obs.annotation.cat.remove_categories(index)
     return adata
 
 
@@ -1114,10 +1117,10 @@ def clustercleanliness(
     celltypes = np.array(sorted(genes), dtype=str)
     color_dict = None
 
-    adata.obs["maxScores"] = adata.obs[
+    adata.obs["annotation"] = adata.obs[
         [col for col in adata.obs if col in celltypes]
     ].idxmax(axis=1)
-    adata.obs.maxScores = adata.obs.maxScores.astype("category")
+    adata.obs.annotation = adata.obs.annotation.astype("category")
 
     # Create custom colormap for clusters
     if not colors:
@@ -1129,10 +1132,10 @@ def clustercleanliness(
         )
         colors = [mpl.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)]
 
-    adata.uns["maxScores_colors"] = colors
+    adata.uns["annotation_colors"] = colors
 
     if gene_indexes:
-        adata.obs["maxScoresSave"] = adata.obs.maxScores
+        adata.obs["annotationSave"] = adata.obs.annotation
         gene_celltypes = {}
 
         for key, value in gene_indexes.items():
@@ -1146,15 +1149,15 @@ def clustercleanliness(
 
         celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))  # type: ignore
         celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
-        color_dict = dict(zip(celltypes_f, adata.uns["maxScores_colors"]))
+        color_dict = dict(zip(celltypes_f, adata.uns["annotation_colors"]))
 
     else:
-        color_dict = dict(zip(celltypes, adata.uns["maxScores_colors"]))
+        color_dict = dict(zip(celltypes, adata.uns["annotation_colors"]))
 
     for i, name in enumerate(color_dict.keys()):
         color_dict[name] = colors[i]
-    adata.uns["maxScores_colors"] = list(
-        map(color_dict.get, adata.obs.maxScores.cat.categories.values)
+    adata.uns["annotation_colors"] = list(
+        map(color_dict.get, adata.obs.annotation.cat.categories.values)
     )
 
     return adata, color_dict
@@ -1175,13 +1178,13 @@ def clustercleanlinessPlot(
 
     # Create the barplot
     stacked = (
-        adata.obs.groupby(["leiden", "maxScores"], as_index=False)
+        adata.obs.groupby(["leiden", "annotation"], as_index=False)
         .size()
-        .pivot("leiden", "maxScores")
+        .pivot("leiden", "annotation")
         .fillna(0)
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
-    stacked_norm.columns = list(adata.obs.maxScores.cat.categories)
+    stacked_norm.columns = list(adata.obs.annotation.cat.categories)
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
     # Use custom colormap
@@ -1206,11 +1209,11 @@ def clustercleanlinessPlot(
 
     # Plot images with colored celltypes
     plot_shapes(
-        adata, column="maxScores", alpha=0.8, output=output + "1" if output else None, library_id=library_id
+        adata, column="annotation", alpha=0.8, output=output + "1" if output else None, library_id=library_id
     )
     plot_shapes(
         adata,
-        column="maxScores",
+        column="annotation",
         crd=crop_coord,
         alpha=0.8,
         output=output + "2" if output else None,
@@ -1219,7 +1222,7 @@ def clustercleanlinessPlot(
 
     # Plot clusters
     _, ax = plt.subplots(1, 1, figsize=(15, 10))
-    sc.pl.umap(adata, color=["maxScores"], ax=ax, size=60, show=not output)
+    sc.pl.umap(adata, color=["annotation"], ax=ax, show=not output)
     ax.axis("off")
 
     # Save the plot to ouput
@@ -1245,7 +1248,7 @@ def enrichment(adata: AnnData) -> AnnData:
 
     # Calculate nhood enrichment
     sq.gr.spatial_neighbors(adata, coord_type="generic")
-    sq.gr.nhood_enrichment(adata, cluster_key="maxScores")
+    sq.gr.nhood_enrichment(adata, cluster_key="annotation")
     return adata
 
 
@@ -1255,8 +1258,10 @@ def enrichment_plot(adata: AnnData, output: str = None) -> None:
     # disable interactive mode
     if output:
         plt.ioff()
-
-    sq.pl.nhood_enrichment(adata, cluster_key="maxScores", method="ward")
+    # remove 'nan' values from "adata.uns['annotation_nhood_enrichment']['zscore']"
+    tmp = adata.uns['annotation_nhood_enrichment']['zscore']
+    adata.uns['annotation_nhood_enrichment']['zscore'] = np.nan_to_num(tmp)
+    sq.pl.nhood_enrichment(adata, cluster_key="annotation", method="ward")
 
     # Save the plot to ouput
     if output:
