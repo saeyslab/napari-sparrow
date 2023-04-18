@@ -24,6 +24,7 @@ from basicpy import BaSiC
 from cellpose import models
 from rasterio import features
 from scipy import ndimage
+from scipy.ndimage import gaussian_filter
 import dask.dataframe as dd
 
 import xarray as xr
@@ -170,7 +171,15 @@ def tilingCorrectionPlot(
     ax2[0].set_title("Corrected image")
     ax2[1].imshow(img_orig, cmap="gray")
     ax2[1].set_title("Original image")
-
+    ax2[0].spines["top"].set_visible(False)
+    ax2[0].spines["right"].set_visible(False)
+    ax2[0].spines["bottom"].set_visible(False)
+    ax2[0].spines["left"].set_visible(False)
+    ax2[1].spines["top"].set_visible(False)
+    ax2[1].spines["right"].set_visible(False)
+    ax2[1].spines["bottom"].set_visible(False)
+    ax2[1].spines["left"].set_visible(False)
+    
     # Save the plot to ouput
     if output:
         plt.close(fig2)
@@ -600,6 +609,31 @@ def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id:
     #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
 
     return adata,df
+
+def control_transcripts(df,scaling_factor=100):
+    """This function plots the transcript density of the tissue. You can use it to compare different regions in your tissue on transcript density.  """
+    Try=df.groupby(['x','y']).count()['gene']
+    Image=np.array(Try.unstack(fill_value=0))
+    Image=Image/np.max(Image)
+    blurred = gaussian_filter(scaling_factor*Image, sigma=7)
+    return blurred
+
+def plot_control_transcripts(blurred,img,crd=None):
+    if crd:
+        fig, ax = plt.subplots(1, 2, figsize=(20, 20))
+
+        ax[0].imshow(blurred.T[crd[0]:crd[1],crd[2]:crd[3]],cmap='magma',vmax=5)
+        ax[1].imshow(img[crd[0]:crd[1],crd[2]:crd[3]],cmap='gray')
+        ax[0].set_title("Transcript density")
+        ax[1].set_title("Corrected image")
+    fig, ax = plt.subplots(1, 2, figsize=(20, 20))
+
+    ax[0].imshow(blurred.T,cmap='magma',vmax=5)
+    ax[1].imshow(img,cmap='gray')
+    ax[0].set_title("Transcript density")
+    ax[1].set_title("Corrected image")
+
+
 def create_adata_quick(
     path: str, ic: sq.im.ImageContainer, masks: np.ndarray, library_id: str = "spatial_transcriptomics"
 ) -> AnnData:
@@ -753,7 +787,8 @@ def plot_shapes(
     if output:
         plt.close(fig)
         fig.savefig(output + ".png")
-
+    else:
+        plt.show()
 
 def preprocessAdata(
     adata: AnnData, mask: np.ndarray, nuc_size_norm: bool = True, n_comps: int = 50
