@@ -601,7 +601,7 @@ def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id:
 
     return adata,df
 def create_adata_quick(
-    path: str, ic: sq.im.ImageContainer, masks: np.ndarray, library_id: str = "melanoma"
+    path: str, ic: sq.im.ImageContainer, masks: np.ndarray, library_id: str = "spatial_transcriptomics"
 ) -> AnnData:
     """Returns the AnnData object with transcript and polygon data.
 
@@ -679,7 +679,7 @@ def plot_shapes(
     img=None,
     img_layer='image',
     alpha: float = 0.5,
-    library_id='melanoma',
+    library_id='spatial_transcriptomics',
     crd=None,
     output: str = None,
     vmin=None,
@@ -998,7 +998,7 @@ def scoreGenesPlot(
     scoresper_cluster: pd.DataFrame,
     filter_index: int = 5,
     output: str = None,
-    library_id='melanoma'
+    library_id='spatial_transcriptomics'
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the annotation."""
 
@@ -1168,7 +1168,7 @@ def clustercleanlinessPlot(
     crop_coord: List[int] = [0, 2000, 0, 2000],
     color_dict: dict = None,
     output: str = None,
-    library_id='melanoma'
+    library_id='spatial_transcriptomics'
 ) -> None:
     """This function plots the clustercleanliness as barplots, the images with colored celltypes and the clusters."""
 
