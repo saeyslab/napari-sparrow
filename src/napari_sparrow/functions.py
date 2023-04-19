@@ -360,69 +360,6 @@ def segmentationDeprecated(
     return masks, mask_i, polygons, img
 
 
-def segmentationPlot_deprecated(
-    img: np.ndarray,
-    mask_i: np.ndarray,
-    polygons: geopandas.GeoDataFrame,
-    channels: List[int] = [0, 0],
-    small_size_vis: List[int] = None,
-    output: str = None,
-) -> None:
-    """Creates the plots based on the original image as well as the image masks."""
-
-    # disable interactive mode
-    if output:
-        plt.ioff()
-
-    # Select correct layer of the image
-    if sum(channels) != 0:
-        img = img[0, :, :]
-
-    # Show only small part of the image
-    if small_size_vis is not None:
-        fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-        ax[0].imshow(
-            img[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
-            ],
-            cmap="gray",
-        )
-
-        ax[1].imshow(
-            img[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
-            ],
-            cmap="gray",
-        )
-        ax[1].imshow(
-            mask_i[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
-            ],
-            cmap="jet",
-        )
-
-    # Show the full image
-    else:
-        fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-        ax[0].imshow(img, cmap="gray")
-        ax[1].imshow(img, cmap="gray")
-        polygons.plot(
-            ax=ax[1],
-            edgecolor="white",
-            linewidth=polygons.linewidth,
-            alpha=0.5,
-            legend=True,
-            color="red",
-        )
-
-    # Save the plot to ouput
-    if output:
-        plt.close(fig)
-        fig.savefig(output + ".png")
-
 def segmentationPlot(
     ic,
     mask_i=None,
@@ -632,6 +569,22 @@ def plot_control_transcripts(blurred,img,crd=None):
     ax[1].imshow(img,cmap='gray')
     ax[0].set_title("Transcript density")
     ax[1].set_title("Corrected image")
+
+def analyse_genes_left_out(adata,df):
+    """ This function """
+    filtered=pd.DataFrame(adata.X.sum(axis=0)/df.groupby('gene').count()['x'][adata.var.index])
+    filtered=filtered.rename(columns={'x':'proportion_kept'})
+    filtered['raw_counts']=df.groupby('gene').count()['x'][adata.var.index]
+    sns.scatterplot(data=filtered, y="proportion_kept", x="raw_counts")
+    
+    plt.axvline(filtered['raw_counts'].median(), color='green', linestyle='dashed')
+    plt.axhline(filtered['proportion_kept'].median(), color='red', linestyle='dashed')
+    plt.xlim(left=-10,right=filtered['raw_counts'].quantile(0.90)) # set y-axis limit from 0 to the 95th percentile of y
+    # show the plot
+    plt.show()
+    print('The ten genes with the highest proportion of transcripts filtered out')
+    print(filtered.sort_values(by='proportion_kept')[0:10])
+    return filtered
 
 
 def create_adata_quick(
@@ -962,7 +915,7 @@ def scoreGenes(
     del_genes: List[str] = None,
     input_dict=False
 ) -> Tuple[dict, pd.DataFrame]:
-    """Returns genes dict and the score sper cluster
+    """Returns genes dict and the scores per cluster
 
     Load the marker genes from csv file in path_marker_genes.
     repl_columns holds the column names that should be replaced the in the marker genes.
