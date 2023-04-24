@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 import scanpy as sc
+import scipy
 import seaborn as sns
 import shapely
 import squidpy as sq
@@ -575,15 +576,26 @@ def analyse_genes_left_out(adata,df):
     filtered=pd.DataFrame(adata.X.sum(axis=0)/df.groupby('gene').count()['x'][adata.var.index])
     filtered=filtered.rename(columns={'x':'proportion_kept'})
     filtered['raw_counts']=df.groupby('gene').count()['x'][adata.var.index]
-    sns.scatterplot(data=filtered, y="proportion_kept", x="raw_counts")
+    filtered['log_raw_counts']=np.log(filtered['raw_counts'])
+
+    sns.scatterplot(data=filtered, y="proportion_kept", x="log_raw_counts")
     
-    plt.axvline(filtered['raw_counts'].median(), color='green', linestyle='dashed')
+    plt.axvline(filtered['log_raw_counts'].median(), color='green', linestyle='dashed')
     plt.axhline(filtered['proportion_kept'].median(), color='red', linestyle='dashed')
-    plt.xlim(left=-10,right=filtered['raw_counts'].quantile(0.90)) # set y-axis limit from 0 to the 95th percentile of y
+    plt.xlim(left=-0.5,right=filtered['log_raw_counts'].quantile(0.99)) # set y-axis limit from 0 to the 95th percentile of y
     # show the plot
     plt.show()
+    r, p = scipy.stats.pearsonr(filtered['log_raw_counts'], filtered['proportion_kept'])
+    sns.regplot(x = "log_raw_counts", y = "proportion_kept", data = filtered)
+    ax=plt.gca()
+    ax.text(0.7, 0.9, 'r={:.2f}, p={:.2g}'.format(r, p),
+            transform=ax.transAxes)
+    
+    plt.axvline(filtered['log_raw_counts'].median(), color='green', linestyle='dashed')
+    plt.axhline(filtered['proportion_kept'].median(), color='red', linestyle='dashed')
+    plt.show()
     print('The ten genes with the highest proportion of transcripts filtered out')
-    print(filtered.sort_values(by='proportion_kept')[0:10])
+    print(filtered.sort_values(by='proportion_kept')[0:10].iloc[:,0:2])
     return filtered
 
 
