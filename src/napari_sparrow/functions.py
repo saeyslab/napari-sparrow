@@ -768,7 +768,15 @@ def preprocessAdata(
 
     # Normalize nucleus size
     indices, counts = np.unique(mask, return_counts=True)
-    adata.obs["nucleusSize"] = [counts[np.where(indices==int(index))][0] for index in adata.obs.index]
+    for index in adata.obs.index:
+        c = counts[np.where(indices==int(index))]
+        if len(c) == 0:
+            count = 0
+        else:
+            count = c[0]
+    
+    adata.obs["nucleusSize"] = count
+    
     if nuc_size_norm:   
         adata.X = (adata.X.T*100 / adata.obs.nucleusSize.values).T
         sc.pp.log1p(adata)
