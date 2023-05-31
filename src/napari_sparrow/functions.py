@@ -7,6 +7,8 @@ from itertools import chain
 from typing import List, Optional, Tuple
 
 import cv2
+import os
+os.environ['USE_PYGEOS'] = '0'
 import geopandas
 import matplotlib
 import matplotlib.colors as mpl
@@ -24,10 +26,11 @@ from anndata import AnnData
 from basicpy import BaSiC
 from cellpose import models
 from rasterio import features
+import scipy as sp
 from scipy import ndimage
 from scipy.ndimage import gaussian_filter
 import dask.dataframe as dd
-
+import spatialdata
 import xarray as xr
 import dask
 import numpy as np
@@ -84,7 +87,7 @@ def tilingCorrection(
     """
 
     # Create the tiles
-    tiles = img.generate_equal_crops(size=tile_size, as_array="image")
+    tiles = img.generate_equal_crops(size=tile_size, as_array="raw_image")
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
     black=np.array([1 if ~np.any(tile-1) else 0 for tile in tiles]) # determine if 
 
@@ -120,29 +123,32 @@ def tilingCorrection(
 
     
 
-    img = sq.im.ImageContainer(i_new, layer="image")
-    img.add_img(
-        i_mask.astype(np.uint8),
-        layer="mask",
-    )
+    mask = sq.im.ImageContainer(i_mask.astype(np.uint8), layer="mask_black_lines")
+    #img.add_img(
+     #   i_mask.astype(np.uint8),
+     #   layer="mask",
+    #)
 
     if size is not None and left_corner is not None:
         img = img.crop_corner(*left_corner, size)
 
     # Perform inpainting
-    img = img.apply(
+    img.apply(
         {"0": cv2.inpaint},
-        layer="image",
-        drop=True,
+        layer="raw_image",
+        drop=False,
         channel=0,
-        copy=True,
+        new_layer='corrected',
+        copy=False,
+        #chunks=10,
         fn_kwargs={
-            "inpaintMask": img.data.mask.squeeze().to_numpy(),
+            "inpaintMask": mask.data.mask_black_lines.squeeze().to_numpy(),
             "inpaintRadius": 55,
             "flags": cv2.INPAINT_NS,
         },
     )
 
+    print(img)
     return img, flatfield
 
 
@@ -189,6 +195,7 @@ def tilingCorrectionPlot(
 
 def preprocessImage(
     img: sq.im.ImageContainer,
+    img_layer=None,
     contrast_clip: float = 2.5,
     size_tophat: int = None,
 ) -> sq.im.ImageContainer:
@@ -199,24 +206,33 @@ def preprocessImage(
     Size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is applied. The recommendable size is 45.
     Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better.
     """
+    if img_layer==None:
+        if 'corrected' in img:
+            img_layer='corrected'
+        elif 'raw_image' in img:
+            img_layer='raw_image'
+        else:
+            raise ValueError('Your layers in you image container don\'t have the expected names. Please provide a correct name.')
 
     # Apply tophat filter
     if size_tophat is not None:
         minimum_t = ndimage.minimum_filter(
-            img.data.image.squeeze().to_numpy(), size_tophat
+            img.data[img_layer].squeeze().to_numpy(), size_tophat
         )
         max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
-        img = img.apply(
+        img.apply(
             {"0": lambda array: array - max_of_min_t},
-            layer="image",
+            layer=img_layer,
+            new_layer='corrected',
             drop=True,
             channel=0,
-            copy=True,
+            copy=False,
         )
-
+    if 'corrected' in img:
+        img_layer='corrected'
     # Enhance the contrast
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
-    img = img.apply({"0": clahe.apply}, layer="image", drop=True, channel=0, copy=True)
+    img.apply({"0": clahe.apply}, layer=img_layer,new_layer='corrected', drop=True, channel=0, copy=False)
 
     return img
 
@@ -285,6 +301,7 @@ def cellpose(img, min_size=80,cellprob_threshold=-4, flow_threshold=0.85, diamet
             
 def segmentation(
     img: sq.im.ImageContainer,
+    img_layer='corrected',
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
@@ -295,9 +312,9 @@ def segmentation(
     ): 
 
     
-    sq.im.segment(img=img, layer="image", method=cellpose,chunks='auto',min_size=min_size,cellprob_threshold=cellprob_threshold, flow_threshold=flow_threshold, diameter=diameter, model_type=model_type,channels=channels,device=device)
-    masks=img.data.segmented_custom.squeeze().to_numpy()
-    mask_i = np.ma.masked_where(masks == 0, masks)
+    sq.im.segment(img=img, layer=img_layer, method=cellpose,chunks='auto',min_size=min_size,layer_added='segmentation_mask',cellprob_threshold=cellprob_threshold, flow_threshold=flow_threshold, diameter=diameter, model_type=model_type,channels=channels,device=device)
+    masks=img.data.segmentation_mask.squeeze().to_numpy()
+    #mask_i = np.ma.masked_where(masks == 0, masks)
 
     # Create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
@@ -305,9 +322,30 @@ def segmentation(
     polygons["linewidth"] = polygons.geometry.map(linewidth)
     #polygons["color"] = polygons.geometry.map(fc.color)
     polygons["cells"] = polygons.index
+    polygons.index=polygons.index.astype(str)
     polygons = polygons.dissolve(by="cells")
-    return masks, mask_i, polygons, img            
-            
+    sdata=imageContainerToSData(img)
+    if model_type=='nuclei':
+        sdata.add_shapes(name='nucleus_boundaries',shapes=spatialdata.models.ShapesModel.parse(polygons))
+    elif model_type=='cyto':
+        sdata.add_shapes(name='cell_boundaries',shapes=spatialdata.models.ShapesModel.parse(polygons))
+    return sdata     
+
+
+def imageContainerToSData(ic,sdata=None,layers_im=['corrected','raw_image'],layers_labels=['segmentation_mask']):
+    
+    if sdata==None:
+        
+        sdata=spatialdata.SpatialData()
+        
+    temp=ic.data.rename_dims({'channels':'c'})
+    for i in layers_im:
+       
+        sdata.add_image(name=i,image=spatialdata.models.Image2DModel.parse(temp[i].squeeze(dim='z').transpose('c','y','x')))
+    for j in layers_labels:
+        sdata.add_labels(name=j,labels=spatialdata.models.Labels2DModel.parse(temp[j].squeeze().transpose('y','x')))
+    
+    return sdata             
 
 def segmentationDeprecated(
     img: sq.im.ImageContainer,
@@ -334,7 +372,6 @@ def segmentationDeprecated(
     """
 
     channels = np.array(channels)
-
     # Perform cellpose segmentation
     model = models.Cellpose(device=torch.device(device), model_type=model_type)
     masks, _, _, _ = model.eval(
@@ -345,7 +382,7 @@ def segmentationDeprecated(
         flow_threshold=flow_threshold,
         cellprob_threshold=cellprob_threshold,
     )
-    mask_i = np.ma.masked_where(masks == 0, masks)
+    #mask_i = np.ma.masked_where(masks == 0, masks)
 
     # Create the polygon shapes of the different cells
     polygons = mask_to_polygons_layer(masks)
@@ -356,41 +393,38 @@ def segmentationDeprecated(
     polygons = polygons.dissolve(by="cells")
     polygons.index = list(map(str, polygons.index))
 
-    img.add_img(masks, layer="segment_cellpose")
-
-    return masks, mask_i, polygons, img
+    #img.add_img(masks, layer="segment_cellpose")
+    
+    return masks, polygons, img
 
 
 def segmentationPlot(
-    ic,
-    mask_i=None,
-    polygons: geopandas.GeoDataFrame=None,
+    sdata,
     crd=None,
     channels=[0,0],
     small_size_vis=None,
-    img_layer='image',
+    img_layer='corrected',
+    shape_layer=None,
     output: str = None,
 ) -> None:
     if output:
         plt.ioff()
     if small_size_vis:
         crd=small_size_vis
-    if polygons is None:
-        raise ValueError("No polygons are given as input") 
-    if type(ic)==np.ndarray:
-        ic = sq.im.ImageContainer(ic)
-        
-    Xmax=ic.data.sizes['x']
-    Ymax=ic.data.sizes['y']    
-    ic=ic.data.assign_coords({'x':np.arange(Xmax),'y':np.arange(Ymax)})  
+    ic=sdata.images[img_layer] 
+    if shape_layer==None:
+        shape_layer=[*sdata.shapes][0]
+    Xmax=ic.sizes['x']
+    Ymax=ic.sizes['y']    
+    #ic=ic.data.assign_coords({'x':np.arange(Xmax),'y':np.arange(Ymax)})  
     #crd=small_size_vis
     #crd=[2000,3500,1000,2500]
     if crd==None:
         crd=[0,Ymax,0,Xmax]
     fig, ax = plt.subplots(1, 2, figsize=(20, 20))
-    ic[img_layer].squeeze().sel(x=slice(crd[2],crd[3]),y=slice(crd[0],crd[1])).plot.imshow(cmap='gray', robust=True, ax=ax[0],add_colorbar=False)
-    ic[img_layer].squeeze().sel(x=slice(crd[2],crd[3]),y=slice(crd[0],crd[1])).plot.imshow(cmap='gray', robust=True, ax=ax[1],add_colorbar=False)
-    polygons.cx[crd[2]:crd[3],crd[0]:crd[1]].plot(
+    ic.squeeze().sel(x=slice(crd[2],crd[3]),y=slice(crd[0],crd[1])).plot.imshow(cmap='gray', robust=True, ax=ax[0],add_colorbar=False)
+    ic.squeeze().sel(x=slice(crd[2],crd[3]),y=slice(crd[0],crd[1])).plot.imshow(cmap='gray', robust=True, ax=ax[1],add_colorbar=False)
+    sdata[shape_layer].cx[crd[2]:crd[3],crd[0]:crd[1]].plot(
             ax=ax[1],
             edgecolor="white",
             linewidth=1,
@@ -463,90 +497,104 @@ def delete_overlap(voronoi,polygons):
         voronoi.geometry.iloc[cell1]=voronoi.iloc[cell1].geometry.intersection(voronoi2.iloc[cell1].geometry.difference(voronoi2.iloc[cell2].geometry))
         voronoi.geometry.iloc[cell2]=voronoi.iloc[cell2].geometry.intersection(voronoi2.iloc[cell2].geometry.difference(voronoi2.iloc[cell1].geometry))
     voronoi['geometry']=voronoi.geometry.union(polygons.geometry) 
+    polygons=polygons.buffer(distance=0) 
+    voronoi=voronoi.buffer(distance=0)        
     return voronoi
 
-def allocation(ddf,ic: sq.im.ImageContainer, masks: np.ndarray=None, library_id: str = "spatial_transcriptomics",radius=0,polygons=None, verbose=False
+def allocation(sdata, masks=None,radius=0,shape_layer=None, verbose=False
     ):
     
     # Create the polygon shapes for the mask
-    if polygons is None:
-        polygons = mask_to_polygons_layer(masks)
-        polygons["cells"] = polygons.index
-        polygons = polygons.dissolve(by="cells")
-    polygons.index = list(map(str, polygons.index))
-    
+    if shape_layer==None:
+        shape_layer=[*sdata.shapes][0]
+    sdata[shape_layer].index=sdata[shape_layer].index.astype('str')
+   
     #calculate new mask based on radius    
     if radius!=0:
-        boundary=Polygon([(0,0),(ic.shape[1]+200,0),(ic.shape[1]+200,ic.shape[0]+200),(0,ic.shape[0]+200)])
-        polygons['geometry']=polygons.simplify(2)
-        vd = voronoiDiagram4plg(polygons, boundary)
-        voronoi=geopandas.sjoin(vd,polygons,predicate='contains',how='left')
+        
+        expanded_layer_name='expanded_cells'+str(radius)
+        #sdata[shape_layer].index = list(map(str, sdata[shape_layer].index))
+        
+        boundary=Polygon([(0,0),(sdata[[*sdata.images][0]].shape[1]+200,0),(sdata[[*sdata.images][0]].shape[1]+200,sdata[[*sdata.images][0]].shape[2]+200),(0,sdata[[*sdata.images][0]].shape[2]+200)])
+        if expanded_layer_name in [*sdata.shapes]:
+            del sdata.shapes[expanded_layer_name]
+        sdata[expanded_layer_name]=sdata[shape_layer].copy()
+        sdata[expanded_layer_name]['geometry']=sdata[shape_layer].simplify(2)
+
+        vd = voronoiDiagram4plg(sdata[expanded_layer_name], boundary)
+        voronoi=geopandas.sjoin(vd,sdata[expanded_layer_name],predicate='contains',how='left')
         voronoi.index=voronoi.index_right
         voronoi=voronoi[~voronoi.index.duplicated(keep='first')]
-        voronoi=delete_overlap(voronoi,polygons)
-        buffered=polygons.buffer(distance=radius)
+        voronoi=delete_overlap(voronoi,sdata[expanded_layer_name])
+        
+        buffered=sdata[expanded_layer_name].buffer(distance=radius)
         intersected=voronoi.sort_index().intersection(buffered.sort_index())
-        polygons.geometry=intersected
+        sdata[expanded_layer_name].geometry=intersected
         
         masks=rasterio.features.rasterize( #it should be possible to give every shape  number. You need to give the value with it as input. 
-            zip(intersected.geometry,intersected.index.values.astype(float)), 
-            out_shape=[ic.shape[0],ic.shape[1]],dtype='uint32')    
+                    zip(intersected.geometry,intersected.index.values.astype(float)), 
+                    out_shape=[sdata[[*sdata.images][0]].shape[1],sdata[[*sdata.images][0]].shape[2]],dtype='uint32')  
         
-    # adapt transcripts file     
-    ddf = ddf[
-    (ic.data.attrs["coords"].y0 < ddf['y'])
-    & (ddf['y'] < masks.shape[0] + ic.data.attrs["coords"].y0)
-    & (ic.data.attrs["coords"].x0 < ddf['x'])
-    & (ddf['x'] < masks.shape[1] + ic.data.attrs["coords"].x0)
-    ]
+    # adapt transcripts file  
+    sdata.add_points(name='selected_transcripts',points=sdata['transcripts'][
+    (sdata['transcripts']['y'] < sdata['segmentation_mask'].shape[0])
+    & (sdata['transcripts']['y'] >=0)
+        & (sdata['transcripts']['x'] >=0)   
+    & (sdata['transcripts']['x'] < sdata['segmentation_mask'].shape[1])
+    ],overwrite=True)
+
     if verbose:
         print('Started df calculation')
 
-    df=ddf.compute()
+    df=sdata['selected_transcripts'].compute()
+    
+    if masks is None:
+        masks=sdata['segmentation_mask'].squeeze().to_numpy()
+
     if verbose:
         print('df calculated')
     df["cells"] = masks[
-        df['y'].values.astype(int) - ic.data.attrs["coords"].y0,
-        df['x'].values.astype(int) - ic.data.attrs["coords"].x0,
+        df['y'].values.astype(int),
+        df['x'].values.astype(int),
     ]
-    if masks is None:
-        masks=ic.data.segment_cellpose.squeeze().to_numpy()
+
     # Calculate the mean of the transcripts for every cell
     coordinates = df.groupby(["cells"]).mean().loc[:, ['x', 'y']]
     cell_counts = df.groupby(["cells", "gene"]).size().unstack(fill_value=0)
     if verbose: 
-        
+
         print('finished groupby')
         # Create the anndata object
     adata = AnnData(cell_counts[cell_counts.index != 0],dtype='int64')
     coordinates.index = coordinates.index.map(str)
+
     adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
-    if verbose:
-        print('created anndata object')
-    # Add the polygons to the anndata object
-    polygons["linewidth"] = polygons.geometry.map(linewidth)
+    adata.obs['region']=1
+    adata.obs['instance']=1
 
-    polygons_f = polygons[
-        np.isin(polygons.index.values, adata.obs.index.values)
-    ]
-    #polygons_f.index = list(map(str, polygons_f.index))
-    adata.obsm["polygons"] = polygons_f
-    adata.obs["cell_ID"] = [int(x) for x in adata.obsm["polygons"].index]
+    if sdata.table:
+        del sdata.table
 
-    # Add the figure to the anndata object
-    adata.uns["spatial"] = {library_id: {}}
-    adata.uns["spatial"][library_id]["images"] = {}
-    adata.uns["spatial"][library_id]["images"] = {
-        "hires": ic.data.image.squeeze().to_numpy()
-        #"segmentation":ic.data.segment_cellpose.squeeze().to_numpy()
-    }
-    adata.uns["spatial"][library_id]["scalefactors"] = {
-        "tissue_hires_scalef": 1,
-        "spot_diameter_fullres": 75,
-    }
-    #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
+    sdata.table=spatialdata.models.TableModel.parse(adata,region_key='region',region=1,instance_key='instance')
 
-    return adata,df
+
+    for i in [*sdata.shapes]:
+        sdata[i].index=sdata[i].index.astype('str')
+        sdata.add_shapes(name=i,
+        shapes=spatialdata.models.ShapesModel.parse(sdata[i][np.isin(sdata[i].index.values,sdata.table.obs.index.values)]),overwrite=True)
+        #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
+
+    return sdata,df
+
+
+    for i in [*sdata.shapes]:
+        sdata[i].index=sdata[i].index.astype('str')
+        sdata.add_shapes(name=i,
+        shapes=spatialdata.models.ShapesModel.parse(sdata[i][np.isin(sdata[i].index.values,sdata.table.obs.index.values)]),overwrite=True)
+        #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
+
+    return sdata,df
+
 
 def control_transcripts(df,scaling_factor=100):
     """This function plots the transcript density of the tissue. You can use it to compare different regions in your tissue on transcript density.  """
@@ -556,26 +604,33 @@ def control_transcripts(df,scaling_factor=100):
     blurred = gaussian_filter(scaling_factor*Image, sigma=7)
     return blurred
 
-def plot_control_transcripts(blurred,img,crd=None):
+
+
+def plot_control_transcripts(blurred,sdata,crd=None):
     if crd:
         fig, ax = plt.subplots(1, 2, figsize=(20, 20))
 
         ax[0].imshow(blurred.T[crd[0]:crd[1],crd[2]:crd[3]],cmap='magma',vmax=5)
-        ax[1].imshow(img[crd[0]:crd[1],crd[2]:crd[3]],cmap='gray')
+        sdata['corrected'].squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax[1],add_colorbar=False)
         ax[0].set_title("Transcript density")
         ax[1].set_title("Corrected image")
     fig, ax = plt.subplots(1, 2, figsize=(20, 20))
 
     ax[0].imshow(blurred.T,cmap='magma',vmax=5)
-    ax[1].imshow(img,cmap='gray')
+    sdata['corrected'].squeeze().plot.imshow(cmap='gray', robust=True, ax=ax[1],add_colorbar=False)
+    ax[1].axes.set_aspect('equal')
+    ax[1].invert_yaxis()
+
     ax[0].set_title("Transcript density")
     ax[1].set_title("Corrected image")
+    
+    
 
-def analyse_genes_left_out(adata,df):
+def analyse_genes_left_out(sdata,df):
     """ This function """
-    filtered=pd.DataFrame(adata.X.sum(axis=0)/df.groupby('gene').count()['x'][adata.var.index])
+    filtered=pd.DataFrame(sdata.table.X.sum(axis=0)/df.groupby('gene').count()['x'][sdata.table.var.index])
     filtered=filtered.rename(columns={'x':'proportion_kept'})
-    filtered['raw_counts']=df.groupby('gene').count()['x'][adata.var.index]
+    filtered['raw_counts']=df.groupby('gene').count()['x'][sdata.table.var.index]
     filtered['log_raw_counts']=np.log(filtered['raw_counts'])
 
     sns.scatterplot(data=filtered, y="proportion_kept", x="log_raw_counts")
@@ -585,7 +640,7 @@ def analyse_genes_left_out(adata,df):
     plt.xlim(left=-0.5,right=filtered['log_raw_counts'].quantile(0.99)) # set y-axis limit from 0 to the 95th percentile of y
     # show the plot
     plt.show()
-    r, p = scipy.stats.pearsonr(filtered['log_raw_counts'], filtered['proportion_kept'])
+    r, p = sp.stats.pearsonr(filtered['log_raw_counts'], filtered['proportion_kept'])
     sns.regplot(x = "log_raw_counts", y = "proportion_kept", data = filtered)
     ax=plt.gca()
     ax.text(0.7, 0.9, 'r={:.2f}, p={:.2g}'.format(r, p),
@@ -671,12 +726,13 @@ def create_adata_quick(
 
     return adata
 
+
 def plot_shapes(
-    adata,
+    sdata,
     column: str = None,
     cmap: str = "magma",
-    img=None,
-    img_layer='image',
+    img_layer='corrected',
+    shapes_layer=None,
     alpha: float = 0.5,
     library_id='spatial_transcriptomics',
     crd=None,
@@ -685,29 +741,28 @@ def plot_shapes(
     vmax=None,
 ) -> None:
     
-    adata.obsm['polygons']=geopandas.GeoDataFrame(adata.obsm['polygons'],geometry=adata.obsm['polygons']['geometry'])
     
-    if img==None:
-        img= sq.im.ImageContainer(adata.uns["spatial"][library_id]["images"]["hires"], layer="image")
-        
-    Xmax=img.data.sizes['x']
-    Ymax=img.data.sizes['y']    
-    img=img.data.assign_coords({'x':np.arange(Xmax),'y':np.arange(Ymax)})  
+    
+    
+    Xmax=sdata[img_layer].sizes['x']
+    Ymax=sdata[img_layer].sizes['y']    
     
     if crd==None:
         crd=[0,Xmax,0,Ymax]
+    if shapes_layer==None:
+        shapes_layer=[*sdata.shapes][0]
         
     if column is not None:
-        if column + "_colors" in adata.uns:
+        if column + "_colors" in sdata.table.uns:
             cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
                 "new_map",
-                adata.uns[column + "_colors"],
-                N=len(adata.uns[column + "_colors"]),
+                sdata.table.uns[column + "_colors"],
+                N=len(sdata.table.uns[column + "_colors"]),
             ) 
-        if column in adata.obs.columns:    
-            column=adata[adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].index,:].obs[column]
-        elif column in adata.var.index:
-            column=adata[adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].index,:].X[:,np.where(adata.var.index==column)[0][0]]
+        if column in sdata.table.obs.columns:    
+            column=sdata.table[sdata[shapes_layer].cx[crd[0]:crd[1],crd[2]:crd[3]].index,:].obs[column]
+        elif column in sdata.table.var.index:
+            column=sdata.table[sdata[shapes_layer].cx[crd[0]:crd[1],crd[2]:crd[3]].index,:].X[:,np.where(sdata.table.var.index==column)[0][0]]
         else: 
             print('The column defined in the function isnt a column in obs, nor is it a gene name, the plot is made without taking into account this value.')
             column= None
@@ -721,9 +776,9 @@ def plot_shapes(
     
     fig, ax = plt.subplots(1, 1, figsize=(20, 20))
 
-    img[img_layer].squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax,add_colorbar=False)
+    sdata[img_layer].squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax,add_colorbar=False)
 
-    adata.obsm["polygons"].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
+    sdata[shapes_layer].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
             ax=ax,
             edgecolor="white",
             column=column,
@@ -756,59 +811,66 @@ def plot_shapes(
         plt.show()
 
 def preprocessAdata(
-    adata: AnnData, mask: np.ndarray, nuc_size_norm: bool = True, n_comps: int = 50
-) -> Tuple[AnnData, AnnData]:
+    sdata, nuc_size_norm: bool = True, n_comps: int = 50,min_counts=10,min_cells=5,shapes_layer=None):
     """Returns the new and original AnnData objects
 
     This function calculates the QC metrics.
     All cells with les then 10 genes and all genes with less then 5 cells are removed.
-    Normalization is performed based on the size of the nucleus in nuc_size_norm.
-    """
-
+    Normalization is performed based on the size of the nucleus in nuc_size_norm."""
+    # calculate the max amount of pc's possible 
+    if min(sdata.table.shape)<n_comps:
+        
+        n_comps=min(sdata.table.shape)
+        print('amount of pc\'s was set to '+str(min(sdata.table.shape)),' because of the dimensionality of the data.')
     # Calculate QC Metrics
-    sc.pp.calculate_qc_metrics(adata, inplace=True, percent_top=[2, 5])
-    adata_orig = adata
+    
+    sc.pp.calculate_qc_metrics(sdata.table, inplace=True, percent_top=[2, 5])
 
     # Filter cells and genes
-    sc.pp.filter_cells(adata, min_counts=10)
-    sc.pp.filter_genes(adata, min_cells=5)
-    adata.raw= adata
+    sc.pp.filter_cells(sdata.table, min_counts=min_counts)
+    sc.pp.filter_genes(sdata.table, min_cells=min_cells)
+    sdata.table.raw= sdata.table
 
     # Normalize nucleus size
+    if shapes_layer is None:
+        shapes_layer=[*sdata.shapes][-1]
+    sdata.table.obs["shapeSize"] = sdata[shapes_layer].area
     
-    indices, counts = np.unique(mask, return_counts=True)
-    adata.obs["nucleusSize"] = [counts[np.where(indices==int(index))][0] for index in adata.obs.index]
     if nuc_size_norm:   
-        adata.X = (adata.X.T*100 / adata.obs.nucleusSize.values).T
+        sdata.table.X = (sdata.table.X.T*100 / sdata.table.obs.shapeSize.values).T
 
-        sc.pp.log1p(adata)
-        sc.pp.scale(adata, max_value=10)
+        sc.pp.log1p(sdata.table)
+        sc.pp.scale(sdata.table, max_value=10)
     else:
-        sc.pp.normalize_total(adata)
-        sc.pp.log1p(adata)
+        sc.pp.normalize_total(sdata.table)
+        sc.pp.log1p(sdata.table)
 
-    sc.tl.pca(adata, svd_solver="arpack", n_comps=n_comps)
-    adata.obsm["polygons"] = geopandas.GeoDataFrame(
-        adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
-    )
+    sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
+    #Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too! 
+    
+    for i in [*sdata.shapes]:
+        sdata[i].index=sdata[i].index.astype('str')
+        sdata.add_shapes(name=i,
+        shapes=spatialdata.models.ShapesModel.parse(sdata[i][np.isin(sdata[i].index.values,sdata.table.obs.index.values)]),overwrite=True)
 
-    return adata, adata_orig
+    return sdata
 
 
-def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) -> None:
+def preprocesAdataPlot(sdata, output: str = None) -> None:
     """This function plots the size of the nucleus related to the counts."""
 
     # disable interactive mode
     if output:
         plt.ioff()
 
-    sc.pl.pca(adata, color="total_counts", show=not output)
+    sc.pl.pca(sdata.table, color="total_counts", show=not output,title='PC plot colored by total counts')
+    sc.pl.pca(sdata.table, color="shapeSize", show=not output,title='PC plot colored by object size')
 
     fig, axs = plt.subplots(1, 2, figsize=(15, 4))
-    sns.histplot(adata_orig.obs["total_counts"], kde=False, ax=axs[0])
-    sns.histplot(adata_orig.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
+    sns.histplot(sdata.table.obs["total_counts"], kde=False, ax=axs[0])
+    sns.histplot(sdata.table.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
     plt.show()
-    plt.scatter(adata.obs["nucleusSize"], adata.obs["total_counts"])
+    plt.scatter(sdata.table.obs["shapeSize"], sdata.table.obs["total_counts"])
     plt.title = "cellsize vs cellcount"
 
     # Save the plot to ouput
@@ -820,48 +882,41 @@ def preprocesAdataPlot(adata: AnnData, adata_orig: AnnData, output: str = None) 
 
 
 def filter_on_size(
-    adata: AnnData, min_size: int = 100, max_size: int = 100000
-) -> Tuple[AnnData, int]:
+    sdata, min_size: int = 100, max_size: int = 100000
+):
     """Returns a tuple with the AnnData object and the number of filtered cells.
 
     All cells outside of the min and max size range are removed.
     If the distance between the location of the transcript and the center of the polygon is large, the cell is deleted.
     """
 
-    start = adata.shape[0]
-
-    # Calculate center of the cell and distance between transcript and polygon center
-    adata.obsm["polygons"]["X"] = adata.obsm["polygons"].centroid.x
-    adata.obsm["polygons"]["Y"] = adata.obsm["polygons"].centroid.y
-    adata.obs["distance"] = np.sqrt(
-        np.square(adata.obsm["polygons"]["X"] - adata.obsm["spatial"][:, 0])
-        + np.square(adata.obsm["polygons"]["Y"] - adata.obsm["spatial"][:, 1])
-    )
+    start = sdata.table.shape[0]
 
     # Filter cells based on size and distance
-    #adata = adata[adata.obs["nucleusSize"] < max_size, :]
-    #adata = adata[adata.obs["nucleusSize"] > min_size, :]
-    adata=adata[adata.obsm['polygons'].area>min_size,:]
-    adata.obsm["polygons"] = geopandas.GeoDataFrame(
-        adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
-    )
-    adata=adata[adata.obsm['polygons'].area<max_size,:]
-
-    adata = adata[adata.obs["distance"] < 70, :]
-    adata.obsm["polygons"] = geopandas.GeoDataFrame(
-        adata.obsm["polygons"], geometry=adata.obsm["polygons"].geometry
-    )
-    filtered = start - adata.shape[0]
-
-    return adata, filtered
+    table = sdata.table[sdata.table.obs["shapeSize"] < max_size, :]
+    table = table[table.obs["shapeSize"] > min_size, :]
+    del sdata.table 
+    ## TODO: Look for a better way of doing this!
+    sdata.table=spatialdata.models.TableModel.parse(table)
+    
+    for i in [*sdata.shapes]:
+        sdata[i].index=sdata[i].index.astype('str')
+        sdata.add_shapes(name=i,
+        shapes=spatialdata.models.ShapesModel.parse(sdata[i][np.isin(sdata[i].index.values,sdata.table.obs.index.values)]),overwrite=True)
+    filtered = start - table.shape[0]
+    print(str(filtered) + " cells were filtered out based on size.")
 
 
+    return sdata
+
+
+##TODO:rewrite this function
 def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
     """This function performs segmenation feature extraction and adds cell area and mean intensity to the annData object under obsm segmentation_features."""
     sq.im.calculate_image_features(
         adata,
         ic,
-        layer="image",
+        layer="raw",
         features="segmentation",
         key_added="segmentation_features",
         features_kwargs={
@@ -877,7 +932,7 @@ def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
 
 
 def clustering(
-    adata: AnnData, pcs: int, neighbors: int, cluster_resolution: float = 0.8
+    sdata, pcs: int, neighbors: int, cluster_resolution: float = 0.8
 ) -> AnnData:
     """Returns the AnnData object.
 
@@ -886,17 +941,17 @@ def clustering(
     """
 
     # Neighborhood analysis
-    sc.pp.neighbors(adata, n_neighbors=neighbors, n_pcs=pcs)
-    sc.tl.umap(adata)
+    sc.pp.neighbors(sdata.table, n_neighbors=neighbors, n_pcs=pcs)
+    sc.tl.umap(sdata.table)
 
     # Leiden clustering
-    sc.tl.leiden(adata, resolution=cluster_resolution)
-    sc.tl.rank_genes_groups(adata, "leiden", method="wilcoxon")
+    sc.tl.leiden(sdata.table, resolution=cluster_resolution)
+    sc.tl.rank_genes_groups(sdata.table, "leiden", method="wilcoxon")
 
-    return adata
+    return sdata
 
 
-def clustering_plot(adata: AnnData, output: str = None) -> None:
+def clustering_plot(sdata, output: str = None) -> None:
     """This function plots the clusters and genes ranking"""
 
     # disable interactive mode
@@ -904,32 +959,35 @@ def clustering_plot(adata: AnnData, output: str = None) -> None:
         plt.ioff()
 
     # Leiden clustering
-    sc.pl.umap(adata, color=["leiden"], show=not output)
+    sc.pl.umap(sdata.table, color=["leiden"], show=not output)
 
     # Save the plot to ouput
     if output:
         plt.savefig(output + "0.png", bbox_inches="tight")
         plt.close()
-        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False, show=False)
+        sc.pl.rank_genes_groups(sdata.table, n_genes=8, sharey=False, show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
         plt.close()
 
     # Display plot
     else:
-        sc.pl.rank_genes_groups(adata, n_genes=8, sharey=False)
+        sc.pl.rank_genes_groups(sdata.table, n_genes=8, sharey=False)
 
 
 def scoreGenes(
-    adata: AnnData,
+    sdata,
     path_marker_genes: str,
     row_norm: bool = False,
     repl_columns: dict[str, str] = None,
-    del_genes: List[str] = None,
+    del_celltypes: List[str] = None,
     input_dict=False
 ) -> Tuple[dict, pd.DataFrame]:
     """Returns genes dict and the scores per cluster
 
     Load the marker genes from csv file in path_marker_genes.
+    If the marker gene list is a one hot endoded matrix, leave the input as is. 
+    IF the marker gene list is a Dictionary, with the first column the name of the celltype and the other columns the marker genes beloning to this celltype, 
+    input 
     repl_columns holds the column names that should be replaced the in the marker genes.
     del_genes holds the marker genes that should be deleted from the marker genes and genes dict.
     """
@@ -960,20 +1018,20 @@ def scoreGenes(
     # Score all cells for all celltypes
     for key, value in genes_dict.items():
         try:
-            sc.tl.score_genes(adata, value, score_name=key)
+            sc.tl.score_genes(sdata.table, value, score_name=key)
         except ValueError:
             warnings.warn(
                 f"Markergenes {value} not present in region, celltype {key} not found"
             )
 
     # Delete genes from marker genes and genes dict
-    if del_genes:
-        for gene in del_genes:
+    if del_celltypes:
+        for gene in del_celltypes:
             del df_markers[gene]
             del genes_dict[gene]
 
-    scoresper_cluster = adata.obs[
-        [col for col in adata.obs if col in df_markers.columns]
+    scoresper_cluster = sdata.table.obs[
+        [col for col in sdata.table.obs if col in df_markers.columns]
     ]
 
     # Row normalization for visualisation purposes
@@ -981,20 +1039,20 @@ def scoreGenes(
         row_norm = scoresper_cluster.sub(
             scoresper_cluster.mean(axis=1).values, axis="rows"
         ).div(scoresper_cluster.std(axis=1).values, axis="rows")
-        adata.obs[scoresper_cluster.columns.values] = row_norm
+        sdata.table.obs[scoresper_cluster.columns.values] = row_norm
         temp = pd.DataFrame(np.sort(row_norm)[:, -2:])
     else:
         temp = pd.DataFrame(np.sort(scoresper_cluster)[:, -2:])
 
     scores = (temp[1] - temp[0]) / ((temp[1] + temp[0]) / 2)
-    adata.obs["Cleanliness"] = scores.values
-    adata.obs["annotation"] = scoresper_cluster.idxmax(axis=1)
-    adata.obs["annotation"] = adata.obs["annotation"].astype('category')
+    sdata.table.obs["Cleanliness"] = scores.values
+    sdata.table.obs["annotation"] = scoresper_cluster.idxmax(axis=1)
+    sdata.table.obs["annotation"] = sdata.table.obs["annotation"].astype('category')
     return genes_dict, scoresper_cluster
 
 
 def scoreGenesPlot(
-    adata: AnnData,
+    sdata,
     scoresper_cluster: pd.DataFrame,
     filter_index: int = 5,
     output: str = None,
@@ -1013,28 +1071,28 @@ def scoreGenesPlot(
         plt.ioff()
 
     # Plot cleanliness and leiden next to annotation
-    sc.pl.umap(adata, color=["Cleanliness", "annotation"], show=not output)
+    sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=not output)
 
     # Save the plot to ouput
     if output:
         plt.savefig(output + "0.png", bbox_inches="tight")
         plt.close()
-        sc.pl.umap(adata, color=["leiden", "annotation"], show=False)
+        sc.pl.umap(sdata.table, color=["leiden", "annotation"], show=False)
         plt.savefig(output + "1.png", bbox_inches="tight")
         plt.close()
 
     # Display plot
     else:
-        sc.pl.umap(adata, color=["leiden", "annotation"])
+        sc.pl.umap(sdata.table, color=["leiden", "annotation"])
 
     # Plot annotation and cleanliness columns of AnnData object
-    adata.uns["annotation_colors"] = colors
-    plot_shapes(adata, column="annotation", output=output + "2" if output else None,library_id=library_id)
-    plot_shapes(adata, column="Cleanliness", output=output + "3" if output else None,library_id=library_id)
+    sdata.table.uns["annotation_colors"] = colors
+    plot_shapes(sdata, column="annotation", output=output + "2" if output else None)
+    #plot_shapes(sdata.table, column="Cleanliness", output=output + "3" if output else None,library_id=library_id)
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
     sc.pl.heatmap(
-        adata,
+        sdata.table,
         var_names=scoresper_cluster.columns.values,
         groupby="leiden",
         show=not output,
@@ -1045,9 +1103,9 @@ def scoreGenesPlot(
         plt.savefig(output + "4.png", bbox_inches="tight")
         plt.close()
         sc.pl.heatmap(
-            adata[
-                adata.obs.leiden.isin(
-                    [str(index) for index in range(filter_index, len(adata.obs.leiden))]
+            sdata.table[
+                sdata.table.obs.leiden.isin(
+                    [str(index) for index in range(filter_index, len(sdata.table.obs.leiden))]
                 )
             ],
             var_names=scoresper_cluster.columns.values,
@@ -1060,19 +1118,18 @@ def scoreGenesPlot(
     # Display plot
     else:
         sc.pl.heatmap(
-            adata[
-                adata.obs.leiden.isin(
-                    [str(index) for index in range(filter_index, len(adata.obs.leiden))]
+            sdata.table[
+                sdata.table.obs.leiden.isin(
+                    [str(index) for index in range(filter_index, len(sdata.table.obs.leiden))]
                 )
             ],
             var_names=scoresper_cluster.columns.values,
             groupby="leiden",
         )
 
-
 def correct_marker_genes(
-    adata: AnnData, genes: dict[str, Tuple[float, float]]
-) -> AnnData:
+    sdata, Dict
+):
     """Returns the new AnnData object.
 
     Corrects marker genes that are higher expessed by dividing them.
@@ -1080,35 +1137,33 @@ def correct_marker_genes(
     """
 
     # Correct for all the genes
-    for gene, values in genes.items():
-        for i in range(0, len(adata.obs)):
-            if adata.obs[gene].iloc[i] < values[0]:
-                adata.obs[gene].iloc[i] = adata.obs[gene].iloc[i] / values[1]
-    return adata
+    for gene, values in Dict.items():
+        sdata.table.obs[gene]=np.where(sdata.table.obs[gene]<values[0],sdata.table.obs[gene]/values[1],sdata.table.obs[gene])
+    
+    return sdata
 
-
-def annotate_maxscore(types: str, indexes: dict, adata: AnnData) -> AnnData:
+def annotate_maxscore(types: str, indexes: dict, sdata):
     """Returns the AnnData object.
 
     Adds types to the Anndata maxscore category.
     """
-    adata.obs.annotation = adata.obs.annotation.cat.add_categories([types])
-    for i, val in enumerate(adata.obs.annotation):
+    sdata.table.obs.annotation = sdata.table.obs.annotation.cat.add_categories([types])
+    for i, val in enumerate(sdata.table.obs.annotation):
         if val in indexes[types]:
-            adata.obs.annotation[i] = types
-    return adata
+            sdata.table.obs.annotation[i] = types
+    return sdata
 
 
-def remove_celltypes(types: str, indexes: dict, adata: AnnData) -> AnnData:
+def remove_celltypes(types: str, indexes: dict, sdata):
     """Returns the AnnData object."""
     for index in indexes[types]:
-        if index in adata.obs.annotation.cat.categories:
-            adata.obs.annotation = adata.obs.annotation.cat.remove_categories(index)
-    return adata
+        if index in sdata.table.obs.annotation.cat.categories:
+            sdata.table.obs.annotation = sdata.table.obs.annotation.cat.remove_categories(index)
+    return sdata
 
 
 def clustercleanliness(
-    adata: AnnData,
+    sdata,
     genes: List[str],
     gene_indexes: dict[str, int] = None,
     colors: List[str] = None,
@@ -1117,10 +1172,10 @@ def clustercleanliness(
     celltypes = np.array(sorted(genes), dtype=str)
     color_dict = None
 
-    adata.obs["annotation"] = adata.obs[
-        [col for col in adata.obs if col in celltypes]
+    sdata.table.obs["annotation"] = sdata.table.obs[
+        [col for col in sdata.table.obs if col in celltypes]
     ].idxmax(axis=1)
-    adata.obs.annotation = adata.obs.annotation.astype("category")
+    sdata.table.obs.annotation = sdata.table.obs.annotation.astype("category")
 
     # Create custom colormap for clusters
     if not colors:
@@ -1132,39 +1187,39 @@ def clustercleanliness(
         )
         colors = [mpl.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)]
 
-    adata.uns["annotation_colors"] = colors
+    sdata.table.uns["annotation_colors"] = colors
 
     if gene_indexes:
-        adata.obs["annotationSave"] = adata.obs.annotation
+        sdata.table.obs["annotationSave"] = sdata.table.obs.annotation
         gene_celltypes = {}
 
         for key, value in gene_indexes.items():
             gene_celltypes[key] = celltypes[value]
 
         for gene, indexes in gene_indexes.items():
-            adata = annotate_maxscore(gene, gene_celltypes, adata)
+            sdata = annotate_maxscore(gene, gene_celltypes, sdata)
 
         for gene, indexes in gene_indexes.items():
-            adata = remove_celltypes(gene, gene_celltypes, adata)
+            sdata = remove_celltypes(gene, gene_celltypes, sdata)
 
         celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))  # type: ignore
         celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
-        color_dict = dict(zip(celltypes_f, adata.uns["annotation_colors"]))
+        color_dict = dict(zip(celltypes_f, sdata.table.uns["annotation_colors"]))
 
     else:
-        color_dict = dict(zip(celltypes, adata.uns["annotation_colors"]))
+        color_dict = dict(zip(celltypes, sdata.table.uns["annotation_colors"]))
 
     for i, name in enumerate(color_dict.keys()):
         color_dict[name] = colors[i]
-    adata.uns["annotation_colors"] = list(
-        map(color_dict.get, adata.obs.annotation.cat.categories.values)
+    sdata.table.uns["annotation_colors"] = list(
+        map(color_dict.get, sdata.table.obs.annotation.cat.categories.values)
     )
 
-    return adata, color_dict
+    return sdata, color_dict
 
 
 def clustercleanlinessPlot(
-    adata: AnnData,
+    sdata,
     crop_coord: List[int] = [0, 2000, 0, 2000],
     color_dict: dict = None,
     output: str = None,
@@ -1178,13 +1233,13 @@ def clustercleanlinessPlot(
 
     # Create the barplot
     stacked = (
-        adata.obs.groupby(["leiden", "annotation"], as_index=False)
+        sdata.table.obs.groupby(["leiden", "annotation"], as_index=False)
         .size()
         .pivot("leiden", "annotation")
         .fillna(0)
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
-    stacked_norm.columns = list(adata.obs.annotation.cat.categories)
+    stacked_norm.columns = list(sdata.table.obs.annotation.cat.categories)
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
     # Use custom colormap
@@ -1209,10 +1264,10 @@ def clustercleanlinessPlot(
 
     # Plot images with colored celltypes
     plot_shapes(
-        adata, column="annotation", alpha=0.8, output=output + "1" if output else None, library_id=library_id
+        sdata, column="annotation", alpha=0.8, output=output + "1" if output else None, library_id=library_id
     )
     plot_shapes(
-        adata,
+        sdata,
         column="annotation",
         crd=crop_coord,
         alpha=0.8,
@@ -1222,7 +1277,7 @@ def clustercleanlinessPlot(
 
     # Plot clusters
     _, ax = plt.subplots(1, 1, figsize=(15, 10))
-    sc.pl.umap(adata, color=["annotation"], ax=ax, show=not output)
+    sc.pl.umap(sdata.table, color=["annotation"], ax=ax, show=not output,size=300000/sdata.table.shape[0])
     ax.axis("off")
 
     # Save the plot to ouput
@@ -1309,11 +1364,12 @@ def read_in_stereoSeq(path_genes,xcol='x',ycol='y',genecol='geneID',countcol='MI
     in_df=in_df.dropna()
     return in_df
 
-def read_in_RESOLVE(path_coordinates,xcol=0,ycol=1,genecol=3,filterGenes=None,offset=None):
+def read_in_RESOLVE(path_coordinates,sdata=None,xcol=0,ycol=1,genecol=3,filterGenes=None,offset=None):
     
     """The output of this function gives all locations of interesting transcripts in pixel coordinates matching the input image. Dask Dataframe contains columns x,y, and gene"""
     
-    
+    if sdata==None:
+        sdata=spatialdata.SpatialData()
     in_df = dd.read_csv(path_coordinates, delimiter="\t", header=None)
     in_df=in_df.rename(columns={xcol:'x',ycol:'y',genecol:'gene'})
     if offset:
@@ -1324,9 +1380,10 @@ def read_in_RESOLVE(path_coordinates,xcol=0,ycol=1,genecol=3,filterGenes=None,of
     if filterGenes:
         for i in filter_genes:
             in_df=in_df[in_df['gene'].str.contains(i)==False]
+    sdata.add_points(name='transcripts',points=spatialdata.models.PointsModel.parse(in_df,coordinates={'x':'x','y':'y'}))
+        
             
-            
-    return in_df
+    return sdata
 
 def read_in_Vizgen(path_genes,xcol='global_x',ycol='global_y',genecol='gene',skiprows=None,offset=None, bbox=None,pixelSize=None,filterGenes=None):
     """This function read in Vizgen input data to a dask datafrmae with predefined column names. """
