@@ -1288,7 +1288,7 @@ def clustercleanlinessPlot(
         plt.show()
 
 
-def enrichment(adata: AnnData) -> AnnData:
+def enrichment(sdata):
     """Returns the AnnData object.
 
     Performs some adaptations to save the data.
@@ -1296,27 +1296,27 @@ def enrichment(adata: AnnData) -> AnnData:
     """
 
     # Adaptations for saving
-    adata.raw.var.index.names = ["genes"]
-    adata.var.index.names = ["genes"]
+    sdata.table.raw.var.index.names = ["genes"]
+    sdata.table.var.index.names = ["genes"]
     # TODO: not used since napari spatialdata
     # adata.obsm["spatial"] = adata.obsm["spatial"].rename({0: "X", 1: "Y"}, axis=1)
 
     # Calculate nhood enrichment
-    sq.gr.spatial_neighbors(adata, coord_type="generic")
-    sq.gr.nhood_enrichment(adata, cluster_key="annotation")
-    return adata
+    sq.gr.spatial_neighbors(sdata.table, coord_type="generic")
+    sq.gr.nhood_enrichment(sdata.table, cluster_key="annotation")
+    return sdata
 
 
-def enrichment_plot(adata: AnnData, output: str = None) -> None:
+def enrichment_plot(sdata, output: str = None) -> None:
     """This function plots the nhood enrichment between different celltypes."""
 
     # disable interactive mode
     if output:
         plt.ioff()
     # remove 'nan' values from "adata.uns['annotation_nhood_enrichment']['zscore']"
-    tmp = adata.uns['annotation_nhood_enrichment']['zscore']
-    adata.uns['annotation_nhood_enrichment']['zscore'] = np.nan_to_num(tmp)
-    sq.pl.nhood_enrichment(adata, cluster_key="annotation", method="ward")
+    tmp = sdata.table.uns['annotation_nhood_enrichment']['zscore']
+    sdata.table.uns['annotation_nhood_enrichment']['zscore'] = np.nan_to_num(tmp)
+    sq.pl.nhood_enrichment(sdata.table, cluster_key="annotation", method="ward")
 
     # Save the plot to ouput
     if output:
