@@ -2,10 +2,11 @@
 
 # %load_ext autoreload
 # %autoreload 2
+from collections import namedtuple
 import warnings
 from itertools import chain
-from typing import List, Optional, Tuple
-
+from typing import List, Optional, Tuple, Union
+from pathlib import Path
 import cv2
 import os
 os.environ['USE_PYGEOS'] = '0'
@@ -17,7 +18,6 @@ import numpy as np
 import pandas as pd
 import rasterio
 import scanpy as sc
-import scipy
 import seaborn as sns
 import shapely
 import squidpy as sq
@@ -33,14 +33,28 @@ import dask.dataframe as dd
 import spatialdata
 import xarray as xr
 import dask
+from dask import compute
+from dask.dataframe.core import DataFrame as DaskDataFrame
+from pandas import DataFrame as PandasDataFrame
 import numpy as np
-import hvplot.xarray
 import numpy as np
 from longsgis import voronoiDiagram4plg
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon, GeometryCollection
+from shapely.affinity import translate
 from shapely.geometry.polygon import LinearRing
 from scipy.ndimage.filters import gaussian_filter
-
+import dask_image.ndfilters
+import dask.array as da
+from aicsimageio import AICSImage
+import zarr
+from numcodecs import Blosc
+from multiscale_spatial_image import to_multiscale
+from spatial_image import to_spatial_image
+from dask.array import Array
+from spatialdata import SpatialData
+import itertools
+from dask import delayed
+from affine import Affine
 
 
 def read_in_zarr(path_to_zarr_file,zyx_order=[0,1,2],subset=None):
@@ -75,10 +89,11 @@ def create_subset_image(ic,crd):
 
 
 def tilingCorrection(
-    img: sq.im.ImageContainer,
+    ic: sq.im.ImageContainer,
     left_corner: Tuple[int, int] = None,
     size: Tuple[int, int] = None,
     tile_size: int = 2144,
+    chunks:int=2048,
 ) -> Tuple[sq.im.ImageContainer, np.ndarray]:
     """Returns the corrected image and the flatfield array
 
@@ -86,16 +101,22 @@ def tilingCorrection(
     The illumination within the tiles is adjusted, afterwards the tiles are connected as a whole image by inpainting the lines between the tiles.
     """
 
+    # Get original chunksize, so ic with same chunksize can be returned.
+    if isinstance( ic[ 'raw_image' ].data, Array ):
+        chunksize=ic[ 'raw_image' ].data.chunksize[0]
+    else:
+        chunksize=chunks
+
     # Create the tiles
-    tiles = img.generate_equal_crops(size=tile_size, as_array="raw_image")
+    tiles = ic.generate_equal_crops(size=tile_size, as_array="raw_image")
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
     black=np.array([1 if ~np.any(tile-1) else 0 for tile in tiles]) # determine if 
 
     #create the masks for inpainting 
     i_mask = (np.block(
         [
-            list(tiles[i : i + (img.shape[1] // tile_size)])
-            for i in range(0, len(tiles), img.shape[1] // tile_size)
+            list(tiles[i : i + (ic.shape[1] // tile_size)])
+            for i in range(0, len(tiles), ic.shape[1] // tile_size)
         ]
     ).astype(np.uint16)==0)
     if tiles.shape[0]<5:
@@ -116,24 +137,23 @@ def tilingCorrection(
     # Stitch the tiles back together
     i_new = np.block(
         [
-            list(tiles_corrected[i : i + (img.shape[1] // tile_size)])
-            for i in range(0, len(tiles_corrected), img.shape[1] // tile_size)
+            list(tiles_corrected[i : i + (ic.shape[1] // tile_size)])
+            for i in range(0, len(tiles_corrected), ic.shape[1] // tile_size)
         ]
     ).astype(np.uint16)
 
-    
-
-    mask = sq.im.ImageContainer(i_mask.astype(np.uint8), layer="mask_black_lines")
-    #img.add_img(
-     #   i_mask.astype(np.uint8),
-     #   layer="mask",
-    #)
+    ic = sq.im.ImageContainer(i_new, layer='raw_image' )
+    #mask = sq.im.ImageContainer(i_mask.astype(np.uint8), layer="mask_black_lines")
+    ic.add_img(
+        i_mask.astype(np.uint8),
+        layer="mask_black_lines",
+    )
 
     if size is not None and left_corner is not None:
-        img = img.crop_corner(*left_corner, size)
+        ic = ic.crop_corner(*left_corner, size)
 
     # Perform inpainting
-    img.apply(
+    ic.apply(
         {"0": cv2.inpaint},
         layer="raw_image",
         drop=False,
@@ -142,14 +162,28 @@ def tilingCorrection(
         copy=False,
         #chunks=10,
         fn_kwargs={
-            "inpaintMask": mask.data.mask_black_lines.squeeze().to_numpy(),
+            "inpaintMask": ic.data.mask_black_lines.squeeze().to_numpy(),
             "inpaintRadius": 55,
             "flags": cv2.INPAINT_NS,
         },
     )
 
-    print(img)
-    return img, flatfield
+    # Convert all Data Variables to dask arrays + set coords, and save as .zarr
+    coords = {
+                'z': np.array( [0], dtype='<U1' ),
+                'y': np.arange(0, ic.shape[0]),
+                'x': np.arange(0, ic.shape[1]),
+            'channels': np.array( [ 'DAPI' ] )
+            }
+
+    for var in ic.data.data_vars:
+
+        ic.data[var] = xr.DataArray(da.from_array(ic.data[var].values, chunks=chunksize ), 
+                                        dims=ic.data[var].dims, 
+                                        coords=coords, 
+                                        attrs=ic.data[var].attrs)
+        
+    return ic, flatfield
 
 
 def tilingCorrectionPlot(
@@ -158,8 +192,8 @@ def tilingCorrectionPlot(
     """Creates the plots based on the correction overlay and the original and corrected images."""
 
     # disable interactive mode
-    if output:
-        plt.ioff()
+    #if output:
+    #    plt.ioff()
 
     # Tile correction overlay
     if flatfield is not None:
@@ -236,6 +270,94 @@ def preprocessImage(
 
     return img
 
+def tophat_filtering(
+    img: sq.im.ImageContainer,
+    output_dir: Union[str, Path ],
+    layer='image',
+    size_tophat:int=85,
+)->sq.im.ImageContainer:
+    
+    # this is function to do tophat filtering using dask
+
+    # Assuming img[ layer ].data is a Dask array
+    chunksize=img[ layer ].data.chunksize[0]
+
+    image_array=img[ layer ].data.squeeze()
+
+    # Apply the minimum filter
+    minimum_t = dask_image.ndfilters.minimum_filter(image_array, size_tophat)
+
+    # Apply the maximum filter
+    max_of_min_t = dask_image.ndfilters.maximum_filter(minimum_t, size_tophat)
+
+    result = image_array - max_of_min_t
+
+    dims = ( 'y', 'x', 'z' , 'channels' )
+
+    coords = {
+        'z': np.array( [0], dtype='<U1' ),
+        'y': np.arange(0, img.shape[0], dtype='float64' ),
+        'x': np.arange(0, img.shape[1], dtype='float64' ),
+        'channels': np.array( [ 'DAPI' ] )
+    }
+
+    result_xr = xr.DataArray(result[:, :, None, None], dims=dims, coords=coords)
+
+    # Convert the DataArray to a Dataset
+    result_ds = result_xr.to_dataset( name=layer )
+
+    # Define the output path for the Zarr store
+    output_path = os.path.join( output_dir, 'tophat_filtered.zarr' )
+
+    # Write the Xarray Dataset to a Zarr store
+    result_ds.to_zarr(output_path, mode='w')
+
+    ic=read_in_zarr_from_path( path=output_path, name=layer, chunk=chunksize )
+
+    img[ layer ]=ic[ layer ]
+
+    return img
+
+def clahe_processing(
+    img: sq.im.ImageContainer,
+    output_dir: Union[str, Path ],
+    layer='image',
+    contrast_clip:int=3.5,
+    chunksize_clahe:int=10000,
+)->sq.im.ImageContainer:
+    
+    # TODO take whole image as chunksize + overlap tuning
+    
+    chunksize=img[ layer ].data.chunksize[0]
+
+    clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
+
+    # maybe this could be done via processing function of squidpy ( see sqduipy docs )
+
+    img_clahe = img.apply({"0": clahe.apply}, layer=layer, drop=True, channel=0, copy=True , chunks=chunksize_clahe, lazy=True) #, depth=30, boundary="reflect"  )
+
+    # ic.save does not seem to work as espected (loads all data in memory),
+    # therefore, first convert to xarray.Dataset, then save to .zarr
+    img_clahe_dataset=img_clahe[ layer ].to_dataset( name=layer )
+
+    coords = {
+        'z': np.array( [0], dtype='<U1' ),
+        'y': np.arange(0, img.shape[0], dtype='float64' ),
+        'x': np.arange(0, img.shape[1], dtype='float64' ),
+        'channels': np.array( [ 'DAPI' ] )
+    }
+
+    img_clahe_dataset=img_clahe_dataset.assign_coords( coords=coords )
+
+    output_path= os.path.join( output_dir, 'clahe.zarr' )
+
+    img_clahe_dataset.to_zarr(  output_path , mode='w')
+
+    ic=read_in_zarr_from_path( path=output_path, name=layer, chunk=chunksize )
+
+    img[ layer ]=ic[ layer ]
+
+    return img
 
 def preprocessImagePlot(
     img: np.ndarray,
@@ -329,7 +451,68 @@ def segmentation(
         sdata.add_shapes(name='nucleus_boundaries',shapes=spatialdata.models.ShapesModel.parse(polygons))
     elif model_type=='cyto':
         sdata.add_shapes(name='cell_boundaries',shapes=spatialdata.models.ShapesModel.parse(polygons))
-    return sdata     
+    return sdata 
+
+
+def segmentation_cellpose(
+    ic: sq.im.ImageContainer,
+    output_dir: Union[str, Path],
+    layer:str='image',
+    device: str = "cpu",
+    min_size: int = 80,
+    flow_threshold: float = 0.6,
+    diameter: int = 55,
+    cellprob_threshold: int = 0,
+    model_type: str = "nuclei",
+    channels =[0, 0],
+    chunks='auto',
+    lazy=False,
+    )->Tuple[ sq.im.ImageContainer, geopandas.GeoDataFrame]:
+
+    sq.im.segment(img=ic, 
+                  layer=layer, 
+                  method=cellpose,
+                  chunks=chunks,
+                  lazy=lazy,
+                  min_size=min_size,
+                  layer_added='segmentation_mask',
+                  cellprob_threshold=cellprob_threshold, 
+                  flow_threshold=flow_threshold, 
+                  diameter=diameter, 
+                  model_type=model_type,
+                  channels=channels,
+                  device=device)
+
+    # save to zarr (segmentation is done in this saving step)
+    ic_dataset=ic[ 'segmentation_mask' ].to_dataset( name='segmentation_mask'  )
+    ic_dataset=ic_dataset.chunk( chunks )
+    ic_dataset.to_zarr(  os.path.join( output_dir , 'segmented.zarr' ) , mode='w')
+
+    # load computed masks in lazily
+    ic_mask=read_in_zarr_from_path( os.path.join( output_dir, 'segmented.zarr' ), name='segmentation_mask' )
+    ic[ 'segmentation_mask' ]=ic_mask[ 'segmentation_mask' ]
+
+    polygons=mask_to_polygons_layer_dask(  ic[ 'segmentation_mask' ].data )
+    polygons=polygons.dissolve( by='cells' )
+    polygons.reset_index(  drop=False , inplace=True )
+
+    coords = ic.data.attrs["coords"]
+
+    x_translation=coords.x0
+    y_translation=coords.y0
+
+    polygons['geometry'] = polygons['geometry'].apply(lambda geom: translate(geom, xoff=x_translation, yoff=y_translation))
+
+    polygons_path=os.path.join( output_dir , "polygons.shp" )
+    polygons.to_file( polygons_path, driver="GeoJSON")
+
+    sdata=imageContainerToSData(ic)
+    if model_type=='nuclei':
+        sdata.add_shapes(name='nucleus_boundaries',shapes=spatialdata.models.ShapesModel.parse(polygons))
+    elif model_type=='cyto':
+        sdata.add_shapes(name='cell_boundaries',shapes=spatialdata.models.ShapesModel.parse(polygons))
+    return sdata 
+
 
 
 def imageContainerToSData(ic,sdata=None,layers_im=['corrected','raw_image'],layers_labels=['segmentation_mask']):
@@ -337,15 +520,25 @@ def imageContainerToSData(ic,sdata=None,layers_im=['corrected','raw_image'],laye
     if sdata==None:
         
         sdata=spatialdata.SpatialData()
-        
-    temp=ic.data.rename_dims({'channels':'c'})
-    for i in layers_im:
-       
-        sdata.add_image(name=i,image=spatialdata.models.Image2DModel.parse(temp[i].squeeze(dim='z').transpose('c','y','x')))
-    for j in layers_labels:
-        sdata.add_labels(name=j,labels=spatialdata.models.Labels2DModel.parse(temp[j].squeeze().transpose('y','x')))
     
-    return sdata             
+    # coordinates are not copied correctly from imagecontainer to spatialdata object, so do it 'by hand'
+    y_coords = xr.DataArray(np.arange(ic.data.y.data[0], ic.data.y.data[-1]+1, dtype='float64' ), dims='y')
+    x_coords = xr.DataArray(np.arange(ic.data.x.data[0], ic.data.x.data[-1]+1, dtype='float64' ), dims='x')
+
+    temp=ic.data.rename_dims({'channels':'c'})
+
+    for i in layers_im:
+        spatial_image=spatialdata.models.Image2DModel.parse(temp[i].squeeze(dim='z').transpose('c','y','x'))
+        spatial_image=spatial_image.assign_coords({ 'y': y_coords, 'x': x_coords} )
+        sdata.add_image(name=i,image=spatial_image )
+       
+    for j in layers_labels:
+        spatial_label=spatialdata.models.Labels2DModel.parse(temp[j].squeeze().transpose('y','x')) 
+        spatial_label=spatial_label.assign_coords({ 'y': y_coords, 'x': x_coords} )
+        sdata.add_labels(name=j,labels=spatial_label )
+    
+    return sdata   
+
 
 def segmentationDeprecated(
     img: sq.im.ImageContainer,
@@ -400,31 +593,30 @@ def segmentationDeprecated(
 
 def segmentationPlot(
     sdata,
-    crd=None,
-    channels=[0,0],
     small_size_vis=None,
     img_layer='corrected',
     shape_layer=None,
     output: str = None,
 ) -> None:
-    if output:
-        plt.ioff()
+    
+    #if output:
+    #    plt.ioff()
     if small_size_vis:
         crd=small_size_vis
-    ic=sdata.images[img_layer] 
+
+    si=sdata.images[img_layer] 
     if shape_layer==None:
         shape_layer=[*sdata.shapes][0]
-    Xmax=ic.sizes['x']
-    Ymax=ic.sizes['y']    
-    #ic=ic.data.assign_coords({'x':np.arange(Xmax),'y':np.arange(Ymax)})  
-    #crd=small_size_vis
-    #crd=[2000,3500,1000,2500]
-    if crd==None:
-        crd=[0,Ymax,0,Xmax]
+
+    if small_size_vis is None:
+        crd=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
+    else:
+        crd=small_size_vis
+
     fig, ax = plt.subplots(1, 2, figsize=(20, 20))
-    ic.squeeze().sel(x=slice(crd[2],crd[3]),y=slice(crd[0],crd[1])).plot.imshow(cmap='gray', robust=True, ax=ax[0],add_colorbar=False)
-    ic.squeeze().sel(x=slice(crd[2],crd[3]),y=slice(crd[0],crd[1])).plot.imshow(cmap='gray', robust=True, ax=ax[1],add_colorbar=False)
-    sdata[shape_layer].cx[crd[2]:crd[3],crd[0]:crd[1]].plot(
+    si.squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax[0],add_colorbar=False)
+    si.squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax[1],add_colorbar=False)
+    sdata[shape_layer].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
             ax=ax[1],
             edgecolor="white",
             linewidth=1,
@@ -434,8 +626,8 @@ def segmentationPlot(
             )
     for i in range(len(ax)):
         ax[i].axes.set_aspect('equal')
-        ax[i].set_xlim(crd[2], crd[3])
-        ax[i].set_ylim(crd[0], crd[1])
+        ax[i].set_xlim(crd[0], crd[1])
+        ax[i].set_ylim(crd[2], crd[3])
         ax[i].invert_yaxis()
         ax[i].set_title("")
         #ax.axes.xaxis.set_visible(False)
@@ -448,7 +640,7 @@ def segmentationPlot(
     # Save the plot to ouput
     if output:
         plt.close(fig)
-        fig.savefig(output + ".png")            
+        fig.savefig(output)            
         
 
 def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
@@ -471,6 +663,58 @@ def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
         all_values.append(int(value))
 
     return geopandas.GeoDataFrame(dict(geometry=all_polygons), index=all_values)
+
+
+def mask_to_polygons_layer_dask(mask: da.Array) -> geopandas.GeoDataFrame:
+    """Returns the polygons as GeoDataFrame
+
+    This function converts the mask to polygons.
+    https://rocreguant.com/convert-a-mask-into-a-polygon-for-images-using-shapely-and-rasterio/1786/
+    """
+
+    # Define a function to extract polygons and values from each chunk
+    @delayed
+    def extract_polygons(mask_chunk: np.ndarray, chunk_coords:tuple ) -> tuple:
+        all_polygons = []
+        all_values = []
+
+        # Squeeze the last two dimensions of the 4D mask_chunk to create a 2D mask
+        mask_2d = np.squeeze(mask_chunk, axis=(2, 3))
+
+        # Compute the boolean mask before passing it to the features.shapes() function
+        bool_mask = mask_2d > 0
+
+        # Get chunk's top-left corner coordinates
+        x_offset, y_offset, _, _ = chunk_coords
+
+        for shape, value in features.shapes(
+            mask_2d.astype(np.int32),
+            mask=bool_mask,
+            transform=rasterio.Affine(1.0, 0, y_offset, 0, 1.0, x_offset),
+        ):
+            all_polygons.append(shapely.geometry.shape(shape))
+            all_values.append(int(value))
+
+        return all_polygons, all_values
+
+    # Map the extract_polygons function to each chunk
+    # Create a list of delayed objects
+
+    chunk_coords = list(itertools.product(*[range(0, s, cs) for s, cs in zip(mask.shape, mask.chunksize)]))
+
+    delayed_results = [extract_polygons(chunk, coord) for chunk, coord in zip(mask.to_delayed().flatten(), chunk_coords)]
+    # Compute the results
+    results = dask.compute(*delayed_results, scheduler='threads')
+
+    # Combine the results into a single list of polygons and values
+    all_polygons = []
+    all_values = []
+    for polygons, values in results:
+        all_polygons.extend(polygons)
+        all_values.extend(values)
+
+    # Create a GeoDataFrame from the extracted polygons and values
+    return geopandas.GeoDataFrame({'geometry': all_polygons, 'cells': all_values})
 
 
 def color(_) -> matplotlib.colors.Colormap:
@@ -501,6 +745,347 @@ def delete_overlap(voronoi,polygons):
     voronoi=voronoi.buffer(distance=0)        
     return voronoi
 
+def create_voronoi_boundaries( sdata: SpatialData, radius:int=0, shape_layer:Optional[str]=None ):
+
+    if radius<0:
+        raise ValueError( f"radius should be >0, provided value for radius is '{radius}'" )
+
+    # Create the polygon shapes for the mask
+    if shape_layer==None:
+        shape_layer=[*sdata.shapes][0]
+    sdata[shape_layer].index=sdata[shape_layer].index.astype('str')
+
+    expanded_layer_name='expanded_cells'+str(radius)
+    #sdata[shape_layer].index = list(map(str, sdata[shape_layer].index))
+        
+    si=sdata[ [*sdata.images][0]]
+    boundary=Polygon([
+        ( si.x.data[0], si.y.data[0]   ),
+        ( si.x.data[-1]+200, si.y.data[0]   ),
+        ( si.x.data[-1]+200, si.y.data[-1]+200 ),
+        ( si.x.data[0], si.y.data[-1]+200   ),
+        ])
+
+    if expanded_layer_name in [*sdata.shapes]:
+        del sdata.shapes[expanded_layer_name]
+    sdata[expanded_layer_name]=sdata[shape_layer].copy()
+    sdata[expanded_layer_name]['geometry']=sdata[shape_layer].simplify(2)
+
+    vd = voronoiDiagram4plg(sdata[expanded_layer_name], boundary)
+    voronoi=geopandas.sjoin(vd,sdata[expanded_layer_name],predicate='contains',how='left')
+    voronoi.index=voronoi.index_right
+    voronoi=voronoi[~voronoi.index.duplicated(keep='first')]
+    voronoi=delete_overlap(voronoi,sdata[expanded_layer_name])
+    
+    buffered=sdata[expanded_layer_name].buffer(distance=radius)
+    intersected=voronoi.sort_index().intersection(buffered.sort_index())
+
+    sdata[expanded_layer_name].geometry=intersected
+
+    # still need to shift extended polygons to account for possible cropped images
+    return sdata
+
+    x_translation=si.x.data[0]
+    y_translation=si.y.data[0]
+    
+    intersected = intersected.apply(lambda geom: translate(geom, xoff=x_translation, yoff=y_translation))
+
+    sdata[expanded_layer_name].geometry=intersected
+
+    return sdata
+
+def apply_transform_matrix( 
+        path_count_matrix:Union[ str, Path ], 
+        output_path:Union[ str, Path ], 
+        path_transform_matrix: Optional[ Union[ str, Path ]]=None, 
+        debug:bool=False,
+        column_x:int=0, 
+        column_y:int=1, 
+        column_gene:int=3,
+        delimiter:str=',', 
+        header:Optional[int]=None )->DaskDataFrame:
+
+    # Read the CSV file using Dask
+    ddf = dd.read_csv( path_count_matrix, delimiter=delimiter, header=header )
+    
+    # Read the transformation matrix
+    if path_transform_matrix is None:
+        print( "No transform matrix given, will use identity matrix." )
+        transform_matrix=np.identity( 3 )
+    else:
+        transform_matrix=np.loadtxt( path_transform_matrix )
+
+    print( transform_matrix )
+
+    if debug:
+        n=100000
+        fraction=n/len(ddf)
+        ddf=ddf.sample( frac=fraction )
+
+    def transform_coordinates(df):
+        micron_coordinates = df.iloc[ :, [column_x, column_y]].values
+        micron_coordinates = np.column_stack((micron_coordinates, np.ones(len(micron_coordinates))))
+        pixel_coordinates = np.dot(micron_coordinates, transform_matrix.T)[:, :2]
+        result_df = df.iloc[ :, [column_gene]].copy()
+        result_df['pixel_x'] = pixel_coordinates[:, 0]
+        result_df['pixel_y'] = pixel_coordinates[:, 1]
+        return result_df
+
+    # Apply the transformation to the Dask DataFrame
+    transformed_ddf = ddf.map_partitions(transform_coordinates)
+
+    # Rename the columns
+    transformed_ddf.columns = [  'gene' , 'pixel_x' , 'pixel_y' ]
+
+    # Reorder
+    transformed_ddf = transformed_ddf[['pixel_x', 'pixel_y', 'gene']]
+
+    transformed_ddf.to_parquet(output_path, compression='snappy' )
+
+    transformed_ddf=dd.read_parquet( output_path  )
+
+    return transformed_ddf
+
+def create_adata_from_masks_dask(
+    path: Union[str,Path], 
+    sdata: SpatialData,
+    shapes_layer:Optional[str],
+) -> SpatialData:
+    
+    """Returns the AnnData object with transcript and polygon data.
+    """
+
+    #polygons = polygons.dissolve(by="cells")
+    #keep cells as a column
+    #polygons.reset_index(  drop=False , inplace=True )
+    # Create the polygon shapes for the mask
+    if shapes_layer==None:
+        shapes_layer=[*sdata.shapes][0]
+    sdata[shapes_layer].index=sdata[shapes_layer].index.astype('str')
+
+    # need to do this transformation, 
+    # because the polygons have same offset coords.x0 and coords.y0 as in segmentation_mask
+    Coords = namedtuple('Coords', ['x0', 'y0'])
+    s_mask= sdata[ 'segmentation_mask' ]
+    coords = Coords(s_mask.x.data[0], s_mask.y.data[0] )
+
+    transform = Affine.translation( coords.x0, coords.y0 )
+
+    # Creating masks from polygons. TODO decide if you want to do this, even if voronoi is not calculated...
+    # This is computationaly not heavy, but could take some ram, 
+    # because it creates image-size array of masks in memory
+    print( "creating masks from polygons" )
+    masks=rasterio.features.rasterize( 
+    zip( sdata[ shapes_layer ].geometry, sdata[ shapes_layer ].cells.values.astype(float)),
+    out_shape=[s_mask.shape[0],s_mask.shape[1]],
+    dtype='uint32',
+    fill=0,
+    transform=transform
+    )
+
+    print( f"Created masks with shape {masks.shape}" )
+    ddf = dd.read_parquet(path)
+
+    print( "Calculate cell counts" )
+
+    # Define a function to process each partition using its index
+    def process_partition(index, masks, coords):
+        partition = ddf.get_partition(index).compute()
+
+        filtered_partition = partition[
+            (coords.y0 < partition['pixel_y'])
+            & (partition['pixel_y'] < masks.shape[0] + coords.y0)
+            & (coords.x0 < partition['pixel_x'])
+            & (partition['pixel_x'] < masks.shape[1] + coords.x0)
+        ]
+
+        filtered_partition['cells'] = masks[
+            filtered_partition['pixel_y'].values.astype(int) - int(coords.y0),
+            filtered_partition['pixel_x'].values.astype(int) - int(coords.x0),
+        ]
+
+        return filtered_partition
+
+    # Get the number of partitions in the Dask DataFrame
+    num_partitions = ddf.npartitions
+
+    # Process each partition using its index
+    processed_partitions = [delayed(process_partition)(i, masks, coords) for i in range(num_partitions)]
+
+    # Combine the processed partitions into a single DataFrame
+    combined_partitions = dd.from_delayed(processed_partitions)
+
+    coordinates = combined_partitions.groupby("cells").mean().iloc[:, [0, 1]]
+    cell_counts = combined_partitions.groupby(["cells", "gene"]).size()
+
+    coordinates, cell_counts = compute(
+        coordinates, cell_counts, scheduler='threads'
+    )
+
+    cell_counts = cell_counts.unstack(fill_value=0)
+    
+    # make sure coordinates are sorted in same order as cell_counts
+    index_order=cell_counts.index.argsort()
+    coordinates=coordinates.loc[   cell_counts.index[ index_order ] ]
+
+    print( "Create anndata object" )
+    
+    # Create the anndata object
+    adata = AnnData(cell_counts[cell_counts.index != 0])
+    coordinates.index = coordinates.index.map(str)
+    adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
+
+    adata.obs['region']=1
+    adata.obs['instance']=1
+
+    if sdata.table:
+        del sdata.table
+
+    sdata.table=spatialdata.models.TableModel.parse(adata,region_key='region',region=1,instance_key='instance')
+
+    for i in [*sdata.shapes]:
+        sdata[i].index = list(map(str, sdata[i].cells))  # on cells, because index is lost when saving and loading polygon from file.
+        sdata.add_shapes(name=i,
+        shapes=spatialdata.models.ShapesModel.parse(sdata[i][np.isin(sdata[i].index.values,sdata.table.obs.index.values)]),overwrite=True)
+        #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
+
+    #print( "Calculate nucleusSize" )
+
+    # calculate nucleusSize (we use dask, because otherwise this step uses much RAM)
+    #chunks = (1000, 1000)
+    #dask_masks = da.from_array(masks, chunks=chunks)
+    # calculate unique indices and counts
+    #indices, counts = da.unique(dask_masks, return_counts=True)
+    #indices, counts = da.compute(indices, counts)
+
+    #adata.obs["nucleusSize"] = [counts[np.where(indices==int(index))][0] for index in adata.obs.index]
+
+    return sdata, ddf
+
+
+def sanity_plot_transcripts_matrix( 
+        xarray:Union[ np.ndarray, xr.DataArray], 
+        in_df:Optional[ Union[ PandasDataFrame, DaskDataFrame]]=None, 
+        polygons:Optional[ geopandas.GeoDataFrame ]=None,
+        plot_cell_number:bool=False,
+        n:Optional[int]=None, 
+        name_x:str='pixel_x', 
+        name_y:str='pixel_y', 
+        name_gene_column:str='gene',
+        gene:Optional[str]=None,
+        crd:Optional[ Tuple[ int,int,int,int ] ]=None, 
+        cmap:str='gray',
+        output:Union[Path, str]=None, 
+        ):
+
+    # in_df can be dask dataframe or pandas dataframe
+
+    # plot for sanity check
+
+    def extract_boundaries_from_geometry_collection(geometry):
+        if isinstance(geometry, Polygon):
+            return [geometry.boundary]
+        elif isinstance(geometry, MultiPolygon):
+            return [polygon.boundary for polygon in geometry.geoms]
+        elif isinstance(geometry, GeometryCollection):
+            boundaries = []
+            for geom in geometry:
+                boundaries.extend(extract_boundaries_from_geometry_collection(geom))
+            return boundaries
+        else:
+            return []
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    #cmap = plt.cm.viridis
+    #cmap.set_under('gray')  # Set the color for values below the vmin threshold
+
+    if isinstance(  xarray, np.ndarray ):
+        xarray=xr.DataArray( xarray, dims=("y", "x") , coords={"y": np.arange(xarray.shape[0]), "x": np.arange( xarray.shape[1] )  }  )
+
+    if crd is None:
+        crd=[xarray.x.data[0], xarray.x.data[-1]+1, xarray.y.data[0], xarray.y.data[-1]+1]
+
+    xarray.squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap=cmap, robust=True, ax=ax,add_colorbar=False)
+
+    # update so that a sample is taken from the dataframe (otherwise plotting takes too long), i.e. take n points max
+
+    if in_df is not None:
+
+        # query first and then slicing gene is faster than vice versa
+        in_df=in_df.query(f"{crd[0]} <= {name_x} <= {crd[1]} and {crd[2]} <= {name_y} <= {crd[3]}")
+
+        if gene:
+            in_df=in_df[ in_df[ name_gene_column ] == gene ]
+
+        # we do not sample a fraction of the transcripts if a specific gene is given
+        else:
+            size=len(in_df)
+
+            print( f"size before sampling is {size}" )
+
+            if n is not None and size>n:
+                fraction=n/size
+                in_df=in_df.sample( frac=fraction )
+
+        if isinstance( in_df, DaskDataFrame ):
+            in_df=in_df.compute()
+        
+        print( f"Plotting {in_df.shape[0]} transcripts.")  
+
+        if gene:
+            alpha=0.5
+        else:
+            alpha=0.2
+
+        ax.scatter(in_df[name_x], in_df[name_y], color='r', s=8, alpha=alpha)
+
+    if polygons is not None:
+
+        print( "Selecting boundaries" )
+
+        polygons_selected=polygons.cx[crd[0]:crd[1], crd[2]:crd[3]]
+
+        polygons_selected[ 'boundaries' ]=polygons_selected[ 'geometry' ].apply( extract_boundaries_from_geometry_collection )
+        exploded_boundaries = polygons_selected.explode("boundaries")
+        exploded_boundaries["geometry"] = exploded_boundaries["boundaries"]
+        exploded_boundaries = exploded_boundaries.drop(columns=["boundaries"])
+
+        print( "Plotting boundaries" )
+
+        # Plot the polygon boundaries
+        exploded_boundaries.plot(ax=ax , aspect=1, )
+
+        print( "End plotting boundaries" )
+
+        # Plot the values inside the polygons
+        if plot_cell_number:
+            for _, row in polygons_selected.iterrows():
+                centroid = row.geometry.centroid
+                value = row.cells
+                ax.annotate(value, (centroid.x, centroid.y),
+                            color='green',
+                            fontsize=20,
+                            ha='center',
+                            va='center')
+    
+
+    ax.set_xlim(crd[0], crd[1])
+    ax.set_ylim(crd[2], crd[3])
+
+    ax.axis( 'on' )
+
+    if gene:
+        ax.set_title( f'Transcripts and cell boundaries for gene: {gene}.' )
+
+    if output:
+        plt.savefig( output )
+    else:
+        plt.show()
+    plt.close()
+
+
+
 def allocation(sdata, masks=None,radius=0,shape_layer=None, verbose=False
     ):
     
@@ -509,7 +1094,7 @@ def allocation(sdata, masks=None,radius=0,shape_layer=None, verbose=False
         shape_layer=[*sdata.shapes][0]
     sdata[shape_layer].index=sdata[shape_layer].index.astype('str')
    
-    #calculate new mask based on radius    
+    #calculate new mask based on radius
     if radius!=0:
         
         expanded_layer_name='expanded_cells'+str(radius)
@@ -535,7 +1120,11 @@ def allocation(sdata, masks=None,radius=0,shape_layer=None, verbose=False
                     zip(intersected.geometry,intersected.index.values.astype(float)), 
                     out_shape=[sdata[[*sdata.images][0]].shape[1],sdata[[*sdata.images][0]].shape[2]],dtype='uint32')  
         
-    # adapt transcripts file  
+    #if sdata.points:
+    #    for points_layer in [*sdata.points]:
+    #        del sdata.points[ points_layer ]
+
+    # adapt transcripts file  TODO: AD this does not seem correct if you take crop... why is this done?
     sdata.add_points(name='selected_transcripts',points=sdata['transcripts'][
     (sdata['transcripts']['y'] < sdata['segmentation_mask'].shape[0])
     & (sdata['transcripts']['y'] >=0)
@@ -579,13 +1168,18 @@ def allocation(sdata, masks=None,radius=0,shape_layer=None, verbose=False
 
 
     for i in [*sdata.shapes]:
-        sdata[i].index=sdata[i].index.astype('str')
+        sdata[i].index = list(map(str, sdata[i].cells))  # AD on cells, because index is lost when saving and loading polygon from file.
         sdata.add_shapes(name=i,
         shapes=spatialdata.models.ShapesModel.parse(sdata[i][np.isin(sdata[i].index.values,sdata.table.obs.index.values)]),overwrite=True)
         #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
 
     return sdata,df
 
+    for i in [*sdata.shapes]:
+        #sdata[i].index=sdata[i].index.astype('str')
+        sdata.add_shapes(name=i,
+        shapes=spatialdata.models.ShapesModel.parse(sdata[i][np.isin(sdata[i].index.values,sdata.table.obs.index.values)]),overwrite=True)
+        #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
 
     for i in [*sdata.shapes]:
         sdata[i].index=sdata[i].index.astype('str')
@@ -598,7 +1192,7 @@ def allocation(sdata, masks=None,radius=0,shape_layer=None, verbose=False
 
 def control_transcripts(df,scaling_factor=100):
     """This function plots the transcript density of the tissue. You can use it to compare different regions in your tissue on transcript density.  """
-    Try=df.groupby(['x','y']).count()['gene']
+    Try=df.groupby(['pixel_x','pixel_y']).count()['gene']
     Image=np.array(Try.unstack(fill_value=0))
     Image=Image/np.max(Image)
     blurred = gaussian_filter(scaling_factor*Image, sigma=7)
@@ -628,9 +1222,9 @@ def plot_control_transcripts(blurred,sdata,crd=None):
 
 def analyse_genes_left_out(sdata,df):
     """ This function """
-    filtered=pd.DataFrame(sdata.table.X.sum(axis=0)/df.groupby('gene').count()['x'][sdata.table.var.index])
-    filtered=filtered.rename(columns={'x':'proportion_kept'})
-    filtered['raw_counts']=df.groupby('gene').count()['x'][sdata.table.var.index]
+    filtered=pd.DataFrame(sdata.table.X.sum(axis=0)/df.groupby('gene').count()['pixel_x'][sdata.table.var.index])
+    filtered=filtered.rename(columns={'pixel_x':'proportion_kept'})
+    filtered['raw_counts']=df.groupby('gene').count()['pixel_x'][sdata.table.var.index]
     filtered['log_raw_counts']=np.log(filtered['raw_counts'])
 
     sns.scatterplot(data=filtered, y="proportion_kept", x="log_raw_counts")
@@ -734,21 +1328,18 @@ def plot_shapes(
     img_layer='corrected',
     shapes_layer=None,
     alpha: float = 0.5,
-    library_id='spatial_transcriptomics',
     crd=None,
     output: str = None,
     vmin=None,
     vmax=None,
+    figsize=( 20,20 )
 ) -> None:
     
-    
-    
-    
-    Xmax=sdata[img_layer].sizes['x']
-    Ymax=sdata[img_layer].sizes['y']    
-    
+    si=sdata.images[img_layer] 
+
     if crd==None:
-        crd=[0,Xmax,0,Ymax]
+        crd=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
+
     if shapes_layer==None:
         shapes_layer=[*sdata.shapes][0]
         
@@ -774,7 +1365,7 @@ def plot_shapes(
     if vmax!=None:
         vmax=np.percentile(column,vmax)    
     
-    fig, ax = plt.subplots(1, 1, figsize=(20, 20))
+    fig, ax = plt.subplots(1, 1, figsize=figsize )
 
     sdata[img_layer].squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax,add_colorbar=False)
 
@@ -805,17 +1396,17 @@ def plot_shapes(
 
     # Save the plot to ouput
     if output:
-        plt.close(fig)
-        fig.savefig(output + ".png")
+        fig.savefig(output)
     else:
         plt.show()
+    plt.close()
 
 def preprocessAdata(
     sdata, nuc_size_norm: bool = True, n_comps: int = 50,min_counts=10,min_cells=5,shapes_layer=None):
     """Returns the new and original AnnData objects
 
     This function calculates the QC metrics.
-    All cells with les then 10 genes and all genes with less then 5 cells are removed.
+    All cells with less then 10 genes and all genes with less then 5 cells are removed.
     Normalization is performed based on the size of the nucleus in nuc_size_norm."""
     # calculate the max amount of pc's possible 
     if min(sdata.table.shape)<n_comps:
@@ -829,25 +1420,28 @@ def preprocessAdata(
     # Filter cells and genes
     sc.pp.filter_cells(sdata.table, min_counts=min_counts)
     sc.pp.filter_genes(sdata.table, min_cells=min_cells)
-    sdata.table.raw= sdata.table
+    # #TODO adata.raw was set to adata previously, but rank_genes_groups and score_genes then uses this unprocessed data. See
+    # https://scanpy-tutorials.readthedocs.io/en/latest/pbmc3k.html, should we therefore set adata.raw after logp and before scaling?
+    sdata.table.raw= sdata.table 
 
     # Normalize nucleus size
     if shapes_layer is None:
         shapes_layer=[*sdata.shapes][-1]
     sdata.table.obs["shapeSize"] = sdata[shapes_layer].area
     
-    if nuc_size_norm:   
+    if nuc_size_norm:
         sdata.table.X = (sdata.table.X.T*100 / sdata.table.obs.shapeSize.values).T
 
         sc.pp.log1p(sdata.table)
+        #sdata.table.raw= sdata.table
         sc.pp.scale(sdata.table, max_value=10)
     else:
         sc.pp.normalize_total(sdata.table)
         sc.pp.log1p(sdata.table)
+        #sdata.table.raw= sdata.table
 
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
     #Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too! 
-    
     for i in [*sdata.shapes]:
         sdata[i].index=sdata[i].index.astype('str')
         sdata.add_shapes(name=i,
@@ -859,26 +1453,40 @@ def preprocessAdata(
 def preprocesAdataPlot(sdata, output: str = None) -> None:
     """This function plots the size of the nucleus related to the counts."""
 
-    # disable interactive mode
+    sc.pl.pca(sdata.table, color="total_counts", show=False,title='PC plot colored by total counts')
     if output:
-        plt.ioff()
-
-    sc.pl.pca(sdata.table, color="total_counts", show=not output,title='PC plot colored by total counts')
-    sc.pl.pca(sdata.table, color="shapeSize", show=not output,title='PC plot colored by object size')
+        plt.savefig(  output+'_total_counts_pca.png' )
+        plt.close()
+    else:
+        plt.show()
+    plt.close()
+    sc.pl.pca(sdata.table, color="shapeSize", show=False,title='PC plot colored by object size')
+    if output:
+        plt.savefig(  output+'_shapeSize_pca.png' )
+        plt.close()
+    else:
+        plt.show()
+    plt.close()
 
     fig, axs = plt.subplots(1, 2, figsize=(15, 4))
     sns.histplot(sdata.table.obs["total_counts"], kde=False, ax=axs[0])
     sns.histplot(sdata.table.obs["n_genes_by_counts"], kde=False, bins=55, ax=axs[1])
-    plt.show()
-    plt.scatter(sdata.table.obs["shapeSize"], sdata.table.obs["total_counts"])
-    plt.title = "cellsize vs cellcount"
-
-    # Save the plot to ouput
     if output:
-        plt.close()
-        plt.savefig(output + "0.png")
-        plt.close(fig)
-        fig.savefig(output + "1.png")
+        plt.savefig( output+'_histogram.png' )
+    else:
+        plt.show()
+    plt.close()
+
+    fig, ax = plt.subplots()
+    plt.scatter(sdata.table.obs["shapeSize"], sdata.table.obs["total_counts"])
+    ax.set_title("shapeSize vs Transcripts Count")
+    ax.set_xlabel("shapeSize")
+    ax.set_ylabel("Total Counts")
+    if output:
+        plt.savefig(output+'_size_count.png' )
+    else:
+        plt.show()
+    plt.close()
 
 
 def filter_on_size(
@@ -941,11 +1549,11 @@ def clustering(
     """
 
     # Neighborhood analysis
-    sc.pp.neighbors(sdata.table, n_neighbors=neighbors, n_pcs=pcs)
-    sc.tl.umap(sdata.table)
+    sc.pp.neighbors(sdata.table, n_neighbors=neighbors, n_pcs=pcs, random_state=100)
+    sc.tl.umap(sdata.table, random_state=100)
 
     # Leiden clustering
-    sc.tl.leiden(sdata.table, resolution=cluster_resolution)
+    sc.tl.leiden(sdata.table, resolution=cluster_resolution, random_state=100)
     sc.tl.rank_genes_groups(sdata.table, "leiden", method="wilcoxon")
 
     return sdata
@@ -1380,6 +1988,11 @@ def read_in_RESOLVE(path_coordinates,sdata=None,xcol=0,ycol=1,genecol=3,filterGe
     if filterGenes:
         for i in filter_genes:
             in_df=in_df[in_df['gene'].str.contains(i)==False]
+
+    if sdata.points:
+        for points_layer in [*sdata.points]:
+            del sdata.points[ points_layer ]
+
     sdata.add_points(name='transcripts',points=spatialdata.models.PointsModel.parse(in_df,coordinates={'x':'x','y':'y'}))
         
             
@@ -1410,5 +2023,75 @@ def read_in_Vizgen(path_genes,xcol='global_x',ycol='global_y',genecol='gene',ski
             in_df=in_df[in_df['gene'].str.contains(i)==False]
     return in_df
 
+def write_to_zarr( filename:Path, output_name='raw_image', chunks:int=1024 ):
 
-    
+    assert filename.exists()
+    img = AICSImage(filename)
+    img
+
+    arr = img.dask_data[0, :, 0, :, :]
+    arr
+
+    #output_name=os.path.splitext( os.path.basename( filename) )[0]
+
+    channels_names = ['DAPI']
+
+    image = to_spatial_image(arr, dims=['c', 'y', 'x'], name=output_name, c_coords=channels_names)
+
+    # chunk_size can be 1 for channels
+    max_chunk_size = chunks
+    chunks = {
+    'x': max_chunk_size,
+    'y': max_chunk_size,
+    'c': 1,
+    }
+
+    multiscale = to_multiscale(image,
+    scale_factors=[2, 4, 8, 16],
+    chunks=chunks,
+    )
+
+    zarr_path = os.path.join( os.path.dirname( filename ) , f'{output_name}.zarr' )
+
+    # For OME-NGFF, large datasets, use dimension_separator='/'
+    # Write OME-NGFF images part
+    store = zarr.storage.DirectoryStore( zarr_path , dimension_separator='/')
+
+    # Compression options
+    compressor = Blosc(cname='zstd', clevel=5, shuffle=Blosc.SHUFFLE)
+    multiscale.to_zarr(store, encoding={ output_name: { 'compressor': compressor }})
+    # consolidate_metadata is optional, but recommended and improves read latency
+    zarr.consolidate_metadata(store)
+
+def read_in_zarr_from_path( path, name=None, chunk:Optional[ int ]=None, crop_param:Tuple[ int,int,int ]=None )->sq.im.ImageContainer:
+    xarray_ds=xr.open_zarr( path )
+    if chunk:
+        # rechunking
+        xarray_ds=xarray_ds.chunk( chunk )
+    ic = sq.im.ImageContainer( xarray_ds[ name ], layer=name )
+    if crop_param:
+        ic=ic.crop_corner( y=crop_param[1], x=crop_param[0], size=crop_param[2] )
+    return ic
+
+def plot_image_container( ic:Union[ SpatialData, sq.im.ImageContainer ], output_path=None , crd=None, layer='image', aspect='equal', figsize=( 10, 10 )  ):
+
+    if isinstance( ic, SpatialData ):
+        dataset=ic.images[ layer ]
+    elif isinstance( ic, sq.im.ImageContainer ):
+        dataset=ic[ layer ]
+    else:
+        raise ValueError( "Only SpatialData and ImageContainer objects are supported." )
+
+    if crd is None:
+        crd=[ic.data.x.data[0], ic.data.x.data[-1]+1, ic.data.y.data[0], ic.data.y.data[-1]+1]
+
+    _, ax = plt.subplots(figsize=figsize )
+    cmap='gray'
+    dataset.squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap=cmap, robust=True, ax=ax,add_colorbar=False)
+
+    ax.set_aspect(  aspect )
+    if output_path:
+        plt.savefig( output_path )
+    else:
+        plt.show()
+    plt.close()
