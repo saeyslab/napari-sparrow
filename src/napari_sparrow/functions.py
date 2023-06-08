@@ -5,7 +5,7 @@
 from collections import namedtuple
 import warnings
 from itertools import chain
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 from pathlib import Path
 import cv2
 import os
@@ -1326,7 +1326,7 @@ def plot_shapes(
     column: str = None,
     cmap: str = "magma",
     img_layer='corrected',
-    shapes_layer=None,
+    shapes_layer:str='nucleus_boundaries',
     alpha: float = 0.5,
     crd=None,
     output: str = None,
@@ -1337,11 +1337,8 @@ def plot_shapes(
     
     si=sdata.images[img_layer] 
 
-    if crd==None:
+    if crd is None:
         crd=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
-
-    if shapes_layer==None:
-        shapes_layer=[*sdata.shapes][0]
         
     if column is not None:
         if column + "_colors" in sdata.table.uns:
@@ -1450,7 +1447,10 @@ def preprocessAdata(
     return sdata
 
 
-def preprocesAdataPlot(sdata, output: str = None) -> None:
+def preprocesAdataPlot(
+        sdata: SpatialData, 
+        output: str = None
+        ) -> None:
     """This function plots the size of the nucleus related to the counts."""
 
     sc.pl.pca(sdata.table, color="total_counts", show=False,title='PC plot colored by total counts')
@@ -1490,7 +1490,9 @@ def preprocesAdataPlot(sdata, output: str = None) -> None:
 
 
 def filter_on_size(
-    sdata, min_size: int = 100, max_size: int = 100000
+    sdata: SpatialData, 
+    min_size: int = 100, 
+    max_size: int = 100000
 ):
     """Returns a tuple with the AnnData object and the number of filtered cells.
 
@@ -1540,7 +1542,7 @@ def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
 
 
 def clustering(
-    sdata, pcs: int, neighbors: int, cluster_resolution: float = 0.8
+    sdata: SpatialData, pcs: int, neighbors: int, cluster_resolution: float = 0.8
 ) -> AnnData:
     """Returns the AnnData object.
 
@@ -1559,22 +1561,18 @@ def clustering(
     return sdata
 
 
-def clustering_plot(sdata, output: str = None) -> None:
+def clustering_plot(sdata:SpatialData, output: str = None) -> None:
     """This function plots the clusters and genes ranking"""
-
-    # disable interactive mode
-    if output:
-        plt.ioff()
 
     # Leiden clustering
     sc.pl.umap(sdata.table, color=["leiden"], show=not output)
 
     # Save the plot to ouput
     if output:
-        plt.savefig(output + "0.png", bbox_inches="tight")
+        plt.savefig(output + "_umap.png", bbox_inches="tight")
         plt.close()
         sc.pl.rank_genes_groups(sdata.table, n_genes=8, sharey=False, show=False)
-        plt.savefig(output + "1.png", bbox_inches="tight")
+        plt.savefig(output + "rank_genes_groups.png", bbox_inches="tight")
         plt.close()
 
     # Display plot
@@ -1583,8 +1581,9 @@ def clustering_plot(sdata, output: str = None) -> None:
 
 
 def scoreGenes(
-    sdata,
+    sdata: SpatialData,
     path_marker_genes: str,
+    delimiter=',',
     row_norm: bool = False,
     repl_columns: dict[str, str] = None,
     del_celltypes: List[str] = None,
@@ -1594,7 +1593,7 @@ def scoreGenes(
 
     Load the marker genes from csv file in path_marker_genes.
     If the marker gene list is a one hot endoded matrix, leave the input as is. 
-    IF the marker gene list is a Dictionary, with the first column the name of the celltype and the other columns the marker genes beloning to this celltype, 
+    If the marker gene list is a Dictionary, with the first column the name of the celltype and the other columns the marker genes beloning to this celltype, 
     input 
     repl_columns holds the column names that should be replaced the in the marker genes.
     del_genes holds the marker genes that should be deleted from the marker genes and genes dict.
@@ -1602,14 +1601,14 @@ def scoreGenes(
 
     # Load marker genes from csv
     if input_dict:
-        df_markers=pd.read_csv(path_marker_genes,header=None,index_col=0)
+        df_markers=pd.read_csv(path_marker_genes,header=None,index_col=0, delimiter=delimiter )
         df_markers=df_markers.T
         genes_dict=df_markers.to_dict('list')
         for i in genes_dict:
             genes_dict[i]=[x for x in genes_dict[i] if str(x)!='nan']
     # Replace column names in marker genes
     else:
-        df_markers = pd.read_csv(path_marker_genes, index_col=0)
+        df_markers = pd.read_csv(path_marker_genes, index_col=0, delimiter=delimiter )
         if repl_columns:
             for column, replace in repl_columns.items():
                 df_markers.columns = df_markers.columns.str.replace(column, replace)
@@ -1623,6 +1622,9 @@ def scoreGenes(
                     genes.append(df_markers.index[row])
             genes_dict[i] = genes
 
+    assert 'unknown_celltype' not in genes_dict.keys(), \
+        "Cell type 'unknown_celltype' is reserved for cells that could not be assigned a specific cell type"
+
     # Score all cells for all celltypes
     for key, value in genes_dict.items():
         try:
@@ -1635,38 +1637,40 @@ def scoreGenes(
     # Delete genes from marker genes and genes dict
     if del_celltypes:
         for gene in del_celltypes:
-            del df_markers[gene]
-            del genes_dict[gene]
+            if gene in df_markers.columns:
+                del df_markers[gene]
+            if gene in genes_dict.keys():
+                del genes_dict[gene]
 
-    scoresper_cluster = sdata.table.obs[
-        [col for col in sdata.table.obs if col in df_markers.columns]
-    ]
+    sdata, scoresper_cluster = annotate_celltype( 
+        sdata=sdata,
+        celltypes=df_markers.columns,
+        row_norm=row_norm,
+        celltype_column='annotation',
+        )
 
-    # Row normalization for visualisation purposes
-    if row_norm:
-        row_norm = scoresper_cluster.sub(
-            scoresper_cluster.mean(axis=1).values, axis="rows"
-        ).div(scoresper_cluster.std(axis=1).values, axis="rows")
-        sdata.table.obs[scoresper_cluster.columns.values] = row_norm
-        temp = pd.DataFrame(np.sort(row_norm)[:, -2:])
-    else:
-        temp = pd.DataFrame(np.sort(scoresper_cluster)[:, -2:])
+    # add 'unknown_celltype' to the list of celltypes if it is detected.
+    if 'unknown_celltype' in sdata.table.obs[ 'annotation' ].cat.categories:
+        genes_dict[ 'unknown_celltype' ]=[]
 
-    scores = (temp[1] - temp[0]) / ((temp[1] + temp[0]) / 2)
-    sdata.table.obs["Cleanliness"] = scores.values
-    sdata.table.obs["annotation"] = scoresper_cluster.idxmax(axis=1)
-    sdata.table.obs["annotation"] = sdata.table.obs["annotation"].astype('category')
     return genes_dict, scoresper_cluster
 
 
 def scoreGenesPlot(
-    sdata,
+    sdata: SpatialData,
     scoresper_cluster: pd.DataFrame,
+    img_layer:str='corrected',
+    shapes_layer:str='nucleus_boundaries',
+    crd=None,
     filter_index: int = 5,
     output: str = None,
-    library_id='spatial_transcriptomics'
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the annotation."""
+
+    si=sdata.images[img_layer] 
+
+    if crd is None:
+        crd=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
 
     # Custom colormap:
     colors = np.concatenate(
@@ -1674,69 +1678,70 @@ def scoreGenesPlot(
     )
     colors = [mpl.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
 
-    # disable interactive mode
-    if output:
-        plt.ioff()
-
     # Plot cleanliness and leiden next to annotation
-    sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=not output)
+    sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=False )
 
-    # Save the plot to ouput
     if output:
-        plt.savefig(output + "0.png", bbox_inches="tight")
-        plt.close()
-        sc.pl.umap(sdata.table, color=["leiden", "annotation"], show=False)
-        plt.savefig(output + "1.png", bbox_inches="tight")
-        plt.close()
-
-    # Display plot
+        plt.savefig(  output+'_Cleanliness_annotation.png', bbox_inches='tight'  )
     else:
-        sc.pl.umap(sdata.table, color=["leiden", "annotation"])
+        plt.show()
+    plt.close()
 
-    # Plot annotation and cleanliness columns of AnnData object
+    sc.pl.umap(sdata.table, color=["leiden", "annotation"], show=False)
+
+    if output:
+        plt.savefig(  output+'_leiden_annotation.png', bbox_inches='tight'  )
+    else:
+        plt.show()
+    plt.close()
+
+    # Plot annotation and cleanliness columns of sdata.table (AnnData) object
     sdata.table.uns["annotation_colors"] = colors
-    plot_shapes(sdata, column="annotation", output=output + "2" if output else None)
-    #plot_shapes(sdata.table, column="Cleanliness", output=output + "3" if output else None,library_id=library_id)
+    plot_shapes(
+        sdata=sdata, 
+        column="annotation", 
+        crd=crd,
+        img_layer=img_layer,
+        shapes_layer=shapes_layer,
+        output=output + "_maxScores.png" if output else None,
+        )
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
     sc.pl.heatmap(
         sdata.table,
         var_names=scoresper_cluster.columns.values,
         groupby="leiden",
-        show=not output,
+        show=False,
     )
 
-    # Save the plot to ouput
     if output:
-        plt.savefig(output + "4.png", bbox_inches="tight")
-        plt.close()
-        sc.pl.heatmap(
-            sdata.table[
-                sdata.table.obs.leiden.isin(
-                    [str(index) for index in range(filter_index, len(sdata.table.obs.leiden))]
-                )
-            ],
-            var_names=scoresper_cluster.columns.values,
-            groupby="leiden",
-            show=False,
-        )
-        plt.savefig(output + "5.png", bbox_inches="tight")
-        plt.close()
-
-    # Display plot
+        plt.savefig(  output+'_leiden_heatmap.png', bbox_inches='tight' )
     else:
-        sc.pl.heatmap(
-            sdata.table[
-                sdata.table.obs.leiden.isin(
-                    [str(index) for index in range(filter_index, len(sdata.table.obs.leiden))]
-                )
-            ],
-            var_names=scoresper_cluster.columns.values,
-            groupby="leiden",
-        )
+        plt.show()
+    plt.close()
+
+
+    sc.pl.heatmap(
+        sdata.table[
+            sdata.table.obs.leiden.isin(
+                [str(index) for index in range(filter_index, len(sdata.table.obs.leiden))]
+            )
+        ],
+        var_names=scoresper_cluster.columns.values,
+        groupby="leiden",
+        show=False,
+    )
+
+    if output:
+        plt.savefig(  output+f'_leiden_heatmap_filtered_{filter_index}.png', bbox_inches='tight' )
+    else:
+        plt.show()
+    plt.close()
+
 
 def correct_marker_genes(
-    sdata, Dict
+    sdata: SpatialData, 
+    celltype_correction_dict: Dict[str, Tuple[float, float]],
 ):
     """Returns the new AnnData object.
 
@@ -1745,8 +1750,11 @@ def correct_marker_genes(
     """
 
     # Correct for all the genes
-    for gene, values in Dict.items():
-        sdata.table.obs[gene]=np.where(sdata.table.obs[gene]<values[0],sdata.table.obs[gene]/values[1],sdata.table.obs[gene])
+    for celltype, values in celltype_correction_dict.items():
+        if celltype not in sdata.table.obs.columns:
+            print( f"Cell type '{celltype}' not in obs of AnnData object. Skipping. Please first calculate gene expression for this cell type." )
+            continue
+        sdata.table.obs[celltype]=np.where(sdata.table.obs[celltype]<values[0],sdata.table.obs[celltype]/values[1],sdata.table.obs[celltype])
     
     return sdata
 
@@ -1769,21 +1777,67 @@ def remove_celltypes(types: str, indexes: dict, sdata):
             sdata.table.obs.annotation = sdata.table.obs.annotation.cat.remove_categories(index)
     return sdata
 
+def annotate_celltype(
+        sdata: SpatialData,
+        celltypes: List[ str ],
+        row_norm:bool=False,
+        celltype_column:str='annotation',
+)->Tuple[ SpatialData, PandasDataFrame ]:
+    
+    scoresper_cluster = sdata.table.obs[
+        [col for col in sdata.table.obs if col in celltypes ]
+    ]
+
+    # Row normalization for visualisation purposes
+    if row_norm:
+        row_norm = scoresper_cluster.sub(
+            scoresper_cluster.mean(axis=1).values, axis="rows"
+        ).div(scoresper_cluster.std(axis=1).values, axis="rows")
+        sdata.table.obs[scoresper_cluster.columns.values] = row_norm
+        temp = pd.DataFrame(np.sort(row_norm)[:, -2:])
+    else:
+        temp = pd.DataFrame(np.sort(scoresper_cluster)[:, -2:])
+
+    scores = (temp[1] - temp[0]) / ((temp[1] + temp[0]) / 2)
+    sdata.table.obs["Cleanliness"] = scores.values
+
+    def assign_cell_type(row):
+        # Identify the cell type with the max score
+        max_score_type = row.idxmax()
+        # If max score is <= 0, assign 'unknown_celltype'
+        if row[max_score_type] <= 0:
+            return 'unknown_celltype'
+        else:
+            return max_score_type
+
+    # Assign 'unknown_celltype' cell_type if no cell type could be found that has larger expression than random sample
+    # as calculated by sc.tl.score_genes function of scanpy.
+    sdata.table.obs[ celltype_column ] = scoresper_cluster.apply(assign_cell_type, axis=1)
+    sdata.table.obs[ celltype_column ] = sdata.table.obs[ celltype_column ].astype("category")
+    # Set the Cleanliness score for unknown_celltype equal to 0 (i.e. not clean)
+    sdata.table.obs.loc[ sdata.table.obs[ celltype_column ]=='unknown_celltype', 'Cleanliness'  ] = 0
+
+    return sdata, scoresper_cluster
 
 def clustercleanliness(
-    sdata,
+    sdata: SpatialData,
     genes: List[str],
-    gene_indexes: dict[str, int] = None,
+    gene_indexes: Dict[str, int] = None,
     colors: List[str] = None,
-) -> Tuple[AnnData, Optional[dict]]:
+) -> Tuple[SpatialData, Optional[dict]]:
+    
     """Returns a tuple with the AnnData object and the color dict."""
+
     celltypes = np.array(sorted(genes), dtype=str)
     color_dict = None
 
-    sdata.table.obs["annotation"] = sdata.table.obs[
-        [col for col in sdata.table.obs if col in celltypes]
-    ].idxmax(axis=1)
-    sdata.table.obs.annotation = sdata.table.obs.annotation.astype("category")
+    # recalculate annotation, because we possibly did correction on celltype score for certain cells via correct_marker_genes function
+    sdata, _ = annotate_celltype( 
+        sdata=sdata, 
+        celltypes=celltypes,
+        row_norm=False,
+        celltype_column='annotation',
+        )
 
     # Create custom colormap for clusters
     if not colors:
@@ -1827,23 +1881,19 @@ def clustercleanliness(
 
 
 def clustercleanlinessPlot(
-    sdata,
-    crop_coord: List[int] = [0, 2000, 0, 2000],
+    sdata: SpatialData,
+    crd: List[int] = None,
     color_dict: dict = None,
+    celltype_column:str='annotation',
     output: str = None,
-    library_id='spatial_transcriptomics'
 ) -> None:
     """This function plots the clustercleanliness as barplots, the images with colored celltypes and the clusters."""
 
-    # disable interactive mode
-    if output:
-        plt.ioff()
-
     # Create the barplot
     stacked = (
-        sdata.table.obs.groupby(["leiden", "annotation"], as_index=False)
+        sdata.table.obs.groupby(["leiden", celltype_column], as_index=False)
         .size()
-        .pivot("leiden", "annotation")
+        .pivot("leiden", celltype_column )
         .fillna(0)
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
@@ -1865,35 +1915,37 @@ def clustercleanlinessPlot(
 
     # Save the barplot to ouput
     if output:
-        plt.close(fig)
-        fig.savefig(output + "0.png", bbox_inches="tight")
+        fig.savefig(output + "_barplot.png", bbox_inches="tight")
     else:
         plt.show()
+    plt.close(fig)
 
     # Plot images with colored celltypes
     plot_shapes(
-        sdata, column="annotation", alpha=0.8, output=output + "1" if output else None, library_id=library_id
+        sdata=sdata, 
+        column=celltype_column, 
+        alpha=0.8, 
+        output=output + f"_{celltype_column}" if output else None, 
     )
+
     plot_shapes(
-        sdata,
-        column="annotation",
-        crd=crop_coord,
+        sdata=sdata,
+        column=celltype_column,
+        crd=crd,
         alpha=0.8,
-        output=output + "2" if output else None,
-        library_id=library_id
+        output=output + f"_{celltype_column}_crop" if output else None, 
     )
 
     # Plot clusters
-    _, ax = plt.subplots(1, 1, figsize=(15, 10))
+    fig, ax = plt.subplots(1, 1, figsize=(15, 10))
     sc.pl.umap(sdata.table, color=["annotation"], ax=ax, show=not output,size=300000/sdata.table.shape[0])
     ax.axis("off")
 
-    # Save the plot to ouput
     if output:
-        fig.savefig(output + "3.png", bbox_inches="tight")
-        plt.close()
+        fig.savefig(  output+f'_maxScores_umap.png', bbox_inches='tight' )
     else:
         plt.show()
+    plt.close()
 
 
 def enrichment(sdata):
