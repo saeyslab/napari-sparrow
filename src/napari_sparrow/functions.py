@@ -604,11 +604,12 @@ def segmentationPlot(
     image_boundary=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
 
     if crd is not None:
+        _crd=crd
         crd=overlapping_region_2D( crd, image_boundary )
         if crd is None:
             warnings.warn(
                 (
-                    f"Provided crd '{crd}' and image_boundary '{image_boundary}' do not have any overlap. "
+                    f"Provided crd '{_crd}' and image_boundary '{image_boundary}' do not have any overlap. "
                     f"Please provide a crd that has some overlap with the image. "
                     f"Setting crd to image_boundary '{image_boundary}'."
                 )
@@ -1315,11 +1316,12 @@ def plot_shapes(
     image_boundary=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
 
     if crd is not None:
+        _crd=crd
         crd=overlapping_region_2D( crd, image_boundary )
         if crd is None:
             warnings.warn(
                 (
-                    f"Provided crd '{crd}' and image_boundary '{image_boundary}' do not have any overlap. "
+                    f"Provided crd '{_crd}' and image_boundary '{image_boundary}' do not have any overlap. "
                     f"Please provide a crd that has some overlap with the image. "
                     f"Setting crd to image_boundary '{image_boundary}'."
                 )
@@ -1406,25 +1408,25 @@ def preprocessAdata(
     # Filter cells and genes
     sc.pp.filter_cells(sdata.table, min_counts=min_counts)
     sc.pp.filter_genes(sdata.table, min_cells=min_cells)
-    # #TODO adata.raw was set to adata previously, but rank_genes_groups and score_genes then uses this unprocessed data. See
-    # https://scanpy-tutorials.readthedocs.io/en/latest/pbmc3k.html, should we therefore set adata.raw after logp and before scaling?
-    sdata.table.raw= sdata.table 
 
     # Normalize nucleus size
     if shapes_layer is None:
         shapes_layer=[*sdata.shapes][-1]
     sdata.table.obs["shapeSize"] = sdata[shapes_layer].area
-    
+
+    sdata.table.layers[ 'raw_counts' ]=sdata.table.X
+
     if nuc_size_norm:
         sdata.table.X = (sdata.table.X.T*100 / sdata.table.obs.shapeSize.values).T
-
         sc.pp.log1p(sdata.table)
-        #sdata.table.raw= sdata.table
+        # need to do .copy() here to set .raw value, because .scale still overwrites this .raw, which is unexpected behaviour
+        sdata.table.raw= sdata.table.copy()
         sc.pp.scale(sdata.table, max_value=10)
+
     else:
         sc.pp.normalize_total(sdata.table)
         sc.pp.log1p(sdata.table)
-        #sdata.table.raw= sdata.table
+        sdata.table.raw= sdata.table.copy()
 
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
     #Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too! 
@@ -2131,6 +2133,8 @@ def plot_image_container( ic:Union[ SpatialData, sq.im.ImageContainer ], output_
     dataset.squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap=cmap, robust=True, ax=ax,add_colorbar=False)
 
     ax.set_aspect(  aspect )
+    ax.invert_yaxis()
+
     if output_path:
         plt.savefig( output_path )
     else:
