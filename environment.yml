@@ -18,19 +18,19 @@ dependencies:
   - scipy==1.8.0
   - jupyterlab==3.4.0
   - ipywidgets==7.7.0
-  - anndata==0.8.0
+  - anndata==0.9.1
   - tqdm==4.64.0
   - opencv==4.5.5
   - modestimage==0.2
   - widgetsnbextension==3.6.0
   # polygons
-  - geopandas
-  - rasterio
-  - shapely
+  - geopandas==0.12.2
+  - rasterio==1.3.2
+  - shapely==2.0.1
   # scanpy
   - scanpy==1.9.1
   - python-igraph
-  - leidenalg
+  - leidenalg==0.9.1
   # dev tools
   - pre-commit
   - pytest
@@ -43,4 +43,9 @@ dependencies:
     - basicpy==1.0.0
     - nbmake==1.3.4
     - pytest-xdist==2.5.0
-    - napari-spatialdata==0.1.0
+    - spatialdata==0.0.9
+    - napari-spatialdata==0.2.4
+    - aicsimageio==4.9.4
+    - multiscale-spatial-image==0.11.2
+    - voronoi-diagram-for-polygons==0.1.6 # https://github.com/longavailable/voronoi-diagram-for-polygons/issues/6
+    - black==23.1.0
