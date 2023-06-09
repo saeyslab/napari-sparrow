@@ -593,30 +593,35 @@ def segmentationDeprecated(
 
 def segmentationPlot(
     sdata,
-    small_size_vis=None,
+    crd=None,
     img_layer='corrected',
-    shape_layer=None,
+    shapes_layer='nucleus_boundaries',
     output: str = None,
 ) -> None:
     
-    #if output:
-    #    plt.ioff()
-    if small_size_vis:
-        crd=small_size_vis
+    si=sdata.images[img_layer]
 
-    si=sdata.images[img_layer] 
-    if shape_layer==None:
-        shape_layer=[*sdata.shapes][0]
+    image_boundary=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
 
-    if small_size_vis is None:
-        crd=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
-    else:
-        crd=small_size_vis
+    if crd is not None:
+        crd=overlapping_region_2D( crd, image_boundary )
+        if crd is None:
+            warnings.warn(
+                (
+                    f"Provided crd '{crd}' and image_boundary '{image_boundary}' do not have any overlap. "
+                    f"Please provide a crd that has some overlap with the image. "
+                    f"Setting crd to image_boundary '{image_boundary}'."
+                )
+            )
+            crd=image_boundary
+    # if crd is None, set crd equal to image_boundary
+    else: 
+        crd=image_boundary
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 20))
     si.squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax[0],add_colorbar=False)
     si.squeeze().sel(x=slice(crd[0],crd[1]),y=slice(crd[2],crd[3])).plot.imshow(cmap='gray', robust=True, ax=ax[1],add_colorbar=False)
-    sdata[shape_layer].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
+    sdata[shapes_layer].cx[crd[0]:crd[1],crd[2]:crd[3]].plot(
             ax=ax[1],
             edgecolor="white",
             linewidth=1,
@@ -745,15 +750,12 @@ def delete_overlap(voronoi,polygons):
     voronoi=voronoi.buffer(distance=0)        
     return voronoi
 
-def create_voronoi_boundaries( sdata: SpatialData, radius:int=0, shape_layer:Optional[str]=None ):
+def create_voronoi_boundaries( sdata: SpatialData, radius:int=0, shapes_layer: str='nucleus_boundaries' ):
 
     if radius<0:
         raise ValueError( f"radius should be >0, provided value for radius is '{radius}'" )
 
-    # Create the polygon shapes for the mask
-    if shape_layer==None:
-        shape_layer=[*sdata.shapes][0]
-    sdata[shape_layer].index=sdata[shape_layer].index.astype('str')
+    sdata[shapes_layer].index=sdata[shapes_layer].index.astype('str')
 
     expanded_layer_name='expanded_cells'+str(radius)
     #sdata[shape_layer].index = list(map(str, sdata[shape_layer].index))
@@ -768,8 +770,8 @@ def create_voronoi_boundaries( sdata: SpatialData, radius:int=0, shape_layer:Opt
 
     if expanded_layer_name in [*sdata.shapes]:
         del sdata.shapes[expanded_layer_name]
-    sdata[expanded_layer_name]=sdata[shape_layer].copy()
-    sdata[expanded_layer_name]['geometry']=sdata[shape_layer].simplify(2)
+    sdata[expanded_layer_name]=sdata[shapes_layer].copy()
+    sdata[expanded_layer_name]['geometry']=sdata[shapes_layer].simplify(2)
 
     vd = voronoiDiagram4plg(sdata[expanded_layer_name], boundary)
     voronoi=geopandas.sjoin(vd,sdata[expanded_layer_name],predicate='contains',how='left')
@@ -782,17 +784,8 @@ def create_voronoi_boundaries( sdata: SpatialData, radius:int=0, shape_layer:Opt
 
     sdata[expanded_layer_name].geometry=intersected
 
-    # still need to shift extended polygons to account for possible cropped images
     return sdata
 
-    x_translation=si.x.data[0]
-    y_translation=si.y.data[0]
-    
-    intersected = intersected.apply(lambda geom: translate(geom, xoff=x_translation, yoff=y_translation))
-
-    sdata[expanded_layer_name].geometry=intersected
-
-    return sdata
 
 def apply_transform_matrix( 
         path_count_matrix:Union[ str, Path ], 
@@ -849,18 +842,12 @@ def apply_transform_matrix(
 def create_adata_from_masks_dask(
     path: Union[str,Path], 
     sdata: SpatialData,
-    shapes_layer:Optional[str],
+    shapes_layer:str='nucleus_boundaries',
 ) -> SpatialData:
     
     """Returns the AnnData object with transcript and polygon data.
     """
 
-    #polygons = polygons.dissolve(by="cells")
-    #keep cells as a column
-    #polygons.reset_index(  drop=False , inplace=True )
-    # Create the polygon shapes for the mask
-    if shapes_layer==None:
-        shapes_layer=[*sdata.shapes][0]
     sdata[shapes_layer].index=sdata[shapes_layer].index.astype('str')
 
     # need to do this transformation, 
@@ -947,18 +934,6 @@ def create_adata_from_masks_dask(
         sdata[i].index = list(map(str, sdata[i].cells))  # on cells, because index is lost when saving and loading polygon from file.
         sdata.add_shapes(name=i,
         shapes=spatialdata.models.ShapesModel.parse(sdata[i][np.isin(sdata[i].index.values,sdata.table.obs.index.values)]),overwrite=True)
-        #adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
-
-    #print( "Calculate nucleusSize" )
-
-    # calculate nucleusSize (we use dask, because otherwise this step uses much RAM)
-    #chunks = (1000, 1000)
-    #dask_masks = da.from_array(masks, chunks=chunks)
-    # calculate unique indices and counts
-    #indices, counts = da.unique(dask_masks, return_counts=True)
-    #indices, counts = da.compute(indices, counts)
-
-    #adata.obs["nucleusSize"] = [counts[np.where(indices==int(index))][0] for index in adata.obs.index]
 
     return sdata, ddf
 
@@ -1337,8 +1312,22 @@ def plot_shapes(
     
     si=sdata.images[img_layer] 
 
-    if crd is None:
-        crd=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
+    image_boundary=[si.x.data[0], si.x.data[-1]+1, si.y.data[0], si.y.data[-1]+1]
+
+    if crd is not None:
+        crd=overlapping_region_2D( crd, image_boundary )
+        if crd is None:
+            warnings.warn(
+                (
+                    f"Provided crd '{crd}' and image_boundary '{image_boundary}' do not have any overlap. "
+                    f"Please provide a crd that has some overlap with the image. "
+                    f"Setting crd to image_boundary '{image_boundary}'."
+                )
+            )
+            crd=image_boundary
+    # if crd is None, set crd equal to image_boundary
+    else: 
+        crd=image_boundary
         
     if column is not None:
         if column + "_colors" in sdata.table.uns:
@@ -1948,7 +1937,7 @@ def clustercleanlinessPlot(
     plt.close()
 
 
-def enrichment(sdata):
+def enrichment(sdata, seed:int=0):
     """Returns the AnnData object.
 
     Performs some adaptations to save the data.
@@ -1963,7 +1952,7 @@ def enrichment(sdata):
 
     # Calculate nhood enrichment
     sq.gr.spatial_neighbors(sdata.table, coord_type="generic")
-    sq.gr.nhood_enrichment(sdata.table, cluster_key="annotation")
+    sq.gr.nhood_enrichment(sdata.table, cluster_key="annotation", seed=seed)
     return sdata
 
 
@@ -2147,3 +2136,19 @@ def plot_image_container( ic:Union[ SpatialData, sq.im.ImageContainer ], output_
     else:
         plt.show()
     plt.close()
+
+def overlapping_region_2D(A: List[ int | float ], B : List[ int | float ] )->Optional[ List[ int| float ] ]:
+    overlap_x = not (A[1] < B[0] or B[1] < A[0])
+    overlap_y = not (A[3] < B[2] or B[3] < A[2])
+    
+    if overlap_x and overlap_y:
+        # Calculate overlapping region
+        x_min = max(A[0], B[0])
+        x_max = min(A[1], B[1])
+        y_min = max(A[2], B[2])
+        y_max = min(A[3], B[3])
+        
+        # Return as a list: [x_min, x_max, y_min, y_max]
+        return [x_min, x_max, y_min, y_max]
+    else:
+        return None
