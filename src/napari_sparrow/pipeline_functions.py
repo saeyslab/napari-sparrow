@@ -1,9 +1,14 @@
 """ This file contains the five pipeline steps that are used by the single pipeline.
 Some steps consist of multiple substeps from the functions file. """
 
+import os
+from pathlib import Path
+from typing import Dict, List, Tuple
+
 import squidpy.im as sq
 from omegaconf import DictConfig
 from skimage import io
+from spatialdata import SpatialData
 
 from napari_sparrow import functions as fc
 from napari_sparrow import utils
@@ -11,12 +16,34 @@ from napari_sparrow import utils
 log = utils.get_pylogger(__name__)
 
 
-def clean(cfg: DictConfig, results: dict) -> DictConfig:
+def load(cfg: DictConfig) -> sq.ImageContainer:
+    if os.path.splitext(cfg.dataset.image)[-1] != ".zarr":
+        fc.write_to_zarr(Path(cfg.dataset.image))
+
+    name = os.path.splitext(os.path.basename(cfg.dataset.image))[0]
+
+    zarr_path = os.path.join(
+        os.path.dirname(cfg.dataset.image), f"{name}.zarr", "scale0"
+    )
+
+    # this is ic container holding dask array
+    ic = fc.read_in_zarr_from_path(zarr_path, name=name)
+
+    # TODO should update the load function (integrate with spatialdata format...etc.)
+    ic.rename(name, "raw_image")
+
+    return ic
+
+
+def clean(cfg: DictConfig, ic: sq.ImageContainer) -> sq.ImageContainer:
     """Cleaning step, the first step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
 
-    # Read in the image, load into ImageContainer
-    img = io.imread(cfg.dataset.image)
-    ic = sq.ImageContainer(img)
+    fc.plot_image_container(
+        ic,
+        os.path.join(cfg.paths.output_dir, "original.png"),
+        cfg.clean.small_size_vis,
+        layer="raw_image",
+    )
 
     # Image subset for faster processing
     left_corner, size = None, None
@@ -26,244 +53,334 @@ def clean(cfg: DictConfig, results: dict) -> DictConfig:
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
-
-        # Left_corner and size for subsetting the image
-        ic_correct, flatfield = fc.tilingCorrection(
-            ic, left_corner, size, cfg.clean.tile_size
+        ic, flatfield = fc.tilingCorrection(
+            ic=ic,
+            tile_size=cfg.clean.tile_size,
         )
 
         # Write plot to given path if output is enabled
         if "tiling_correction" in cfg.paths:
-            log.info(f"Writing tiling plots to {cfg.paths.tiling_correction}")
+            log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
             fc.tilingCorrectionPlot(
-                ic_correct.data.image.squeeze().to_numpy(),
-                flatfield,
-                img,
-                cfg.paths.tiling_correction,
+                img=ic.data.corrected.squeeze().to_numpy(),
+                flatfield=flatfield,
+                img_orig=ic.data.raw_image.squeeze().to_numpy(),
+                output=cfg.paths.tiling_correction,
             )
-        ic = ic_correct
 
-    # Preprocess image, apply tophat filter if supplied and CLAHE contrast function
-    ic_preprocess = fc.preprocessImage(
-        img=ic,
-        size_tophat=cfg.clean.size_tophat,
-        contrast_clip=cfg.clean.contrast_clip,
-    )
-
-    # Write plot to given path if output is enabled
-    if "preprocess" in cfg.paths:
-        log.info(f"Writing preprocess plots to {cfg.paths.preprocess}")
-        fc.preprocessImagePlot(
-            ic_preprocess.data.image.squeeze().to_numpy(),
-            img,
+        fc.plot_image_container(
+            ic,
+            os.path.join(cfg.paths.output_dir, "tiling_correction.png"),
             cfg.clean.small_size_vis,
-            cfg.paths.preprocess,
+            layer="corrected",
         )
 
-    results = {"preprocessimg": ic_preprocess}
+    # tophat filtering
 
-    return cfg, results
+    # to account for case where tiling correction is not yet applied.
+    if "corrected" not in ic.data.data_vars:
+        ic["corrected"] = ic["raw_image"]
+
+    if cfg.clean.tophatFiltering:
+        ic = fc.tophat_filtering(
+            img=ic,
+            output_dir=cfg.paths.output_dir,
+            layer="corrected",
+            size_tophat=cfg.clean.size_tophat,
+        )
+
+        fc.plot_image_container(
+            ic,
+            os.path.join(cfg.paths.output_dir, "tophat_filtered.png"),
+            cfg.clean.small_size_vis,
+            layer="corrected",
+        )
+
+    # clahe processing
+
+    if cfg.clean.claheProcessing:
+        ic = fc.clahe_processing(
+            img=ic,
+            output_dir=cfg.paths.output_dir,
+            contrast_clip=cfg.clean.contrast_clip,
+            chunksize_clahe=cfg.clean.chunksize_clahe,
+            layer="corrected",
+        )
+
+        fc.plot_image_container(
+            ic,
+            os.path.join(cfg.paths.output_dir, "clahe.png"),
+            cfg.clean.small_size_vis,
+            layer="corrected",
+        )
+
+    return ic
 
 
-def segment(cfg: DictConfig, results: dict) -> DictConfig:
+def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
     """Segmentation step, the second step of the pipeline, performs cellpose segmentation and creates masks."""
 
-    import numpy as np
+    # crop param for debugging and tuning of parameters
+    if cfg.segmentation.crop_param:
+        ic = ic.crop_corner(
+            y=cfg.segmentation.crop_param[1],
+            x=cfg.segmentation.crop_param[0],
+            size=cfg.segmentation.crop_param[2],
+        )
 
-    # Load image from previous step
-    ic = results["preprocessimg"]
-    img = ic.data.image.squeeze().to_numpy()
+        # rechunk if you take crop, in order to be able to save as spatialdata object.
+        for layer in ic.data.data_vars:
+            chunksize = ic[layer].data.chunksize[0]
+            ic[layer] = ic[layer].chunk(chunksize)
 
     # Perform segmentation
-    masks, masks_i, polygons, ic = fc.segmentation(
-        ic,
-        cfg.device,
-        cfg.segmentation.min_size,
-        cfg.segmentation.flow_threshold,
-        cfg.segmentation.diameter,
-        cfg.segmentation.cellprob_threshold,
-        cfg.segmentation.model_type,
-        cfg.segmentation.channels,
+    sdata = fc.segmentation_cellpose(
+        ic=ic,
+        output_dir=cfg.paths.output_dir,
+        layer="corrected",
+        device=cfg.device,
+        min_size=cfg.segmentation.min_size,
+        flow_threshold=cfg.segmentation.flow_threshold,
+        diameter=cfg.segmentation.diameter,
+        cellprob_threshold=cfg.segmentation.cellprob_threshold,
+        model_type=cfg.segmentation.model_type,
+        channels=cfg.segmentation.channels,
+        chunks=cfg.segmentation.chunks,
+        lazy=True,
     )
 
-    # Write plot to given path if output is enabled
-    if "segmentation" in cfg.paths:
-        log.info(f"Writing segmentation plots to {cfg.paths.segmentation}")
+    for key in sdata.shapes.keys():
+        if "boundaries" in key:
+            shapes_layer = key
+            break
+
+    fc.segmentationPlot(
+        sdata=sdata,
+        crd=cfg.segmentation.small_size_vis
+        if cfg.segmentation.small_size_vis is not None
+        else cfg.clean.small_size_vis,
+        img_layer="corrected",
+        shapes_layer=shapes_layer,
+        output=cfg.paths.segmentation,
+    )
+
+    if cfg.segmentation.voronoi_radius:
+        sdata = fc.create_voronoi_boundaries(
+            sdata,
+            radius=cfg.segmentation.voronoi_radius,
+            shapes_layer=shapes_layer,
+        )
         fc.segmentationPlot(
-            img,
-            masks_i,
-            polygons,
-            channels=cfg.segmentation.channels,
-            small_size_vis=cfg.segmentation.small_size_vis,
-            output=cfg.paths.segmentation,
+            sdata=sdata,
+            crd=cfg.segmentation.small_size_vis
+            if cfg.segmentation.small_size_vis is not None
+            else cfg.clean.small_size_vis,
+            img_layer="corrected",
+            shapes_layer="expanded_cells" + str(cfg.segmentation.voronoi_radius),
+            output=f"{cfg.paths.segmentation}_expanded_cells_{cfg.segmentation.voronoi_radius}",
         )
 
-    # Write masks to file if output is enabled
-    if "masks" in cfg.paths:
-        log.info(f"Writing masks to {cfg.paths.masks}")
-        np.save(cfg.paths.masks, masks)
-
-    results["segmentationmasks"] = masks
-    results["preprocessimg"] = ic
-
-    return cfg, results
+    return sdata
 
 
-def allocate(cfg: DictConfig, results: dict) -> DictConfig:
+def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Allocation step, the third step of the pipeline, creates the adata object from the mask and allocates the transcripts from the supplied file."""
 
-    # Load results from previous steps
-    masks = results["segmentationmasks"]
-    img = results["preprocessimg"]
-
-    # Create the adata object with from the masks and the transcripts
-    adata = fc.create_adata_quick(
-        cfg.dataset.coords, img, masks, cfg.allocate.library_id
+    _ = fc.apply_transform_matrix(
+        path_count_matrix=cfg.dataset.coords,
+        path_transform_matrix=cfg.dataset.transform_matrix,
+        output_path=os.path.join(
+            cfg.paths.output_dir, "detected_transcripts_transformed.parquet"
+        ),
+        delimiter=cfg.allocate.delimiter,
+        header=cfg.allocate.header,
+        column_x=cfg.allocate.column_x,
+        column_y=cfg.allocate.column_y,
+        column_gene=cfg.allocate.column_gene,
+        debug=cfg.allocate.debug,
     )
 
-    # Write plots to given path if output is enabled
-    if "polygons" in cfg.paths:
-        log.info(f"Writing polygon plot to {cfg.paths.polygons}")
-        fc.plot_shapes(
-            adata,
-            cfg.allocate.polygon_column or None,
-            cfg.allocate.polygon_cmap,
-            cfg.allocate.polygon_alpha,
-            cfg.allocate.polygon_crd or None,
-            output=cfg.paths.polygons,
-        )
+    if cfg.segmentation.voronoi_radius:
+        shapes_layer = "expanded_cells" + str(cfg.segmentation.voronoi_radius)
+    else:
+        for key in sdata.shapes.keys():
+            if "boundaries" in key:
+                shapes_layer = key
+                break
 
-    # Perform normalization and remove all cells with less then 10 genes
-    adata, adata_orig = fc.preprocessAdata(
-        adata, masks, cfg.allocate.nuc_size_norm, cfg.allocate.n_comps
+    sdata, _ = fc.create_adata_from_masks_dask(
+        path=os.path.join(
+            cfg.paths.output_dir, "detected_transcripts_transformed.parquet"
+        ),
+        sdata=sdata,
+        shapes_layer=shapes_layer,
     )
 
-    # Write plots to given path if output is enabled
-    if "preprocess_adata" in cfg.paths:
-        log.info(f"Writing preprocess_adata plot to {cfg.paths.preprocess_adata}")
-        fc.preprocesAdataPlot(adata, adata_orig, output=cfg.paths.preprocess_adata)
-    if "total_counts" in cfg.paths:
-        log.info(f"Writing total count plot to {cfg.paths.total_counts}")
-        fc.plot_shapes(
-            adata,
-            cfg.allocate.total_counts_column or None,
-            cfg.allocate.total_counts_cmap,
-            cfg.allocate.total_counts_alpha,
-            cfg.allocate.total_counts_crd or None,
-            output=cfg.paths.total_counts,
-        )
+    fc.plot_shapes(
+        sdata,
+        shapes_layer=shapes_layer,
+        crd=cfg.segmentation.small_size_vis
+        if cfg.segmentation.small_size_vis is not None
+        else cfg.clean.small_size_vis,
+        output=cfg.paths.polygons,
+    )
+
+    # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
+    sdata = fc.preprocessAdata(
+        sdata,
+        nuc_size_norm=cfg.allocate.nuc_size_norm,
+        shapes_layer=shapes_layer,
+    )
+
+    fc.preprocesAdataPlot(
+        sdata,
+        output=cfg.paths.preprocess_adata,
+    )
+
+    fc.plot_shapes(
+        sdata,
+        shapes_layer=shapes_layer,
+        crd=cfg.segmentation.small_size_vis
+        if cfg.segmentation.small_size_vis is not None
+        else cfg.clean.small_size_vis,
+        column=cfg.allocate.total_counts_column,
+        cmap=cfg.allocate.total_counts_cmap,
+        alpha=cfg.allocate.total_counts_alpha,
+        output=cfg.paths.total_counts,
+    )
 
     # Filter all cells based on size and distance
-    adata, _ = fc.filter_on_size(adata, cfg.allocate.min_size, cfg.allocate.max_size)
-
-    # Write plots to given path if output is enabled
-    if "distance" in cfg.paths:
-        log.info(f"Writing distance plot to {cfg.paths.distance}")
-        fc.plot_shapes(
-            adata,
-            cfg.allocate.distance_column or None,
-            cfg.allocate.distance_cmap,
-            cfg.allocate.distance_alpha,
-            cfg.allocate.distance_crd or None,
-            output=cfg.paths.distance,
-        )
-
-    # Extract segmentation features, area and mean_intensity
-    adata = fc.extract(img, adata)
-
-    # Perform neighborhood analysis and leiden clustering
-    adata = fc.clustering(
-        adata,
-        cfg.allocate.pcs,
-        cfg.allocate.neighbors,
-        cfg.allocate.cluster_resolution,
+    sdata = fc.filter_on_size(
+        sdata,
+        min_size=cfg.allocate.min_size,
+        max_size=cfg.allocate.max_size,
     )
 
-    # Write plot to given path if output is enabled
-    if "cluster" in cfg.paths:
-        log.info(f"Writing clustering plots to {cfg.paths.cluster}")
-        fc.clustering_plot(adata, output=cfg.paths.cluster)
-    if "leiden" in cfg.paths:
-        log.info(f"Writing leiden plot to {cfg.paths.leiden}")
-        fc.plot_shapes(
-            adata,
-            cfg.allocate.leiden_column or None,
-            cfg.allocate.leiden_cmap,
-            cfg.allocate.leiden_alpha,
-            cfg.allocate.leiden_crd or None,
-            output=cfg.paths.leiden,
-        )
+    fc.plot_shapes(
+        sdata,
+        shapes_layer=shapes_layer,
+        crd=cfg.segmentation.small_size_vis
+        if cfg.segmentation.small_size_vis is not None
+        else cfg.clean.small_size_vis,
+        column=cfg.allocate.shape_size_column,
+        cmap=cfg.allocate.shape_size_cmap,
+        alpha=cfg.allocate.shape_size_alpha,
+        output=cfg.paths.shape_size,
+    )
 
-    results["adata"] = adata
+    print("Start clustering")
 
-    return cfg, results
+    sdata = fc.clustering(
+        sdata,
+        pcs=cfg.allocate.pcs,
+        neighbors=cfg.allocate.neighbors,
+        cluster_resolution=cfg.allocate.cluster_resolution,
+    )
+
+    fc.clustering_plot(
+        sdata,
+        output=cfg.paths.cluster,
+    )
+
+    fc.plot_shapes(
+        sdata,
+        shapes_layer=shapes_layer,
+        column=cfg.allocate.leiden_column,
+        cmap=cfg.allocate.leiden_cmap,
+        alpha=cfg.allocate.leiden_alpha,
+        crd=cfg.segmentation.small_size_vis
+        if cfg.segmentation.small_size_vis is not None
+        else cfg.clean.small_size_vis,
+        output=cfg.paths.leiden,
+    )
+
+    return sdata
 
 
-def annotate(cfg: DictConfig, results: dict) -> DictConfig:
+def annotate(
+    cfg: DictConfig, sdata: SpatialData
+) -> Tuple[SpatialData, Dict[str, List[str]]]:
     """Annotation step, the fourth step of the pipeline, annotates the cells with celltypes based on the marker genes file."""
-
-    # Load data from previous step
-    adata = results["adata"]
 
     # Get arguments from cfg else empty objects
     repl_columns = (
         cfg.annotate.repl_columns if "repl_columns" in cfg.annotate else dict()
     )
-    del_genes = cfg.annotate.del_genes if "del_genes" in cfg.annotate else []
+    del_celltypes = (
+        cfg.annotate.del_celltypes if "del_celltypes" in cfg.annotate else []
+    )
 
     # Load marker genes, replace columns with different name, delete genes from list
     mg_dict, scoresper_cluster = fc.scoreGenes(
-        adata, cfg.dataset.markers, cfg.annotate.row_norm, repl_columns, del_genes
+        sdata=sdata,
+        path_marker_genes=cfg.dataset.markers,
+        delimiter=cfg.annotate.delimiter,
+        row_norm=cfg.annotate.row_norm,
+        repl_columns=repl_columns,
+        del_celltypes=del_celltypes,
     )
 
-    # Write plot to given path if output is enabled
-    if "score_genes" in cfg.paths:
-        fc.scoreGenesPlot(adata, scoresper_cluster, output=cfg.paths.score_genes)
+    if cfg.segmentation.voronoi_radius:
+        shapes_layer = "expanded_cells" + str(cfg.segmentation.voronoi_radius)
+    else:
+        for key in sdata.shapes.keys():
+            if "boundaries" in key:
+                shapes_layer = key
+                break
 
-    # Perform correction for genes that occur in all cells and are overexpressed
-    if "marker_genes" in cfg.annotate:
-        adata = fc.correct_marker_genes(adata, cfg.annotate.marker_genes)
+    fc.scoreGenesPlot(
+        sdata=sdata,
+        scoresper_cluster=scoresper_cluster,
+        shapes_layer=shapes_layer,
+        output=cfg.paths.score_genes,
+        crd=cfg.segmentation.small_size_vis
+        if cfg.segmentation.small_size_vis is not None
+        else cfg.clean.small_size_vis,
+    )
 
-    results["adata"] = adata
-    results["mg_dict"] = mg_dict
-
-    return cfg, results
+    return sdata, mg_dict
 
 
-def visualize(cfg: DictConfig, results: dict) -> DictConfig:
-    """Visualisation step, the fifth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as geojson and h5ad files."""
+def visualize(
+    cfg: DictConfig, sdata: SpatialData, mg_dict: Dict[str, List[str]]
+) -> SpatialData:
+    """Visualisation step, the fifth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as SpatialData object."""
 
-    # Load data from previous step
-    adata = results["adata"]
-    mg_dict = results["mg_dict"]
+    # Perform correction for transcripts (and corresponding celltypes) that occur in all cells and are overexpressed
+    if "marker_genes" in cfg.visualize:
+        sdata = fc.correct_marker_genes(
+            sdata,
+            celltype_correction_dict=cfg.visualize.marker_genes,
+        )
 
     # Get arguments from cfg else None objects
-    gene_indexes = (
-        cfg.visualize.gene_indexes if "gene_indexes" in cfg.visualize else None
+    celltype_indexes = (
+        cfg.visualize.celltype_indexes if "celltype_indexes" in cfg.visualize else None
     )
     colors = cfg.visualize.colors if "colors" in cfg.visualize else None
 
     # Check cluster cleanliness
-    adata, color_dict = fc.clustercleanliness(
-        adata, list(mg_dict.keys()), gene_indexes, colors
+    sdata, color_dict = fc.clustercleanliness(
+        sdata,
+        genes=list(mg_dict.keys()),
+        gene_indexes=celltype_indexes,
+        colors=colors,
     )
 
-    # Write plot to given path if output is enabled
-    if "cluster_cleanliness" in cfg.paths:
-        log.info(f"Writing cluster cleanliness plot to {cfg.paths.cluster_cleanliness}")
-        fc.clustercleanlinessPlot(
-            adata,
-            cfg.visualize.crd,
-            color_dict,
-            output=cfg.paths.cluster_cleanliness,
-        )
-    # Calculate nhood enrichement
-    adata = fc.enrichment(adata)
-    if "nhood" in cfg.paths:
-        fc.enrichment_plot(adata, cfg.paths.nhood)
+    fc.clustercleanlinessPlot(
+        sdata=sdata,
+        crd=cfg.segmentation.small_size_vis
+        if cfg.segmentation.small_size_vis is not None
+        else cfg.clean.small_size_vis,
+        color_dict=color_dict,
+        output=cfg.paths.cluster_cleanliness,
+    )
 
-    # Save polygons to geojson and adata to h5ad files
-    fc.save_data(adata, cfg.paths.geojson, cfg.paths.h5ad)
+    # calculate nhood enrichment
+    sdata = fc.enrichment(sdata)
+    fc.enrichment_plot(
+        sdata,
+        output=cfg.paths.nhood,
+    )
 
-    log.info("Pipeline finished")
-    return cfg, results
+    return sdata

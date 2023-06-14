@@ -1,5 +1,8 @@
 tilingCorrection: True
 tile_size: 2144
+tophatFiltering: True
 size_tophat: 85
+claheProcessing: True
 contrast_clip: 3.5
+chunksize_clahe: 10000
 small_size_vis: [3000, 6000, 5000, 9000]

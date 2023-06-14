@@ -1,12 +1,15 @@
 """" This file acts as a starting point for running the pipeline for single sample analysis.
 It can be run from any place with the command: 'sparrow'. """
 
-
+import logging
+import os
 import warnings
 from typing import Any
 
 import hydra
 from omegaconf import DictConfig
+
+log = logging.getLogger(__name__)
 
 
 def check_config(cfg: DictConfig):
@@ -35,23 +38,29 @@ def main(cfg: DictConfig) -> None:
     # Supress _core_genes futerewarnings
     warnings.simplefilter(action="ignore", category=FutureWarning)
 
-    # The actual pipeline which consists of 5 steps:
-    results: dict[str, Any] = {}
+    # The actual pipeline which consists of 7 steps:
+
+    # Load
+    log.info("Converting to zarr and Loading imagecontainer.")
+    ic = pf.load(cfg)
 
     # Clean
-    cfg, results = pf.clean(cfg, results)
+    ic = pf.clean(cfg, ic)
 
     # Segment
-    cfg, results = pf.segment(cfg, results)
+    sdata = pf.segment(cfg, ic)
 
     # Allocate
-    cfg, results = pf.allocate(cfg, results)
+    sdata = pf.allocate(cfg, sdata)
 
     # Annotate
-    cfg, results = pf.annotate(cfg, results)
+    sdata, mg_dict = pf.annotate(cfg, sdata)
 
     # Visualize
-    cfg, results = pf.visualize(cfg, results)
+    sdata = pf.visualize(cfg, sdata, mg_dict)
+
+    # Save as zarr
+    sdata.write(os.path.join(cfg.paths.sdata))
 
     return
 

@@ -467,7 +467,7 @@ def segmentation_cellpose(
     channels =[0, 0],
     chunks='auto',
     lazy=False,
-    )->Tuple[ sq.im.ImageContainer, geopandas.GeoDataFrame]:
+    )->SpatialData:
 
     sq.im.segment(img=ic, 
                   layer=layer, 
@@ -503,7 +503,7 @@ def segmentation_cellpose(
 
     polygons['geometry'] = polygons['geometry'].apply(lambda geom: translate(geom, xoff=x_translation, yoff=y_translation))
 
-    polygons_path=os.path.join( output_dir , "polygons.shp" )
+    polygons_path=os.path.join( output_dir , "polygons.geojson" )
     polygons.to_file( polygons_path, driver="GeoJSON")
 
     sdata=imageContainerToSData(ic)
@@ -1394,7 +1394,7 @@ def preprocessAdata(
     """Returns the new and original AnnData objects
 
     This function calculates the QC metrics.
-    All cells with less then 10 genes and all genes with less then 5 cells are removed.
+    All cells with less than 10 genes and all genes with less than 5 cells are removed.
     Normalization is performed based on the size of the nucleus in nuc_size_norm."""
     # calculate the max amount of pc's possible 
     if min(sdata.table.shape)<n_comps:
@@ -1534,7 +1534,7 @@ def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
 
 def clustering(
     sdata: SpatialData, pcs: int, neighbors: int, cluster_resolution: float = 0.8
-) -> AnnData:
+) -> SpatialData:
     """Returns the AnnData object.
 
     Performs neighborhood analysis, Leiden clustering and UMAP.
@@ -1563,7 +1563,7 @@ def clustering_plot(sdata:SpatialData, output: str = None) -> None:
         plt.savefig(output + "_umap.png", bbox_inches="tight")
         plt.close()
         sc.pl.rank_genes_groups(sdata.table, n_genes=8, sharey=False, show=False)
-        plt.savefig(output + "rank_genes_groups.png", bbox_inches="tight")
+        plt.savefig(output + "_rank_genes_groups.png", bbox_inches="tight")
         plt.close()
 
     # Display plot
@@ -1576,7 +1576,7 @@ def scoreGenes(
     path_marker_genes: str,
     delimiter=',',
     row_norm: bool = False,
-    repl_columns: dict[str, str] = None,
+    repl_columns: Dict[str, str] = None,
     del_celltypes: List[str] = None,
     input_dict=False
 ) -> Tuple[dict, pd.DataFrame]:
@@ -1653,7 +1653,7 @@ def scoreGenesPlot(
     img_layer:str='corrected',
     shapes_layer:str='nucleus_boundaries',
     crd=None,
-    filter_index: int = 5,
+    filter_index: Optional[int] = None,
     output: str = None,
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the annotation."""
@@ -1694,7 +1694,7 @@ def scoreGenesPlot(
         crd=crd,
         img_layer=img_layer,
         shapes_layer=shapes_layer,
-        output=output + "_maxScores.png" if output else None,
+        output=output + "_annotation.png" if output else None,
         )
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
@@ -1711,23 +1711,23 @@ def scoreGenesPlot(
         plt.show()
     plt.close()
 
+    if filter_index:
+        sc.pl.heatmap(
+            sdata.table[
+                sdata.table.obs.leiden.isin(
+                    [str(index) for index in range(filter_index, len(sdata.table.obs.leiden))]
+                )
+            ],
+            var_names=scoresper_cluster.columns.values,
+            groupby="leiden",
+            show=False,
+        )
 
-    sc.pl.heatmap(
-        sdata.table[
-            sdata.table.obs.leiden.isin(
-                [str(index) for index in range(filter_index, len(sdata.table.obs.leiden))]
-            )
-        ],
-        var_names=scoresper_cluster.columns.values,
-        groupby="leiden",
-        show=False,
-    )
-
-    if output:
-        plt.savefig(  output+f'_leiden_heatmap_filtered_{filter_index}.png', bbox_inches='tight' )
-    else:
-        plt.show()
-    plt.close()
+        if output:
+            plt.savefig(  output+f'_leiden_heatmap_filtered_{filter_index}.png', bbox_inches='tight' )
+        else:
+            plt.show()
+        plt.close()
 
 
 def correct_marker_genes(
@@ -1929,17 +1929,17 @@ def clustercleanlinessPlot(
 
     # Plot clusters
     fig, ax = plt.subplots(1, 1, figsize=(15, 10))
-    sc.pl.umap(sdata.table, color=["annotation"], ax=ax, show=not output,size=300000/sdata.table.shape[0])
+    sc.pl.umap(sdata.table, color=[ celltype_column ], ax=ax, show=not output,size=300000/sdata.table.shape[0])
     ax.axis("off")
 
     if output:
-        fig.savefig(  output+f'_maxScores_umap.png', bbox_inches='tight' )
+        fig.savefig(  output+f'_{celltype_column}_umap.png', bbox_inches='tight' )
     else:
         plt.show()
     plt.close()
 
 
-def enrichment(sdata, seed:int=0):
+def enrichment(sdata, celltype_column:str='annotation', seed:int=0 ):
     """Returns the AnnData object.
 
     Performs some adaptations to save the data.
@@ -1954,24 +1954,24 @@ def enrichment(sdata, seed:int=0):
 
     # Calculate nhood enrichment
     sq.gr.spatial_neighbors(sdata.table, coord_type="generic")
-    sq.gr.nhood_enrichment(sdata.table, cluster_key="annotation", seed=seed)
+    sq.gr.nhood_enrichment(sdata.table, cluster_key=celltype_column, seed=seed)
     return sdata
 
 
-def enrichment_plot(sdata, output: str = None) -> None:
+def enrichment_plot(sdata, celltype_column: str= 'annotation', output: str = None) -> None:
     """This function plots the nhood enrichment between different celltypes."""
 
-    # disable interactive mode
-    if output:
-        plt.ioff()
     # remove 'nan' values from "adata.uns['annotation_nhood_enrichment']['zscore']"
-    tmp = sdata.table.uns['annotation_nhood_enrichment']['zscore']
-    sdata.table.uns['annotation_nhood_enrichment']['zscore'] = np.nan_to_num(tmp)
-    sq.pl.nhood_enrichment(sdata.table, cluster_key="annotation", method="ward")
+    tmp = sdata.table.uns[ f'{celltype_column}_nhood_enrichment']['zscore']
+    sdata.table.uns[ f'{celltype_column}_nhood_enrichment']['zscore'] = np.nan_to_num(tmp)
+    sq.pl.nhood_enrichment(sdata.table, cluster_key=celltype_column, method="ward")
 
     # Save the plot to ouput
     if output:
-        plt.savefig(output + ".png", bbox_inches="tight")
+        plt.savefig(output, bbox_inches="tight")
+    else:
+        plt.show()
+    plt.close()
 
 
 def save_data(adata: AnnData, output_geojson: str, output_h5ad: str):

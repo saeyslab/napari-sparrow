@@ -1,0 +1,12 @@
+# @package allocate
+
+defaults:
+- default
+
+library_id: "liver"
+delimiter: "\t"
+header: null
+column_x: 0
+column_y: 1
+column_gene: 3
+debug: False

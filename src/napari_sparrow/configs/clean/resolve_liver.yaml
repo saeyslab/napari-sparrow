@@ -1,0 +1,8 @@
+# @package clean
+
+defaults:
+- default
+
+size_tophat: 45
+chunksize_clahe: 20000
+small_size_vis: [5000, 9000, 3000, 6000]

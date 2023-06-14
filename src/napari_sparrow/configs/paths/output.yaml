@@ -2,9 +2,7 @@ defaults:
   - default
 
 # output file names
-masks: ${paths.output_dir}/masks.npy
-geojson: ${paths.output_dir}/adata.geojson
-h5ad: ${paths.output_dir}/adata.h5ad
+sdata: ${paths.output_dir}/sdata.zarr
 
 # Plots:
 tiling_correction: ${paths.output_dir}/plot_tiling_correction
@@ -13,7 +11,7 @@ segmentation: ${paths.output_dir}/plot_segmentation
 polygons: ${paths.output_dir}/plot_polygons
 preprocess_adata: ${paths.output_dir}/plot_preprocess_adata
 total_counts: ${paths.output_dir}/plot_shapes_total_counts
-distance: ${paths.output_dir}/plot_shapes_distance
+shape_size: ${paths.output_dir}/plot_shapes_size
 cluster: ${paths.output_dir}/plot_clustering
 leiden: ${paths.output_dir}/plot_shapes_leiden
 score_genes: ${paths.output_dir}/plot_score_genes
