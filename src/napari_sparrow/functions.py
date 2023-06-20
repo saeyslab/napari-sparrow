@@ -2126,6 +2126,7 @@ def plot_image_container( ic:Union[ SpatialData, sq.im.ImageContainer ], output_
         raise ValueError( "Only SpatialData and ImageContainer objects are supported." )
 
     if crd is None:
+        # TODO fix bug, this does not work or SpatialData objects.
         crd=[ic.data.x.data[0], ic.data.x.data[-1]+1, ic.data.y.data[0], ic.data.y.data[-1]+1]
 
     _, ax = plt.subplots(figsize=figsize )
