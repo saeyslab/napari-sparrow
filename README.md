@@ -38,14 +38,19 @@ Click 'Install' button next to the plugin
 pip install napari-sparrow
 ```
 
-3. Clone this GitHub repo and set it as the current directory:
+3. Installation from sources
+
+First clone this GitHub repo and set it as the current directory:
 ```bash
 git clone https://github.com/saeyslab/napari-sparrow.git
 cd napari-sparrow
 ```
 
-After cloning, setup a conda virtual environment and install the plugin. For GPU support other than CUDA, comment out the `cudatoolkit` line in `environment.yml` and follow the [PyTorch](https://pytorch.org/get-started/locally/) instructions.
+Depending on your hardware, you may need to adapt the Conda `environment.yml` file as follows:
+- For GPU support other than CUDA, comment out the `cudatoolkit` line in `environment.yml` and follow the [PyTorch](https://pytorch.org/get-started/locally/) instructions.
+- On Windows comment out the line `basicpy==1.0.0`. We will install `basicpy` manually, see below.
 
+Now create the conda environment
 ```bash
 # Use standard Conda environment creation
 conda env create -f environment.yml
@@ -53,6 +58,16 @@ conda env create -f environment.yml
 mamba env update -f environment.yml --prune
 
 conda activate napari-sparrow
+```
+
+On Windows one must manually install `basicpy` and `jax` as follows:
+```
+pip install "jax[cpu]===0.4.10" -f https://whls.blob.core.windows.net/unstable/index.html --use-deprecated legacy-resolver
+pip install basicpy==1.0.0
+```
+
+Finally, install `napari-sparrow`
+```
 pip install -e .
 ```
 
