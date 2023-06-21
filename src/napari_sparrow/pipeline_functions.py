@@ -16,23 +16,16 @@ from napari_sparrow import utils
 log = utils.get_pylogger(__name__)
 
 
-def load(cfg: DictConfig) -> sq.ImageContainer:
+def load(cfg: DictConfig) -> SpatialData:
+    layer_name = "raw_image"
 
-    layer='raw_image'
-
-    if os.path.splitext(cfg.dataset.image)[-1] != ".zarr":
-        fc.write_to_zarr(Path(cfg.dataset.image), output_name=layer )
-
-    zarr_path = os.path.join(
-        os.path.dirname(cfg.dataset.image), f"{layer}.zarr", "scale0"
+    sdata = fc.create_sdata(
+        filename_pattern=cfg.dataset.image,
+        output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
+        layer_name=layer_name,
+        chunks=1024,  # TODO make chunks configurable
     )
-
-    # this is ic container holding dask array
-    ic = fc.read_in_zarr_from_path(zarr_path, name=layer)
-
-    # TODO should update the load function (integrate with spatialdata format...etc.)
-
-    return ic
+    return sdata
 
 
 def clean(cfg: DictConfig, ic: sq.ImageContainer) -> sq.ImageContainer:

@@ -58,6 +58,63 @@ from spatial_image import to_spatial_image
 from spatialdata import SpatialData
 
 
+def create_sdata(
+    filename_pattern: str | Path,
+    output_path: str | Path,
+    layer_name="raw_image",
+    chunks: Optional[int] = None,
+):
+    dask_array = imread.imread(filename_pattern)
+
+    # make sure we have ( c, z, y, x )
+    if len(dask_array.shape) == 4:
+        print(dask_array.shape)
+        # put channel dimension first (dask image puts channel dim last)
+        dask_array = dask_array.transpose(3, 0, 1, 2)
+        print(dask_array.shape)
+    elif len(dask_array.shape) == 3:
+        print(dask_array.shape)
+        dask_array = dask_array[None, :, :, :]
+        print(dask_array.shape)
+    else:
+        raise ValueError(
+            f"Image has dimension { dask_array.shape }, while (c, z, y, x) is required."
+        )
+
+    if chunks:
+        dask_array = dask_array.rechunk(chunks)
+
+    # perform z-projection
+    if dask_array.shape[1] > 1:
+        dask_array = da.max(dask_array, axis=1)
+
+    # if z-dimension is 1, then squeeze it.
+    else:
+        dask_array = dask_array.squeeze(1)
+
+    sdata = spatialdata.SpatialData()
+
+    spatial_image = spatialdata.models.Image2DModel.parse(
+        dask_array, dims=("c", "y", "x")
+    )
+
+    y_coords = xr.DataArray(np.arange(dask_array.shape[1], dtype="float64"), dims="y")
+    x_coords = xr.DataArray(np.arange(dask_array.shape[2], dtype="float64"), dims="x")
+
+    # If bug in spatialdata is fixed where coordinates are lost when saving to zarr, coordinates should be set here.
+    # spatial_image=spatial_image.assign_coords({ 'y': y_coords, 'x': x_coords} )
+    sdata.add_image(name=layer_name, image=spatial_image)
+
+    sdata.write(output_path)
+
+    # writing to zarr loses coordinates
+    sdata.images[layer_name] = sdata[layer_name].assign_coords(
+        {"y": y_coords, "x": x_coords}
+    )
+
+    return sdata
+
+
 def read_in_zarr(path_to_zarr_file, zyx_order=[0, 1, 2], subset=None):
     """This function read in a zarr file containing the tissue image. If a z-stack is present, automatically, a z-projection is performed.
     A quidpy imagecontainer is returned."""
@@ -91,26 +148,26 @@ def create_subset_image(ic, crd):
 
 
 def tilingCorrection(
-    ic: sq.im.ImageContainer,
-    left_corner: Tuple[int, int] = None,
-    size: Tuple[int, int] = None,
+    sdata: SpatialData,
     tile_size: int = 2144,
-    chunks: int = 2048,
-) -> Tuple[sq.im.ImageContainer, np.ndarray]:
+    crop_param: Optional[Tuple[int, int, int]] = None,
+    output_layer: str = "tiling_correction",
+) -> Tuple[SpatialData, np.ndarray]:
     """Returns the corrected image and the flatfield array
 
     This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
     The illumination within the tiles is adjusted, afterwards the tiles are connected as a whole image by inpainting the lines between the tiles.
     """
 
-    # Get original chunksize, so ic with same chunksize can be returned.
-    if isinstance(ic["raw_image"].data, Array):
-        chunksize = ic["raw_image"].data.chunksize[0]
-    else:
-        chunksize = chunks
+    layer = [*sdata.images][-1]
+
+    ic = sq.im.ImageContainer(sdata[layer], layer=layer)
+
+    x_coords = ic[layer].x.data
+    y_coords = ic[layer].y.data
 
     # Create the tiles
-    tiles = ic.generate_equal_crops(size=tile_size, as_array="raw_image")
+    tiles = ic.generate_equal_crops(size=tile_size, as_array=layer)
     tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
     black = np.array([1 if ~np.any(tile - 1) else 0 for tile in tiles])  # determine if
 
@@ -151,23 +208,25 @@ def tilingCorrection(
         ]
     ).astype(np.uint16)
 
-    ic = sq.im.ImageContainer(i_new, layer="raw_image")
+    ic = sq.im.ImageContainer(i_new, layer=layer)
     # mask = sq.im.ImageContainer(i_mask.astype(np.uint8), layer="mask_black_lines")
     ic.add_img(
         i_mask.astype(np.uint8),
         layer="mask_black_lines",
     )
 
-    if size is not None and left_corner is not None:
-        ic = ic.crop_corner(*left_corner, size)
+    ic[layer] = ic[layer].assign_coords({"y": y_coords, "x": x_coords})
+
+    if crop_param:
+        ic = ic.crop_corner(y=crop_param[1], x=crop_param[0], size=crop_param[2])
 
     # Perform inpainting
     ic.apply(
         {"0": cv2.inpaint},
-        layer="raw_image",
+        layer=layer,
         drop=False,
         channel=0,
-        new_layer="corrected",
+        new_layer=output_layer,
         copy=False,
         # chunks=10,
         fn_kwargs={
@@ -177,23 +236,20 @@ def tilingCorrection(
         },
     )
 
-    # Convert all Data Variables to dask arrays + set coords, and save as .zarr
-    coords = {
-        "z": np.array([0], dtype="<U1"),
-        "y": np.arange(0, ic.shape[0]),
-        "x": np.arange(0, ic.shape[1]),
-        "channels": np.array(["DAPI"]),
-    }
+    # update coordinates, to accomodate for cropping
+    x_coords = ic[layer].x.data
+    y_coords = ic[layer].y.data
 
-    for var in ic.data.data_vars:
-        ic.data[var] = xr.DataArray(
-            da.from_array(ic.data[var].values, chunks=chunksize),
-            dims=ic.data[var].dims,
-            coords=coords,
-            attrs=ic.data[var].attrs,
-        )
+    imageContainerToSData(
+        ic=ic, sdata=sdata, layers_im=[output_layer], layers_labels=[]
+    )
 
-    return ic, flatfield
+    # Due to bug in spatialdata, coordinates are lost after saving to .zarr
+    #sdata.images[output_layer] = sdata[output_layer].assign_coords(
+    #    {"y": y_coords, "x": x_coords}
+    #)
+
+    return sdata, flatfield
 
 
 def tilingCorrectionPlot(
@@ -591,12 +647,8 @@ def imageContainerToSData(
         sdata = spatialdata.SpatialData()
 
     # coordinates are not copied correctly from imagecontainer to spatialdata object, so do it 'by hand'
-    y_coords = xr.DataArray(
-        np.arange(ic.data.y.data[0], ic.data.y.data[-1] + 1, dtype="float64"), dims="y"
-    )
-    x_coords = xr.DataArray(
-        np.arange(ic.data.x.data[0], ic.data.x.data[-1] + 1, dtype="float64"), dims="x"
-    )
+    x_coords = ic.data.x.data
+    y_coords = ic.data.y.data
 
     temp = ic.data.rename_dims({"channels": "c"})
 
@@ -606,6 +658,9 @@ def imageContainerToSData(
         )
         spatial_image = spatial_image.assign_coords({"y": y_coords, "x": x_coords})
         sdata.add_image(name=i, image=spatial_image)
+        # Due to bug in spatialdata, coordinates are lost after saving to .zarr, which happens automatically if sdata is backed by zarr store,
+        # therefore assign coordinates again
+        sdata.images[i] = sdata[i].assign_coords({"y": y_coords, "x": x_coords})
 
     for j in layers_labels:
         spatial_label = spatialdata.models.Labels2DModel.parse(
@@ -613,6 +668,9 @@ def imageContainerToSData(
         )
         spatial_label = spatial_label.assign_coords({"y": y_coords, "x": x_coords})
         sdata.add_labels(name=j, labels=spatial_label)
+        # Due to bug in spatialdata, coordinates are lost after saving to .zarr, which happens automatically if sdata is backed by zarr store,
+        # therefore assign coordinates again
+        sdata.images[i] = sdata[i].assign_coords({"y": y_coords, "x": x_coords})
 
     return sdata
 
