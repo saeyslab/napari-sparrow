@@ -2431,27 +2431,27 @@ def read_in_zarr_from_path(
 
 
 def plot_image_container(
-    ic: Union[SpatialData, sq.im.ImageContainer],
+    sdata: Union[SpatialData, sq.im.ImageContainer],
     output_path=None,
     crd=None,
     layer="image",
     aspect="equal",
     figsize=(10, 10),
 ):
-    if isinstance(ic, SpatialData):
-        dataset = ic.images[layer]
-    elif isinstance(ic, sq.im.ImageContainer):
-        dataset = ic[layer]
+    if isinstance(sdata, SpatialData):
+        dataset = sdata.images[layer]
+    elif isinstance(sdata, sq.im.ImageContainer):
+        dataset = sdata[layer]
     else:
         raise ValueError("Only SpatialData and ImageContainer objects are supported.")
 
     if crd is None:
         # TODO fix bug, this does not work or SpatialData objects.
         crd = [
-            ic.data.x.data[0],
-            ic.data.x.data[-1] + 1,
-            ic.data.y.data[0],
-            ic.data.y.data[-1] + 1,
+            sdata.data.x.data[0],
+            sdata.data.x.data[-1] + 1,
+            sdata.data.y.data[0],
+            sdata.data.y.data[-1] + 1,
         ]
 
     _, ax = plt.subplots(figsize=figsize)

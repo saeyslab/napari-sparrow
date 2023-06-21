@@ -28,26 +28,21 @@ def load(cfg: DictConfig) -> SpatialData:
     return sdata
 
 
-def clean(cfg: DictConfig, ic: sq.ImageContainer) -> sq.ImageContainer:
+def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Cleaning step, the first step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
 
     fc.plot_image_container(
-        ic,
-        os.path.join(cfg.paths.output_dir, "original.png"),
-        cfg.clean.small_size_vis,
+        sdata=sdata,
+        output_path=os.path.join(cfg.paths.output_dir, "original.png"),
+        crd=cfg.clean.small_size_vis,
         layer="raw_image",
     )
-
-    # Image subset for faster processing
-    left_corner, size = None, None
-    if cfg.subset:
-        left_corner, size = utils.parse_subset(cfg.subset)
-        log.info(f"Subset is {str(cfg.subset)}")
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
         ic, flatfield = fc.tilingCorrection(
-            ic=ic,
+            sdata=sdata,
+            crop_param=cfg.clean.crop_param if cfg.clean.crop_param is not None else None,
             tile_size=cfg.clean.tile_size,
         )
 
@@ -55,59 +50,51 @@ def clean(cfg: DictConfig, ic: sq.ImageContainer) -> sq.ImageContainer:
         if "tiling_correction" in cfg.paths:
             log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
             fc.tilingCorrectionPlot(
-                img=ic.data.corrected.squeeze().to_numpy(),
+                img=sdata[ 'tiling_correction' ].squeeze().to_numpy(),
                 flatfield=flatfield,
-                img_orig=ic.data.raw_image.squeeze().to_numpy(),
+                img_orig=sdata[ 'raw_image' ].squeeze().to_numpy(),
                 output=cfg.paths.tiling_correction,
             )
 
         fc.plot_image_container(
-            ic,
-            os.path.join(cfg.paths.output_dir, "tiling_correction.png"),
-            cfg.clean.small_size_vis,
-            layer="corrected",
+            sdata=sdata,
+            output_path=os.path.join(cfg.paths.output_dir, "tiling_correction.png"),
+            crd=cfg.clean.small_size_vis,
+            layer="tiling_correction",
         )
 
     # tophat filtering
 
-    # to account for case where tiling correction is not yet applied.
-    if "corrected" not in ic.data.data_vars:
-        ic["corrected"] = ic["raw_image"]
-
     if cfg.clean.tophatFiltering:
-        ic = fc.tophat_filtering(
-            img=ic,
-            output_dir=cfg.paths.output_dir,
-            layer="corrected",
+        sdata = fc.tophat_filtering(
+            sdata=sdata,
             size_tophat=cfg.clean.size_tophat,
         )
 
         fc.plot_image_container(
-            ic,
-            os.path.join(cfg.paths.output_dir, "tophat_filtered.png"),
-            cfg.clean.small_size_vis,
-            layer="corrected",
+            sdata=sdata,
+            output_path=os.path.join(cfg.paths.output_dir, "tophat_filtered.png"),
+            crd=cfg.clean.small_size_vis,
+            layer="tophat_filtered",
         )
 
     # clahe processing
 
     if cfg.clean.claheProcessing:
-        ic = fc.clahe_processing(
-            img=ic,
-            output_dir=cfg.paths.output_dir,
+        sdata = fc.clahe_processing(
+            sdata=sdata,
             contrast_clip=cfg.clean.contrast_clip,
             chunksize_clahe=cfg.clean.chunksize_clahe,
-            layer="corrected",
         )
 
         fc.plot_image_container(
-            ic,
-            os.path.join(cfg.paths.output_dir, "clahe.png"),
-            cfg.clean.small_size_vis,
-            layer="corrected",
+            sdata=sdata,
+            output_path=os.path.join(cfg.paths.output_dir, "clahe.png"),
+            crd=cfg.clean.small_size_vis,
+            layer='clahe',
         )
 
-    return ic
+    return sdata
 
 
 def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
