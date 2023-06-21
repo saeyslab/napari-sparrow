@@ -68,14 +68,10 @@ def create_sdata(
 
     # make sure we have ( c, z, y, x )
     if len(dask_array.shape) == 4:
-        print(dask_array.shape)
         # put channel dimension first (dask image puts channel dim last)
         dask_array = dask_array.transpose(3, 0, 1, 2)
-        print(dask_array.shape)
     elif len(dask_array.shape) == 3:
-        print(dask_array.shape)
         dask_array = dask_array[None, :, :, :]
-        print(dask_array.shape)
     else:
         raise ValueError(
             f"Image has dimension { dask_array.shape }, while (c, z, y, x) is required."
@@ -347,17 +343,17 @@ def preprocessImage(
 
 
 def tophat_filtering(
-    img: sq.im.ImageContainer,
-    output_dir: Union[str, Path],
-    layer="image",
+    sdata: SpatialData,
+    output_layer="tophat_filtered",
     size_tophat: int = 85,
-) -> sq.im.ImageContainer:
+) -> SpatialData:
     # this is function to do tophat filtering using dask
 
-    # Assuming img[ layer ].data is a Dask array
-    chunksize = img[layer].data.chunksize[0]
+    # take the last image as layer to do next step in pipeline
+    layer= [*sdata.images][-1]
 
-    image_array = img[layer].data.squeeze()
+    # squeeze the channel dim
+    image_array=sdata[ layer ].data.squeeze(0)
 
     # Apply the minimum filter
     minimum_t = dask_image.ndfilters.minimum_filter(image_array, size_tophat)
@@ -367,31 +363,23 @@ def tophat_filtering(
 
     result = image_array - max_of_min_t
 
-    dims = ("y", "x", "z", "channels")
+    result=result[ None, : , : ]
 
-    coords = {
-        "z": np.array([0], dtype="<U1"),
-        "y": np.arange(0, img.shape[0], dtype="float64"),
-        "x": np.arange(0, img.shape[1], dtype="float64"),
-        "channels": np.array(["DAPI"]),
-    }
+    spatial_image=spatialdata.models.Image2DModel.parse( result , dims=( 'c', 'y', 'x' ) )
 
-    result_xr = xr.DataArray(result[:, :, None, None], dims=dims, coords=coords)
+    y_coords = sdata[ layer ].y.data    
+    x_coords = sdata[ layer ].x.data
 
-    # Convert the DataArray to a Dataset
-    result_ds = result_xr.to_dataset(name=layer)
+    # if bug is fixed in spatialdata, you should set coordinates here, not after adding image to sdata
+    spatial_image=spatial_image.assign_coords({ 'y': y_coords, 'x': x_coords} )
 
-    # Define the output path for the Zarr store
-    output_path = os.path.join(output_dir, "tophat_filtered.zarr")
+    # during adding of image it is written to zarr store
+    sdata.add_image(name=output_layer, image=spatial_image )
 
-    # Write the Xarray Dataset to a Zarr store
-    result_ds.to_zarr(output_path, mode="w")
+    # add coordinates, due to bug these are lost when writing to zarr store
+    sdata.images[ output_layer ] = sdata[ output_layer].assign_coords({ 'y': y_coords, 'x': x_coords} )
 
-    ic = read_in_zarr_from_path(path=output_path, name=layer, chunk=chunksize)
-
-    img[layer] = ic[layer]
-
-    return img
+    return sdata
 
 
 def clahe_processing(
