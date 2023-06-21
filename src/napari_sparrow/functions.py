@@ -159,8 +159,8 @@ def tilingCorrection(
 
     ic = sq.im.ImageContainer(sdata[layer], layer=layer)
 
-    x_coords = ic[layer].x.data
-    y_coords = ic[layer].y.data
+    x_coords = ic.data.x.data
+    y_coords = ic.data.y.data
 
     # Create the tiles
     tiles = ic.generate_equal_crops(size=tile_size, as_array=layer)
@@ -232,18 +232,9 @@ def tilingCorrection(
         },
     )
 
-    # update coordinates, to accomodate for cropping
-    x_coords = ic[layer].x.data
-    y_coords = ic[layer].y.data
-
     imageContainerToSData(
         ic=ic, sdata=sdata, layers_im=[output_layer], layers_labels=[]
     )
-
-    # Due to bug in spatialdata, coordinates are lost after saving to .zarr
-    #sdata.images[output_layer] = sdata[output_layer].assign_coords(
-    #    {"y": y_coords, "x": x_coords}
-    #)
 
     return sdata, flatfield
 
@@ -350,10 +341,10 @@ def tophat_filtering(
     # this is function to do tophat filtering using dask
 
     # take the last image as layer to do next step in pipeline
-    layer= [*sdata.images][-1]
+    layer = [*sdata.images][-1]
 
     # squeeze the channel dim
-    image_array=sdata[ layer ].data.squeeze(0)
+    image_array = sdata[layer].data.squeeze(0)
 
     # Apply the minimum filter
     minimum_t = dask_image.ndfilters.minimum_filter(image_array, size_tophat)
@@ -363,38 +354,40 @@ def tophat_filtering(
 
     result = image_array - max_of_min_t
 
-    result=result[ None, : , : ]
+    result = result[None, :, :]
 
-    spatial_image=spatialdata.models.Image2DModel.parse( result , dims=( 'c', 'y', 'x' ) )
+    spatial_image = spatialdata.models.Image2DModel.parse(result, dims=("c", "y", "x"))
 
-    y_coords = sdata[ layer ].y.data    
-    x_coords = sdata[ layer ].x.data
+    y_coords = sdata[layer].y.data
+    x_coords = sdata[layer].x.data
 
     # if bug is fixed in spatialdata, you should set coordinates here, not after adding image to sdata
-    spatial_image=spatial_image.assign_coords({ 'y': y_coords, 'x': x_coords} )
+    spatial_image = spatial_image.assign_coords({"y": y_coords, "x": x_coords})
 
     # during adding of image it is written to zarr store
-    sdata.add_image(name=output_layer, image=spatial_image )
+    sdata.add_image(name=output_layer, image=spatial_image)
 
     # add coordinates, due to bug these are lost when writing to zarr store
-    sdata.images[ output_layer ] = sdata[ output_layer].assign_coords({ 'y': y_coords, 'x': x_coords} )
+    sdata.images[output_layer] = sdata[output_layer].assign_coords(
+        {"y": y_coords, "x": x_coords}
+    )
 
     return sdata
 
 
 def clahe_processing(
     sdata: SpatialData,
-    output_layer: str ="clahe",
+    output_layer: str = "clahe",
     contrast_clip: int = 3.5,
     chunksize_clahe: int = 10000,
 ) -> SpatialData:
     # TODO take whole image as chunksize + overlap tuning
 
-    layer= [*sdata.images][-1]
+    layer = [*sdata.images][-1]
 
     # convert to imagecontainer, because apply not yet implemented in sdata
     # need to check if coordinates are set over properly (i.e. if you would do a crop of the image)
-    ic=sq.im.ImageContainer( sdata[ layer ], layer=layer ) 
+    ic = sq.im.ImageContainer(sdata[layer], layer=layer)
 
     x_coords = ic[layer].x.data
     y_coords = ic[layer].y.data
@@ -410,13 +403,17 @@ def clahe_processing(
         copy=True,
         chunks=chunksize_clahe,
         lazy=True,
-        #depth=1000,
-        #boundary='reflect'
+        # depth=1000,
+        # boundary='reflect'
     )
 
-    ic_clahe[ output_layer ]=ic_clahe[ output_layer ].assign_coords({ 'y': y_coords, 'x': x_coords  })
+    ic_clahe[output_layer] = ic_clahe[output_layer].assign_coords(
+        {"y": y_coords, "x": x_coords}
+    )
 
-    imageContainerToSData( ic=ic_clahe,sdata=sdata, layers_im=[output_layer], layers_labels=[] )
+    imageContainerToSData(
+        ic=ic_clahe, sdata=sdata, layers_im=[output_layer], layers_labels=[]
+    )
 
     return sdata
 
@@ -545,9 +542,8 @@ def segmentation(
 
 
 def segmentation_cellpose(
-    ic: sq.im.ImageContainer,
-    output_dir: Union[str, Path],
-    layer: str = "image",
+    sdata: SpatialData,
+    crop_param: Optional[ Tuple[ int,int,int ] ]=None,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
@@ -558,6 +554,17 @@ def segmentation_cellpose(
     chunks="auto",
     lazy=False,
 ) -> SpatialData:
+    
+    layer=[ *sdata.images ][-1]
+
+    ic=sq.im.ImageContainer( sdata[ layer ], layer=layer )
+
+    if crop_param:
+        ic = ic.crop_corner(y=crop_param[1], x=crop_param[0], size=crop_param[2])
+
+    #x_coords = ic.data.x.data
+    #y_coords = ic.data.y.data
+
     sq.im.segment(
         img=ic,
         layer=layer,
@@ -574,18 +581,11 @@ def segmentation_cellpose(
         device=device,
     )
 
-    # save to zarr (segmentation is done in this saving step)
-    ic_dataset = ic["segmentation_mask"].to_dataset(name="segmentation_mask")
-    ic_dataset = ic_dataset.chunk(chunks)
-    ic_dataset.to_zarr(os.path.join(output_dir, "segmented.zarr"), mode="w")
-
-    # load computed masks in lazily
-    ic_mask = read_in_zarr_from_path(
-        os.path.join(output_dir, "segmented.zarr"), name="segmentation_mask"
+    imageContainerToSData(
+        ic=ic, sdata=sdata, layers_im=[], layers_labels=["segmentation_mask"]
     )
-    ic["segmentation_mask"] = ic_mask["segmentation_mask"]
 
-    polygons = mask_to_polygons_layer_dask(ic["segmentation_mask"].data)
+    polygons = mask_to_polygons_layer_dask( mask=sdata[ 'segmentation_mask' ].data )
     polygons = polygons.dissolve(by="cells")
     polygons.reset_index(drop=False, inplace=True)
 
@@ -598,10 +598,9 @@ def segmentation_cellpose(
         lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
     )
 
-    polygons_path = os.path.join(output_dir, "polygons.geojson")
-    polygons.to_file(polygons_path, driver="GeoJSON")
+    #polygons_path = os.path.join(output_dir, "polygons.geojson")
+    #polygons.to_file(polygons_path, driver="GeoJSON")
 
-    sdata = imageContainerToSData(ic)
     if model_type == "nuclei":
         sdata.add_shapes(
             name="nucleus_boundaries",
@@ -612,7 +611,7 @@ def segmentation_cellpose(
             name="cell_boundaries",
             shapes=spatialdata.models.ShapesModel.parse(polygons),
         )
-    return sdata
+    return sdata, polygons
 
 
 def imageContainerToSData(
@@ -648,7 +647,7 @@ def imageContainerToSData(
         sdata.add_labels(name=j, labels=spatial_label)
         # Due to bug in spatialdata, coordinates are lost after saving to .zarr, which happens automatically if sdata is backed by zarr store,
         # therefore assign coordinates again
-        sdata.images[i] = sdata[i].assign_coords({"y": y_coords, "x": x_coords})
+        sdata.images[j] = sdata[j].assign_coords({"y": y_coords, "x": x_coords})
 
     return sdata
 
@@ -800,17 +799,14 @@ def mask_to_polygons_layer_dask(mask: da.Array) -> geopandas.GeoDataFrame:
         all_polygons = []
         all_values = []
 
-        # Squeeze the last two dimensions of the 4D mask_chunk to create a 2D mask
-        mask_2d = np.squeeze(mask_chunk, axis=(2, 3))
-
         # Compute the boolean mask before passing it to the features.shapes() function
-        bool_mask = mask_2d > 0
+        bool_mask = mask_chunk > 0
 
         # Get chunk's top-left corner coordinates
-        x_offset, y_offset, _, _ = chunk_coords
+        x_offset, y_offset = chunk_coords
 
         for shape, value in features.shapes(
-            mask_2d.astype(np.int32),
+            mask_chunk.astype(np.int32),
             mask=bool_mask,
             transform=rasterio.Affine(1.0, 0, y_offset, 0, 1.0, x_offset),
         ):
@@ -2439,7 +2435,7 @@ def plot_image_container(
     figsize=(10, 10),
 ):
     if isinstance(sdata, SpatialData):
-        dataset = sdata.images[layer]
+        dataset = sdata[layer]
     elif isinstance(sdata, sq.im.ImageContainer):
         dataset = sdata[layer]
     else:
