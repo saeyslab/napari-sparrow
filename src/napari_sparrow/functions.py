@@ -383,52 +383,42 @@ def tophat_filtering(
 
 
 def clahe_processing(
-    img: sq.im.ImageContainer,
-    output_dir: Union[str, Path],
-    layer="image",
+    sdata: SpatialData,
+    output_layer: str ="clahe",
     contrast_clip: int = 3.5,
     chunksize_clahe: int = 10000,
-) -> sq.im.ImageContainer:
+) -> SpatialData:
     # TODO take whole image as chunksize + overlap tuning
 
-    chunksize = img[layer].data.chunksize[0]
+    layer= [*sdata.images][-1]
+
+    # convert to imagecontainer, because apply not yet implemented in sdata
+    # need to check if coordinates are set over properly (i.e. if you would do a crop of the image)
+    ic=sq.im.ImageContainer( sdata[ layer ], layer=layer ) 
+
+    x_coords = ic[layer].x.data
+    y_coords = ic[layer].y.data
 
     clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
 
-    # maybe this could be done via processing function of squidpy ( see sqduipy docs )
-
-    img_clahe = img.apply(
+    ic_clahe = ic.apply(
         {"0": clahe.apply},
         layer=layer,
+        new_layer=output_layer,
         drop=True,
         channel=0,
         copy=True,
         chunks=chunksize_clahe,
         lazy=True,
-    )  # , depth=30, boundary="reflect"  )
+        #depth=1000,
+        #boundary='reflect'
+    )
 
-    # ic.save does not seem to work as espected (loads all data in memory),
-    # therefore, first convert to xarray.Dataset, then save to .zarr
-    img_clahe_dataset = img_clahe[layer].to_dataset(name=layer)
+    ic_clahe[ output_layer ]=ic_clahe[ output_layer ].assign_coords({ 'y': y_coords, 'x': x_coords  })
 
-    coords = {
-        "z": np.array([0], dtype="<U1"),
-        "y": np.arange(0, img.shape[0], dtype="float64"),
-        "x": np.arange(0, img.shape[1], dtype="float64"),
-        "channels": np.array(["DAPI"]),
-    }
+    imageContainerToSData( ic=ic_clahe,sdata=sdata, layers_im=[output_layer], layers_labels=[] )
 
-    img_clahe_dataset = img_clahe_dataset.assign_coords(coords=coords)
-
-    output_path = os.path.join(output_dir, "clahe.zarr")
-
-    img_clahe_dataset.to_zarr(output_path, mode="w")
-
-    ic = read_in_zarr_from_path(path=output_path, name=layer, chunk=chunksize)
-
-    img[layer] = ic[layer]
-
-    return img
+    return sdata
 
 
 def preprocessImagePlot(
