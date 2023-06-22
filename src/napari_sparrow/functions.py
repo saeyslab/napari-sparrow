@@ -279,60 +279,6 @@ def tilingCorrectionPlot(
         plt.close(fig2)
         fig2.savefig(output + "1.png")
 
-
-def preprocessImage(
-    img: sq.im.ImageContainer,
-    img_layer=None,
-    contrast_clip: float = 2.5,
-    size_tophat: int = None,
-) -> sq.im.ImageContainer:
-    """Returns the new image
-
-    This function performs the preprocessing of the image.
-    Contrast_clip indicates the input to the create_CLAHE function for histogram equalization.
-    Size_tophat indicates the tophat filter size. If no tophat lfiter size is given, no tophat filter is applied. The recommendable size is 45.
-    Small_size_vis indicates the coordinates of an optional zoom in plot to check the processing better.
-    """
-    if img_layer == None:
-        if "corrected" in img:
-            img_layer = "corrected"
-        elif "raw_image" in img:
-            img_layer = "raw_image"
-        else:
-            raise ValueError(
-                "Your layers in you image container don't have the expected names. Please provide a correct name."
-            )
-
-    # Apply tophat filter
-    if size_tophat is not None:
-        minimum_t = ndimage.minimum_filter(
-            img.data[img_layer].squeeze().to_numpy(), size_tophat
-        )
-        max_of_min_t = ndimage.maximum_filter(minimum_t, size_tophat)
-        img.apply(
-            {"0": lambda array: array - max_of_min_t},
-            layer=img_layer,
-            new_layer="corrected",
-            drop=True,
-            channel=0,
-            copy=False,
-        )
-    if "corrected" in img:
-        img_layer = "corrected"
-    # Enhance the contrast
-    clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
-    img.apply(
-        {"0": clahe.apply},
-        layer=img_layer,
-        new_layer="corrected",
-        drop=True,
-        channel=0,
-        copy=False,
-    )
-
-    return img
-
-
 def tophat_filtering(
     sdata: SpatialData,
     output_layer="tophat_filtered",
@@ -417,57 +363,6 @@ def clahe_processing(
 
     return sdata
 
-
-def preprocessImagePlot(
-    img: np.ndarray,
-    img_orig: np.ndarray,
-    small_size_vis: List[int] = None,
-    output: str = None,
-) -> None:
-    """Creates the plots based on the original and preprocessed image."""
-
-    # disable interactive mode
-    if output:
-        plt.ioff()
-
-    # Original and preprocessed image
-    fig1, ax1 = plt.subplots(1, 2, figsize=(20, 10))
-    ax1[0].imshow(img, cmap="gray")
-    ax1[0].set_title("Corrected image")
-    ax1[1].imshow(img_orig, cmap="gray")
-    ax1[1].set_title("Original image")
-
-    # Save the plot to ouput
-    if output:
-        plt.close(fig1)
-        fig1.savefig(output + "0.png")
-
-    # Plot small part of the images
-    if small_size_vis is not None:
-        fig2, ax2 = plt.subplots(1, 2, figsize=(20, 10))
-        ax2[0].imshow(
-            img[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
-            ],
-            cmap="gray",
-        )
-        ax2[0].set_title("Corrected image")
-        ax2[1].imshow(
-            img_orig[
-                small_size_vis[0] : small_size_vis[1],
-                small_size_vis[2] : small_size_vis[3],
-            ],
-            cmap="gray",
-        )
-        ax2[1].set_title("Original image")
-
-        # Save the plot to ouput
-        if output:
-            plt.close(fig2)
-            fig2.savefig(output + "1.png")
-
-
 def cellpose(
     img,
     min_size=80,
@@ -490,60 +385,10 @@ def cellpose(
     )
     return masks
 
-
-def segmentation(
-    img: sq.im.ImageContainer,
-    img_layer="corrected",
-    device: str = "cpu",
-    min_size: int = 80,
-    flow_threshold: float = 0.6,
-    diameter: int = 55,
-    cellprob_threshold: int = 0,
-    model_type: str = "nuclei",
-    channels=[0, 0],
-):
-    sq.im.segment(
-        img=img,
-        layer=img_layer,
-        method=cellpose,
-        chunks="auto",
-        min_size=min_size,
-        layer_added="segmentation_mask",
-        cellprob_threshold=cellprob_threshold,
-        flow_threshold=flow_threshold,
-        diameter=diameter,
-        model_type=model_type,
-        channels=channels,
-        device=device,
-    )
-    masks = img.data.segmentation_mask.squeeze().to_numpy()
-    # mask_i = np.ma.masked_where(masks == 0, masks)
-
-    # Create the polygon shapes of the different cells
-    polygons = mask_to_polygons_layer(masks)
-    # polygons["border_color"] = polygons.geometry.map(fc.border_color)
-    polygons["linewidth"] = polygons.geometry.map(linewidth)
-    # polygons["color"] = polygons.geometry.map(fc.color)
-    polygons["cells"] = polygons.index
-    polygons.index = polygons.index.astype(str)
-    polygons = polygons.dissolve(by="cells")
-    sdata = imageContainerToSData(img)
-    if model_type == "nuclei":
-        sdata.add_shapes(
-            name="nucleus_boundaries",
-            shapes=spatialdata.models.ShapesModel.parse(polygons),
-        )
-    elif model_type == "cyto":
-        sdata.add_shapes(
-            name="cell_boundaries",
-            shapes=spatialdata.models.ShapesModel.parse(polygons),
-        )
-    return sdata
-
-
 def segmentation_cellpose(
     sdata: SpatialData,
-    crop_param: Optional[ Tuple[ int,int,int ] ]=None,
+    layer:Optional[ str ]=None,
+    crop_param: Optional[Tuple[int, int, int]] = None,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
@@ -555,15 +400,18 @@ def segmentation_cellpose(
     lazy=False,
 ) -> SpatialData:
     
-    layer=[ *sdata.images ][-1]
+    if layer is None:
+        layer = [*sdata.images][-1]
 
-    ic=sq.im.ImageContainer( sdata[ layer ], layer=layer )
+    ic = sq.im.ImageContainer(sdata[layer], layer=layer)
 
     if crop_param:
         ic = ic.crop_corner(y=crop_param[1], x=crop_param[0], size=crop_param[2])
-
-    #x_coords = ic.data.x.data
-    #y_coords = ic.data.y.data
+        # rechunk if you take crop, in order to be able to save as spatialdata object. 
+        # TODO check if this still necessary
+        #for layer in ic.data.data_vars:
+        #    chunksize = ic[layer].data.chunksize[0]
+        #    ic[layer] = ic[layer].chunk(chunksize)
 
     sq.im.segment(
         img=ic,
@@ -585,21 +433,22 @@ def segmentation_cellpose(
         ic=ic, sdata=sdata, layers_im=[], layers_labels=["segmentation_mask"]
     )
 
-    polygons = mask_to_polygons_layer_dask( mask=sdata[ 'segmentation_mask' ].data )
+    polygons = mask_to_polygons_layer_dask(mask=sdata["segmentation_mask"].data)
     polygons = polygons.dissolve(by="cells")
     polygons.reset_index(drop=False, inplace=True)
 
-    coords = ic.data.attrs["coords"]
+    x_coords = ic.data.x.data
+    y_coords = ic.data.y.data
 
-    x_translation = coords.x0
-    y_translation = coords.y0
+    x_translation = x_coords[0]
+    y_translation = y_coords[0]
 
     polygons["geometry"] = polygons["geometry"].apply(
         lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
     )
 
-    #polygons_path = os.path.join(output_dir, "polygons.geojson")
-    #polygons.to_file(polygons_path, driver="GeoJSON")
+    # polygons_path = os.path.join(output_dir, "polygons.geojson")
+    # polygons.to_file(polygons_path, driver="GeoJSON")
 
     if model_type == "nuclei":
         sdata.add_shapes(
@@ -611,7 +460,7 @@ def segmentation_cellpose(
             name="cell_boundaries",
             shapes=spatialdata.models.ShapesModel.parse(polygons),
         )
-    return sdata, polygons
+    return sdata
 
 
 def imageContainerToSData(
@@ -647,70 +496,21 @@ def imageContainerToSData(
         sdata.add_labels(name=j, labels=spatial_label)
         # Due to bug in spatialdata, coordinates are lost after saving to .zarr, which happens automatically if sdata is backed by zarr store,
         # therefore assign coordinates again
-        sdata.images[j] = sdata[j].assign_coords({"y": y_coords, "x": x_coords})
+        sdata.labels[j] = sdata[j].assign_coords({"y": y_coords, "x": x_coords})
 
     return sdata
-
-
-def segmentationDeprecated(
-    img: sq.im.ImageContainer,
-    device: str = "cpu",
-    min_size: int = 80,
-    flow_threshold: float = 0.6,
-    diameter: int = 55,
-    cellprob_threshold: int = 0,
-    model_type: str = "nuclei",
-    channels: List[int] = [0, 0],
-) -> Tuple[np.ndarray, np.ndarray, geopandas.GeoDataFrame, sq.im.ImageContainer]:
-    """Returns the segmentation masks, the image masks and the polygons
-
-    This function segments the data, using the cellpose algorithm.
-    Img is the input image.
-    You can define your device by setting the device parameter.
-    Min_size indicates the minimal amount of pixels in a mask.
-    The flow_threshold indicates someting about the shape of the masks, if you increase it, more masks with less orund shapes will be accepted.
-    The diameter is a very important parameter to estimate, in the best case you estimate it yourself. It indicates the mean expected diameter of your dataset.
-    If you put None in diameter, the model will estimate it automatically.
-    Mask_threshold indicates how many of the possible masks are kept. Making it smaller (up to -6), will give you more masks, bigger is less masks.
-    When an RGB image is given an input, the R channel is expected to have the nuclei, and the blue channel the membranes.
-    When whole cell segmentation needs to be performed, model_type=cyto, otherwise, model_type=nuclei.
-    """
-
-    channels = np.array(channels)
-    # Perform cellpose segmentation
-    model = models.Cellpose(device=torch.device(device), model_type=model_type)
-    masks, _, _, _ = model.eval(
-        img.data.image.squeeze().to_numpy(),
-        diameter=diameter,
-        channels=channels,
-        min_size=min_size,
-        flow_threshold=flow_threshold,
-        cellprob_threshold=cellprob_threshold,
-    )
-    # mask_i = np.ma.masked_where(masks == 0, masks)
-
-    # Create the polygon shapes of the different cells
-    polygons = mask_to_polygons_layer(masks)
-    # polygons["border_color"] = polygons.geometry.map(border_color)
-    polygons["linewidth"] = polygons.geometry.map(linewidth)
-    # polygons["color"] = polygons.geometry.map(color)
-    polygons["cells"] = polygons.index
-    polygons = polygons.dissolve(by="cells")
-    polygons.index = list(map(str, polygons.index))
-
-    # img.add_img(masks, layer="segment_cellpose")
-
-    return masks, polygons, img
-
 
 def segmentationPlot(
     sdata,
     crd=None,
-    img_layer="corrected",
+    layer: Optional[str] = None,
     shapes_layer="nucleus_boundaries",
     output: str = None,
 ) -> None:
-    si = sdata.images[img_layer]
+    if layer is None:
+        layer = [*sdata.images][-1]
+
+    si = sdata.images[layer]
 
     image_boundary = [si.x.data[0], si.x.data[-1] + 1, si.y.data[0], si.y.data[-1] + 1]
 
@@ -1424,83 +1224,6 @@ def analyse_genes_left_out(sdata, df):
     print("The ten genes with the highest proportion of transcripts filtered out")
     print(filtered.sort_values(by="proportion_kept")[0:10].iloc[:, 0:2])
     return filtered
-
-
-def create_adata_quick(
-    path: str,
-    ic: sq.im.ImageContainer,
-    masks: np.ndarray,
-    library_id: str = "spatial_transcriptomics",
-) -> AnnData:
-    """Returns the AnnData object with transcript and polygon data.
-
-    This function creates the polygon shapes from the mask and adjusts the colors and linewidth.
-    The transcripts are read from the csv file in path, all transcripts within cells are assigned.
-    Only cells with transcripts are retained.
-    """
-
-    # Create the polygon shapes of the different cells
-    polygons = mask_to_polygons_layer(masks)
-    polygons["geometry"] = polygons["geometry"].translate(
-        float(ic.data.attrs["coords"].x0), float(ic.data.attrs["coords"].y0)
-    )
-
-    polygons["border_color"] = polygons.geometry.map(border_color)
-    polygons["linewidth"] = polygons.geometry.map(linewidth)
-    polygons["color"] = polygons.geometry.map(color)
-    polygons["cells"] = polygons.index
-    polygons = polygons.dissolve(by="cells")
-
-    # Allocate the transcripts
-    in_df = pd.read_csv(path, delimiter="\t", header=None)
-    # Changed for subset
-    df = in_df[
-        (ic.data.attrs["coords"].y0 < in_df[1])
-        & (in_df[1] < masks.shape[0] + ic.data.attrs["coords"].y0)
-        & (ic.data.attrs["coords"].x0 < in_df[0])
-        & (in_df[0] < masks.shape[1] + ic.data.attrs["coords"].x0)
-    ]
-
-    df["cells"] = masks[
-        df[1].values - ic.data.attrs["coords"].y0,
-        df[0].values - ic.data.attrs["coords"].x0,
-    ]
-
-    # Calculate the mean of the transcripts for every cell
-    coordinates = df.groupby(["cells"]).mean().iloc[:, [0, 1]]
-    cell_counts = df.groupby(["cells", 3]).size().unstack(fill_value=0)
-
-    # Create the anndata object
-    adata = AnnData(cell_counts[cell_counts.index != 0])
-    coordinates.index = coordinates.index.map(str)
-    adata.obsm["spatial"] = coordinates[coordinates.index != "0"]  # .values
-
-    # Add the polygons to the anndata object
-    polygons_f = polygons[
-        np.isin(polygons.index.values, list(map(int, adata.obs.index.values)))
-    ]
-    polygons_f.index = list(map(str, polygons_f.index))
-    adata.obsm["polygons"] = polygons_f
-    adata.obs["cell_ID"] = [int(x) for x in adata.obsm["polygons"].index]
-
-    # Add the figure to the anndata object
-    adata.uns["spatial"] = {library_id: {}}
-    adata.uns["spatial"][library_id]["images"] = {}
-    adata.uns["spatial"][library_id]["images"] = {
-        "hires": ic.data.image.squeeze().to_numpy()
-    }
-    adata.uns["spatial"][library_id]["scalefactors"] = {
-        "tissue_hires_scalef": 1,
-        "spot_diameter_fullres": 75,
-    }
-    adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
-    adata.uns["spatial"][library_id]["points"] = AnnData(in_df.values[:, 0:2])
-    adata.uns["spatial"][library_id]["points"].obs = pd.DataFrame(
-        {"gene": in_df.values[:, 3]}
-    )
-
-    return adata
-
 
 def plot_shapes(
     sdata,
@@ -2434,20 +2157,17 @@ def plot_image_container(
     aspect="equal",
     figsize=(10, 10),
 ):
-    if isinstance(sdata, SpatialData):
-        dataset = sdata[layer]
-    elif isinstance(sdata, sq.im.ImageContainer):
+    if isinstance(sdata, (SpatialData, sq.im.ImageContainer)):
         dataset = sdata[layer]
     else:
         raise ValueError("Only SpatialData and ImageContainer objects are supported.")
 
     if crd is None:
-        # TODO fix bug, this does not work or SpatialData objects.
         crd = [
-            sdata.data.x.data[0],
-            sdata.data.x.data[-1] + 1,
-            sdata.data.y.data[0],
-            sdata.data.y.data[-1] + 1,
+            sdata[layer].x.data[0],
+            sdata[layer].x.data[-1] + 1,
+            sdata[layer].y.data[0],
+            sdata[layer].y.data[-1] + 1,
         ]
 
     _, ax = plt.subplots(figsize=figsize)

@@ -97,27 +97,13 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     return sdata
 
 
-def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
+def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Segmentation step, the second step of the pipeline, performs cellpose segmentation and creates masks."""
-
-    # crop param for debugging and tuning of parameters
-    if cfg.segmentation.crop_param:
-        ic = ic.crop_corner(
-            y=cfg.segmentation.crop_param[1],
-            x=cfg.segmentation.crop_param[0],
-            size=cfg.segmentation.crop_param[2],
-        )
-
-        # rechunk if you take crop, in order to be able to save as spatialdata object.
-        for layer in ic.data.data_vars:
-            chunksize = ic[layer].data.chunksize[0]
-            ic[layer] = ic[layer].chunk(chunksize)
 
     # Perform segmentation
     sdata = fc.segmentation_cellpose(
-        ic=ic,
-        output_dir=cfg.paths.output_dir,
-        layer="corrected",
+        sdata=sdata,
+        crop_param=cfg.segmentation.crop_param,
         device=cfg.device,
         min_size=cfg.segmentation.min_size,
         flow_threshold=cfg.segmentation.flow_threshold,
@@ -139,7 +125,6 @@ def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
         else cfg.clean.small_size_vis,
-        img_layer="corrected",
         shapes_layer=shapes_layer,
         output=cfg.paths.segmentation,
     )
@@ -155,7 +140,6 @@ def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
             crd=cfg.segmentation.small_size_vis
             if cfg.segmentation.small_size_vis is not None
             else cfg.clean.small_size_vis,
-            img_layer="corrected",
             shapes_layer="expanded_cells" + str(cfg.segmentation.voronoi_radius),
             output=f"{cfg.paths.segmentation}_expanded_cells_{cfg.segmentation.voronoi_radius}",
         )
