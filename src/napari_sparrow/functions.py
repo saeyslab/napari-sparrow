@@ -405,7 +405,7 @@ def segmentation_cellpose(
 
     polygons = mask_to_polygons_layer_dask(mask=sdata["segmentation_mask"].data)
     polygons = polygons.dissolve(by="cells")
-    polygons.reset_index(drop=False, inplace=True)
+    #polygons.reset_index(drop=False, inplace=True)
 
     x_coords = ic.data.x.data
     y_coords = ic.data.y.data
@@ -768,7 +768,7 @@ def allocation(
     print("creating masks from polygons")
     masks = rasterio.features.rasterize(
         zip(
-            sdata[shapes_layer].geometry, sdata[shapes_layer].cells.values.astype(float)
+            sdata[shapes_layer].geometry, sdata[shapes_layer].index.values.astype(float)
         ),
         out_shape=[s_mask.shape[0], s_mask.shape[1]],
         dtype="uint32",
@@ -840,8 +840,8 @@ def allocation(
 
     for i in [*sdata.shapes]:
         sdata[i].index = list(
-            map(str, sdata[i].cells)
-        )  # on cells, because index is lost when saving and loading polygon from file.
+            map(str, sdata[i].index)
+        )  
         sdata.add_shapes(
             name=i,
             shapes=spatialdata.models.ShapesModel.parse(
@@ -967,7 +967,7 @@ def sanity_plot_transcripts_matrix(
         if plot_cell_number:
             for _, row in polygons_selected.iterrows():
                 centroid = row.geometry.centroid
-                value = row.cells
+                value = row.name
                 ax.annotate(
                     value,
                     (centroid.x, centroid.y),
