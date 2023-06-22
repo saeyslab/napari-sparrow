@@ -749,7 +749,7 @@ def allocation(
     path: Union[str, Path],
     sdata: SpatialData,
     shapes_layer: str = "nucleus_boundaries",
-) -> SpatialData:
+) -> Tuple[ SpatialData, DaskDataFrame]:
     """Returns the AnnData object with transcript and polygon data."""
 
     sdata[shapes_layer].index = sdata[shapes_layer].index.astype("str")
@@ -1001,12 +1001,14 @@ def control_transcripts(df, scaling_factor=100):
     return blurred
 
 
-def plot_control_transcripts(blurred, sdata, crd=None):
+def plot_control_transcripts(blurred, sdata, layer:Optional[str]=None, crd=None):
+    if layer is None:
+        layer = [*sdata.images][-1]
     if crd:
         fig, ax = plt.subplots(1, 2, figsize=(20, 20))
 
         ax[0].imshow(blurred.T[crd[0] : crd[1], crd[2] : crd[3]], cmap="magma", vmax=5)
-        sdata["corrected"].squeeze().sel(
+        sdata[ layer ].squeeze().sel(
             x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
         ).plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
         ax[0].set_title("Transcript density")
@@ -1014,7 +1016,7 @@ def plot_control_transcripts(blurred, sdata, crd=None):
     fig, ax = plt.subplots(1, 2, figsize=(20, 20))
 
     ax[0].imshow(blurred.T, cmap="magma", vmax=5)
-    sdata["corrected"].squeeze().plot.imshow(
+    sdata[layer].squeeze().plot.imshow(
         cmap="gray", robust=True, ax=ax[1], add_colorbar=False
     )
     ax[1].axes.set_aspect("equal")
