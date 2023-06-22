@@ -111,38 +111,6 @@ def create_sdata(
     return sdata
 
 
-def read_in_zarr(path_to_zarr_file, zyx_order=[0, 1, 2], subset=None):
-    """This function read in a zarr file containing the tissue image. If a z-stack is present, automatically, a z-projection is performed.
-    A quidpy imagecontainer is returned."""
-    da = dask.array.from_zarr(path_to_zarr_file)
-    da = xr.DataArray(
-        da,
-        dims=("z", "y", "x"),
-        coords={
-            "z": np.arange(da.shape[zyx_order[0]]),
-            "y": np.arange(da.shape[zyx_order[1]]),
-            "x": np.arange(da.shape[zyx_order[2]]),
-        },
-    )
-    if da.z.shape[0] > 1:
-        da = da.max(dim="z")
-    if subset:
-        da = da[subset[0] : subset[1], subset[2] : subset[3]]
-    ic = sq.im.ImageContainer(da)
-
-    return ic
-
-
-def create_subset_image(ic, crd):
-    """Reads in sq image container and returns a subset in a sq.imagecontainer"""
-    Xmax = ic.data.sizes["x"]
-    Ymax = ic.data.sizes["y"]
-    img = ic.data.assign_coords({"x": np.arange(Xmax), "y": np.arange(Ymax)})
-    I_small = img["image"].sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3]))
-    ic_test = sq.im.ImageContainer(I_small)
-    return ic_test
-
-
 def tilingCorrection(
     sdata: SpatialData,
     tile_size: int = 2144,
@@ -279,6 +247,7 @@ def tilingCorrectionPlot(
         plt.close(fig2)
         fig2.savefig(output + "1.png")
 
+
 def tophat_filtering(
     sdata: SpatialData,
     output_layer="tophat_filtered",
@@ -363,6 +332,7 @@ def clahe_processing(
 
     return sdata
 
+
 def cellpose(
     img,
     min_size=80,
@@ -385,9 +355,10 @@ def cellpose(
     )
     return masks
 
+
 def segmentation_cellpose(
     sdata: SpatialData,
-    layer:Optional[ str ]=None,
+    layer: Optional[str] = None,
     crop_param: Optional[Tuple[int, int, int]] = None,
     device: str = "cpu",
     min_size: int = 80,
@@ -399,7 +370,6 @@ def segmentation_cellpose(
     chunks="auto",
     lazy=False,
 ) -> SpatialData:
-    
     if layer is None:
         layer = [*sdata.images][-1]
 
@@ -407,9 +377,9 @@ def segmentation_cellpose(
 
     if crop_param:
         ic = ic.crop_corner(y=crop_param[1], x=crop_param[0], size=crop_param[2])
-        # rechunk if you take crop, in order to be able to save as spatialdata object. 
+        # rechunk if you take crop, in order to be able to save as spatialdata object.
         # TODO check if this still necessary
-        #for layer in ic.data.data_vars:
+        # for layer in ic.data.data_vars:
         #    chunksize = ic[layer].data.chunksize[0]
         #    ic[layer] = ic[layer].chunk(chunksize)
 
@@ -499,6 +469,7 @@ def imageContainerToSData(
         sdata.labels[j] = sdata[j].assign_coords({"y": y_coords, "x": x_coords})
 
     return sdata
+
 
 def segmentationPlot(
     sdata,
@@ -774,7 +745,7 @@ def apply_transform_matrix(
     return transformed_ddf
 
 
-def create_adata_from_masks_dask(
+def allocation(
     path: Union[str, Path],
     sdata: SpatialData,
     shapes_layer: str = "nucleus_boundaries",
@@ -1021,145 +992,6 @@ def sanity_plot_transcripts_matrix(
     plt.close()
 
 
-def allocation(sdata, masks=None, radius=0, shape_layer=None, verbose=False):
-    # Create the polygon shapes for the mask
-    if shape_layer == None:
-        shape_layer = [*sdata.shapes][0]
-    sdata[shape_layer].index = sdata[shape_layer].index.astype("str")
-
-    # calculate new mask based on radius
-    if radius != 0:
-        expanded_layer_name = "expanded_cells" + str(radius)
-        # sdata[shape_layer].index = list(map(str, sdata[shape_layer].index))
-
-        boundary = Polygon(
-            [
-                (0, 0),
-                (sdata[[*sdata.images][0]].shape[1] + 200, 0),
-                (
-                    sdata[[*sdata.images][0]].shape[1] + 200,
-                    sdata[[*sdata.images][0]].shape[2] + 200,
-                ),
-                (0, sdata[[*sdata.images][0]].shape[2] + 200),
-            ]
-        )
-        if expanded_layer_name in [*sdata.shapes]:
-            del sdata.shapes[expanded_layer_name]
-        sdata[expanded_layer_name] = sdata[shape_layer].copy()
-        sdata[expanded_layer_name]["geometry"] = sdata[shape_layer].simplify(2)
-
-        vd = voronoiDiagram4plg(sdata[expanded_layer_name], boundary)
-        voronoi = geopandas.sjoin(
-            vd, sdata[expanded_layer_name], predicate="contains", how="left"
-        )
-        voronoi.index = voronoi.index_right
-        voronoi = voronoi[~voronoi.index.duplicated(keep="first")]
-        voronoi = delete_overlap(voronoi, sdata[expanded_layer_name])
-
-        buffered = sdata[expanded_layer_name].buffer(distance=radius)
-        intersected = voronoi.sort_index().intersection(buffered.sort_index())
-        sdata[expanded_layer_name].geometry = intersected
-
-        masks = rasterio.features.rasterize(  # it should be possible to give every shape  number. You need to give the value with it as input.
-            zip(intersected.geometry, intersected.index.values.astype(float)),
-            out_shape=[
-                sdata[[*sdata.images][0]].shape[1],
-                sdata[[*sdata.images][0]].shape[2],
-            ],
-            dtype="uint32",
-        )
-
-    # if sdata.points:
-    #    for points_layer in [*sdata.points]:
-    #        del sdata.points[ points_layer ]
-
-    # adapt transcripts file  TODO: AD this does not seem correct if you take crop... why is this done?
-    sdata.add_points(
-        name="selected_transcripts",
-        points=sdata["transcripts"][
-            (sdata["transcripts"]["y"] < sdata["segmentation_mask"].shape[0])
-            & (sdata["transcripts"]["y"] >= 0)
-            & (sdata["transcripts"]["x"] >= 0)
-            & (sdata["transcripts"]["x"] < sdata["segmentation_mask"].shape[1])
-        ],
-        overwrite=True,
-    )
-
-    if verbose:
-        print("Started df calculation")
-
-    df = sdata["selected_transcripts"].compute()
-
-    if masks is None:
-        masks = sdata["segmentation_mask"].squeeze().to_numpy()
-
-    if verbose:
-        print("df calculated")
-    df["cells"] = masks[
-        df["y"].values.astype(int),
-        df["x"].values.astype(int),
-    ]
-
-    # Calculate the mean of the transcripts for every cell
-    coordinates = df.groupby(["cells"]).mean().loc[:, ["x", "y"]]
-    cell_counts = df.groupby(["cells", "gene"]).size().unstack(fill_value=0)
-    if verbose:
-        print("finished groupby")
-        # Create the anndata object
-    adata = AnnData(cell_counts[cell_counts.index != 0], dtype="int64")
-    coordinates.index = coordinates.index.map(str)
-
-    adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
-    adata.obs["region"] = 1
-    adata.obs["instance"] = 1
-
-    if sdata.table:
-        del sdata.table
-
-    sdata.table = spatialdata.models.TableModel.parse(
-        adata, region_key="region", region=1, instance_key="instance"
-    )
-
-    for i in [*sdata.shapes]:
-        sdata[i].index = list(
-            map(str, sdata[i].cells)
-        )  # AD on cells, because index is lost when saving and loading polygon from file.
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
-        # adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
-
-    return sdata, df
-
-    for i in [*sdata.shapes]:
-        # sdata[i].index=sdata[i].index.astype('str')
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
-        # adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
-
-    for i in [*sdata.shapes]:
-        sdata[i].index = sdata[i].index.astype("str")
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
-        # adata.uns["spatial"][library_id]["segmentation"] = masks.astype(np.uint16)
-
-    return sdata, df
-
-
 def control_transcripts(df, scaling_factor=100):
     """This function plots the transcript density of the tissue. You can use it to compare different regions in your tissue on transcript density."""
     Try = df.groupby(["pixel_x", "pixel_y"]).count()["gene"]
@@ -1225,11 +1057,12 @@ def analyse_genes_left_out(sdata, df):
     print(filtered.sort_values(by="proportion_kept")[0:10].iloc[:, 0:2])
     return filtered
 
+
 def plot_shapes(
     sdata,
     column: str = None,
     cmap: str = "magma",
-    img_layer="corrected",
+    img_layer: Optional[str] = None,
     shapes_layer: str = "nucleus_boundaries",
     alpha: float = 0.5,
     crd=None,
@@ -1238,6 +1071,9 @@ def plot_shapes(
     vmax=None,
     figsize=(20, 20),
 ) -> None:
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
+
     si = sdata.images[img_layer]
 
     image_boundary = [si.x.data[0], si.x.data[-1] + 1, si.y.data[0], si.y.data[-1] + 1]
@@ -1609,14 +1445,15 @@ def scoreGenes(
 def scoreGenesPlot(
     sdata: SpatialData,
     scoresper_cluster: pd.DataFrame,
-    img_layer: str = "corrected",
+    img_layer: Optional[str] = None,
     shapes_layer: str = "nucleus_boundaries",
     crd=None,
     filter_index: Optional[int] = None,
     output: str = None,
 ) -> None:
     """This function plots the cleanliness and the leiden score next to the annotation."""
-
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
     si = sdata.images[img_layer]
 
     if crd is None:

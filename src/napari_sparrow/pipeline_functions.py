@@ -17,6 +17,8 @@ log = utils.get_pylogger(__name__)
 
 
 def load(cfg: DictConfig) -> SpatialData:
+    """Loading step, the first step of the pipeline, performs creation of spatial data object."""
+
     layer_name = "raw_image"
 
     sdata = fc.create_sdata(
@@ -29,7 +31,7 @@ def load(cfg: DictConfig) -> SpatialData:
 
 
 def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
-    """Cleaning step, the first step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
+    """Cleaning step, the second step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
 
     fc.plot_image_container(
         sdata=sdata,
@@ -42,7 +44,9 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     if cfg.clean.tilingCorrection:
         ic, flatfield = fc.tilingCorrection(
             sdata=sdata,
-            crop_param=cfg.clean.crop_param if cfg.clean.crop_param is not None else None,
+            crop_param=cfg.clean.crop_param
+            if cfg.clean.crop_param is not None
+            else None,
             tile_size=cfg.clean.tile_size,
         )
 
@@ -50,9 +54,9 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         if "tiling_correction" in cfg.paths:
             log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
             fc.tilingCorrectionPlot(
-                img=sdata[ 'tiling_correction' ].squeeze().to_numpy(),
+                img=sdata["tiling_correction"].squeeze().to_numpy(),
                 flatfield=flatfield,
-                img_orig=sdata[ 'raw_image' ].squeeze().to_numpy(),
+                img_orig=sdata["raw_image"].squeeze().to_numpy(),
                 output=cfg.paths.tiling_correction,
             )
 
@@ -91,14 +95,14 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             sdata=sdata,
             output_path=os.path.join(cfg.paths.output_dir, "clahe.png"),
             crd=cfg.clean.small_size_vis,
-            layer='clahe',
+            layer="clahe",
         )
 
     return sdata
 
 
 def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
-    """Segmentation step, the second step of the pipeline, performs cellpose segmentation and creates masks."""
+    """Segmentation step, the third step of the pipeline, performs cellpose segmentation and creates masks."""
 
     # Perform segmentation
     sdata = fc.segmentation_cellpose(
@@ -148,7 +152,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
 
 def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
-    """Allocation step, the third step of the pipeline, creates the adata object from the mask and allocates the transcripts from the supplied file."""
+    """Allocation step, the fourth step of the pipeline, creates the adata object from the mask and allocates the transcripts from the supplied file."""
 
     _ = fc.apply_transform_matrix(
         path_count_matrix=cfg.dataset.coords,
@@ -172,7 +176,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
                 shapes_layer = key
                 break
 
-    sdata, _ = fc.create_adata_from_masks_dask(
+    sdata, _ = fc.allocation(
         path=os.path.join(
             cfg.paths.output_dir, "detected_transcripts_transformed.parquet"
         ),
@@ -264,7 +268,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 def annotate(
     cfg: DictConfig, sdata: SpatialData
 ) -> Tuple[SpatialData, Dict[str, List[str]]]:
-    """Annotation step, the fourth step of the pipeline, annotates the cells with celltypes based on the marker genes file."""
+    """Annotation step, the fifth step of the pipeline, annotates the cells with celltypes based on the marker genes file."""
 
     # Get arguments from cfg else empty objects
     repl_columns = (
@@ -308,7 +312,7 @@ def annotate(
 def visualize(
     cfg: DictConfig, sdata: SpatialData, mg_dict: Dict[str, List[str]]
 ) -> SpatialData:
-    """Visualisation step, the fifth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as SpatialData object."""
+    """Visualisation step, the sixth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as SpatialData object."""
 
     # Perform correction for transcripts (and corresponding celltypes) that occur in all cells and are overexpressed
     if "marker_genes" in cfg.visualize:

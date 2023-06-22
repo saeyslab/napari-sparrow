@@ -41,14 +41,14 @@ def main(cfg: DictConfig) -> None:
     # The actual pipeline which consists of 7 steps:
 
     # Load
-    log.info("Converting to zarr and Loading imagecontainer.")
-    ic = pf.load(cfg)
+    log.info("Converting to zarr and (lazy) loading of SpatialData object.")
+    sdata = pf.load(cfg)
 
     # Clean
-    ic = pf.clean(cfg, ic)
+    sdata = pf.clean(cfg, sdata)
 
     # Segment
-    sdata = pf.segment(cfg, ic)
+    sdata = pf.segment(cfg, sdata)
 
     # Allocate
     sdata = pf.allocate(cfg, sdata)
@@ -58,9 +58,6 @@ def main(cfg: DictConfig) -> None:
 
     # Visualize
     sdata = pf.visualize(cfg, sdata, mg_dict)
-
-    # Save as zarr
-    sdata.write(os.path.join(cfg.paths.sdata))
 
     return
 
