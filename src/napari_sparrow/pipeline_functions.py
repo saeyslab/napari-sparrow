@@ -154,17 +154,16 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Allocation step, the fourth step of the pipeline, creates the adata object from the mask and allocates the transcripts from the supplied file."""
 
-    _ = fc.apply_transform_matrix(
+    sdata = fc.read_transcripts(
+        sdata,
         path_count_matrix=cfg.dataset.coords,
         path_transform_matrix=cfg.dataset.transform_matrix,
-        output_path=os.path.join(
-            cfg.paths.output_dir, "detected_transcripts_transformed.parquet"
-        ),
         delimiter=cfg.allocate.delimiter,
         header=cfg.allocate.header,
         column_x=cfg.allocate.column_x,
         column_y=cfg.allocate.column_y,
         column_gene=cfg.allocate.column_gene,
+        column_midcount=cfg.allocate.column_midcount,
         debug=cfg.allocate.debug,
     )
 
@@ -176,10 +175,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
                 shapes_layer = key
                 break
 
-    sdata, _ = fc.allocation(
-        path=os.path.join(
-            cfg.paths.output_dir, "detected_transcripts_transformed.parquet"
-        ),
+    sdata = fc.allocation(
         sdata=sdata,
         shapes_layer=shapes_layer,
     )

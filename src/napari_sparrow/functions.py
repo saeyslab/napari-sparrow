@@ -301,7 +301,6 @@ def clahe_processing(
     layer = [*sdata.images][-1]
 
     # convert to imagecontainer, because apply not yet implemented in sdata
-    # need to check if coordinates are set over properly (i.e. if you would do a crop of the image)
     ic = sq.im.ImageContainer(sdata[layer], layer=layer)
 
     x_coords = ic[layer].x.data
@@ -686,17 +685,18 @@ def create_voronoi_boundaries(
     return sdata
 
 
-def apply_transform_matrix(
+def read_transcripts(
+    sdata: SpatialData,
     path_count_matrix: Union[str, Path],
-    output_path: Union[str, Path],
     path_transform_matrix: Optional[Union[str, Path]] = None,
     debug: bool = False,
     column_x: int = 0,
     column_y: int = 1,
     column_gene: int = 3,
+    column_midcount: Optional[int] = None,
     delimiter: str = ",",
     header: Optional[int] = None,
-) -> DaskDataFrame:
+) -> SpatialData:
     # Read the CSV file using Dask
     ddf = dd.read_csv(path_count_matrix, delimiter=delimiter, header=header)
 
@@ -713,6 +713,17 @@ def apply_transform_matrix(
         n = 100000
         fraction = n / len(ddf)
         ddf = ddf.sample(frac=fraction)
+
+    # Function to repeat rows based on MIDCount value
+    def repeat_rows(df):
+        repeat_df = df.reindex(
+            df.index.repeat(df.iloc[:, column_midcount])
+        ).reset_index(drop=True)
+        return repeat_df
+
+    # Apply the row repeat function if column_midcount is not None (e.g. for Stereoseq)
+    if column_midcount is not None:
+        ddf = ddf.map_partitions(repeat_rows, meta=ddf)
 
     def transform_coordinates(df):
         micron_coordinates = df.iloc[:, [column_x, column_y]].values
@@ -734,15 +745,79 @@ def apply_transform_matrix(
     # Reorder
     transformed_ddf = transformed_ddf[["pixel_x", "pixel_y", "gene"]]
 
-    transformed_ddf.to_parquet(output_path, compression="snappy")
+    sdata = _add_transcripts_to_sdata(sdata, transformed_ddf)
 
-    transformed_ddf = dd.read_parquet(output_path)
+    return sdata
 
-    return transformed_ddf
+
+def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame):
+    if sdata.points:
+        for points_layer in [*sdata.points]:
+            del sdata.points[points_layer]
+
+    sdata.add_points(
+        name="transcripts",
+        points=spatialdata.models.PointsModel.parse(
+            transformed_ddf, coordinates={"x": "pixel_x", "y": "pixel_y"}
+        ),
+    )
+    return sdata
+
+
+def read_resolve_transcripts(
+    sdata: SpatialData,
+    path_count_matrix: str | Path,
+) -> SpatialData:
+    args = (sdata, path_count_matrix)
+    kwargs = {
+        "column_x": 0,
+        "column_y": 1,
+        "column_gene": 3,
+        "delimiter": "\t",
+        "header": None,
+    }
+
+    sdata = read_transcripts(*args, **kwargs)
+    return sdata
+
+
+def read_vizgen_transcripts(
+    sdata: SpatialData,
+    path_count_matrix: str | Path,
+    path_transform_matrix: str | Path,
+) -> SpatialData:
+    args = (sdata, path_count_matrix, path_transform_matrix)
+    kwargs = {
+        "column_x": 2,
+        "column_y": 3,
+        "column_gene": 8,
+        "delimiter": ",",
+        "header": 0,
+    }
+
+    sdata = read_transcripts(*args, **kwargs)
+    return sdata
+
+
+def read_stereoseq_transcripts(
+    sdata: SpatialData,
+    path_count_matrix: str | Path,
+) -> SpatialData:
+    args = (sdata, path_count_matrix)
+    kwargs = {
+        "column_x": 1,
+        "column_y": 2,
+        "column_gene": 0,
+        "column_midcount": 3,
+        "delimiter": ",",
+        "header": 0,
+    }
+
+    sdata = read_transcripts(*args, **kwargs)
+    return sdata
 
 
 def allocation(
-    path: Union[str, Path],
     sdata: SpatialData,
     shapes_layer: str = "nucleus_boundaries",
 ) -> Tuple[SpatialData, DaskDataFrame]:
@@ -773,7 +848,7 @@ def allocation(
     )
 
     print(f"Created masks with shape {masks.shape}")
-    ddf = dd.read_parquet(path)
+    ddf = sdata["transcripts"]
 
     print("Calculate cell counts")
 
@@ -782,15 +857,15 @@ def allocation(
         partition = ddf.get_partition(index).compute()
 
         filtered_partition = partition[
-            (coords.y0 < partition["pixel_y"])
-            & (partition["pixel_y"] < masks.shape[0] + coords.y0)
-            & (coords.x0 < partition["pixel_x"])
-            & (partition["pixel_x"] < masks.shape[1] + coords.x0)
+            (coords.y0 < partition["y"])
+            & (partition["y"] < masks.shape[0] + coords.y0)
+            & (coords.x0 < partition["x"])
+            & (partition["x"] < masks.shape[1] + coords.x0)
         ]
 
         filtered_partition["cells"] = masks[
-            filtered_partition["pixel_y"].values.astype(int) - int(coords.y0),
-            filtered_partition["pixel_x"].values.astype(int) - int(coords.x0),
+            filtered_partition["y"].values.astype(int) - int(coords.y0),
+            filtered_partition["x"].values.astype(int) - int(coords.x0),
         ]
 
         return filtered_partition
@@ -844,7 +919,7 @@ def allocation(
             overwrite=True,
         )
 
-    return sdata, ddf
+    return sdata
 
 
 def sanity_plot_transcripts_matrix(
@@ -853,8 +928,8 @@ def sanity_plot_transcripts_matrix(
     polygons: Optional[geopandas.GeoDataFrame] = None,
     plot_cell_number: bool = False,
     n: Optional[int] = None,
-    name_x: str = "pixel_x",
-    name_y: str = "pixel_y",
+    name_x: str = "x",
+    name_y: str = "y",
     name_gene_column: str = "gene",
     gene: Optional[str] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
@@ -985,7 +1060,7 @@ def sanity_plot_transcripts_matrix(
 
 def control_transcripts(df, scaling_factor=100):
     """This function plots the transcript density of the tissue. You can use it to compare different regions in your tissue on transcript density."""
-    Try = df.groupby(["pixel_x", "pixel_y"]).count()["gene"]
+    Try = df.groupby(["x", "y"]).count()["gene"]
     Image = np.array(Try.unstack(fill_value=0))
     Image = Image / np.max(Image)
     blurred = gaussian_filter(scaling_factor * Image, sigma=7)
@@ -1021,12 +1096,10 @@ def analyse_genes_left_out(sdata, df):
     """This function"""
     filtered = pd.DataFrame(
         sdata.table.X.sum(axis=0)
-        / df.groupby("gene").count()["pixel_x"][sdata.table.var.index]
+        / df.groupby("gene").count()["x"][sdata.table.var.index]
     )
-    filtered = filtered.rename(columns={"pixel_x": "proportion_kept"})
-    filtered["raw_counts"] = df.groupby("gene").count()["pixel_x"][
-        sdata.table.var.index
-    ]
+    filtered = filtered.rename(columns={"x": "proportion_kept"})
+    filtered["raw_counts"] = df.groupby("gene").count()["x"][sdata.table.var.index]
     filtered["log_raw_counts"] = np.log(filtered["raw_counts"])
 
     sns.scatterplot(data=filtered, y="proportion_kept", x="log_raw_counts")
