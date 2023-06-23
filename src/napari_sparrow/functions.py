@@ -405,7 +405,6 @@ def segmentation_cellpose(
 
     polygons = mask_to_polygons_layer_dask(mask=sdata["segmentation_mask"].data)
     polygons = polygons.dissolve(by="cells")
-    #polygons.reset_index(drop=False, inplace=True)
 
     x_coords = ic.data.x.data
     y_coords = ic.data.y.data
@@ -416,9 +415,6 @@ def segmentation_cellpose(
     polygons["geometry"] = polygons["geometry"].apply(
         lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
     )
-
-    # polygons_path = os.path.join(output_dir, "polygons.geojson")
-    # polygons.to_file(polygons_path, driver="GeoJSON")
 
     if model_type == "nuclei":
         sdata.add_shapes(
@@ -749,7 +745,7 @@ def allocation(
     path: Union[str, Path],
     sdata: SpatialData,
     shapes_layer: str = "nucleus_boundaries",
-) -> Tuple[ SpatialData, DaskDataFrame]:
+) -> Tuple[SpatialData, DaskDataFrame]:
     """Returns the AnnData object with transcript and polygon data."""
 
     sdata[shapes_layer].index = sdata[shapes_layer].index.astype("str")
@@ -839,9 +835,7 @@ def allocation(
     )
 
     for i in [*sdata.shapes]:
-        sdata[i].index = list(
-            map(str, sdata[i].index)
-        )  
+        sdata[i].index = list(map(str, sdata[i].index))
         sdata.add_shapes(
             name=i,
             shapes=spatialdata.models.ShapesModel.parse(
@@ -885,9 +879,6 @@ def sanity_plot_transcripts_matrix(
             return []
 
     fig, ax = plt.subplots(figsize=(10, 10))
-
-    # cmap = plt.cm.viridis
-    # cmap.set_under('gray')  # Set the color for values below the vmin threshold
 
     if isinstance(xarray, np.ndarray):
         xarray = xr.DataArray(
@@ -1001,14 +992,14 @@ def control_transcripts(df, scaling_factor=100):
     return blurred
 
 
-def plot_control_transcripts(blurred, sdata, layer:Optional[str]=None, crd=None):
+def plot_control_transcripts(blurred, sdata, layer: Optional[str] = None, crd=None):
     if layer is None:
         layer = [*sdata.images][-1]
     if crd:
         fig, ax = plt.subplots(1, 2, figsize=(20, 20))
 
         ax[0].imshow(blurred.T[crd[0] : crd[1], crd[2] : crd[3]], cmap="magma", vmax=5)
-        sdata[ layer ].squeeze().sel(
+        sdata[layer].squeeze().sel(
             x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
         ).plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
         ax[0].set_title("Transcript density")
