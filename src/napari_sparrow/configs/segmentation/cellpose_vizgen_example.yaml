@@ -8,5 +8,6 @@ diameter: 100
 cellprob_threshold: -4
 model_type: "cyto"
 channels: [1, 0]
+chunks: 2048
 crop_param: [ 49000, 53000, 4000] # for debugging
 small_size_vis: [ 49000, 53000, 53000, 57000 ] # null

@@ -16,45 +16,37 @@ from napari_sparrow import utils
 log = utils.get_pylogger(__name__)
 
 
-def load(cfg: DictConfig) -> sq.ImageContainer:
+def load(cfg: DictConfig) -> SpatialData:
+    """Loading step, the first step of the pipeline, performs creation of spatial data object."""
 
-    layer='raw_image'
+    layer_name = "raw_image"
 
-    if os.path.splitext(cfg.dataset.image)[-1] != ".zarr":
-        fc.write_to_zarr(Path(cfg.dataset.image), output_name=layer )
-
-    zarr_path = os.path.join(
-        os.path.dirname(cfg.dataset.image), f"{layer}.zarr", "scale0"
+    sdata = fc.create_sdata(
+        filename_pattern=cfg.dataset.image,
+        output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
+        layer_name=layer_name,
+        chunks=1024,  # TODO make chunks configurable
     )
-
-    # this is ic container holding dask array
-    ic = fc.read_in_zarr_from_path(zarr_path, name=layer)
-
-    # TODO should update the load function (integrate with spatialdata format...etc.)
-
-    return ic
+    return sdata
 
 
-def clean(cfg: DictConfig, ic: sq.ImageContainer) -> sq.ImageContainer:
-    """Cleaning step, the first step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
+def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
+    """Cleaning step, the second step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
 
     fc.plot_image_container(
-        ic,
-        os.path.join(cfg.paths.output_dir, "original.png"),
-        cfg.clean.small_size_vis,
+        sdata=sdata,
+        output_path=os.path.join(cfg.paths.output_dir, "original.png"),
+        crd=cfg.clean.small_size_vis,
         layer="raw_image",
     )
-
-    # Image subset for faster processing
-    left_corner, size = None, None
-    if cfg.subset:
-        left_corner, size = utils.parse_subset(cfg.subset)
-        log.info(f"Subset is {str(cfg.subset)}")
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
         ic, flatfield = fc.tilingCorrection(
-            ic=ic,
+            sdata=sdata,
+            crop_param=cfg.clean.crop_param
+            if cfg.clean.crop_param is not None
+            else None,
             tile_size=cfg.clean.tile_size,
         )
 
@@ -62,82 +54,60 @@ def clean(cfg: DictConfig, ic: sq.ImageContainer) -> sq.ImageContainer:
         if "tiling_correction" in cfg.paths:
             log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
             fc.tilingCorrectionPlot(
-                img=ic.data.corrected.squeeze().to_numpy(),
+                img=sdata["tiling_correction"].squeeze().to_numpy(),
                 flatfield=flatfield,
-                img_orig=ic.data.raw_image.squeeze().to_numpy(),
+                img_orig=sdata["raw_image"].squeeze().to_numpy(),
                 output=cfg.paths.tiling_correction,
             )
 
         fc.plot_image_container(
-            ic,
-            os.path.join(cfg.paths.output_dir, "tiling_correction.png"),
-            cfg.clean.small_size_vis,
-            layer="corrected",
+            sdata=sdata,
+            output_path=os.path.join(cfg.paths.output_dir, "tiling_correction.png"),
+            crd=cfg.clean.small_size_vis,
+            layer="tiling_correction",
         )
 
     # tophat filtering
 
-    # to account for case where tiling correction is not yet applied.
-    if "corrected" not in ic.data.data_vars:
-        ic["corrected"] = ic["raw_image"]
-
     if cfg.clean.tophatFiltering:
-        ic = fc.tophat_filtering(
-            img=ic,
-            output_dir=cfg.paths.output_dir,
-            layer="corrected",
+        sdata = fc.tophat_filtering(
+            sdata=sdata,
             size_tophat=cfg.clean.size_tophat,
         )
 
         fc.plot_image_container(
-            ic,
-            os.path.join(cfg.paths.output_dir, "tophat_filtered.png"),
-            cfg.clean.small_size_vis,
-            layer="corrected",
+            sdata=sdata,
+            output_path=os.path.join(cfg.paths.output_dir, "tophat_filtered.png"),
+            crd=cfg.clean.small_size_vis,
+            layer="tophat_filtered",
         )
 
     # clahe processing
 
     if cfg.clean.claheProcessing:
-        ic = fc.clahe_processing(
-            img=ic,
-            output_dir=cfg.paths.output_dir,
+        sdata = fc.clahe_processing(
+            sdata=sdata,
             contrast_clip=cfg.clean.contrast_clip,
             chunksize_clahe=cfg.clean.chunksize_clahe,
-            layer="corrected",
         )
 
         fc.plot_image_container(
-            ic,
-            os.path.join(cfg.paths.output_dir, "clahe.png"),
-            cfg.clean.small_size_vis,
-            layer="corrected",
+            sdata=sdata,
+            output_path=os.path.join(cfg.paths.output_dir, "clahe.png"),
+            crd=cfg.clean.small_size_vis,
+            layer="clahe",
         )
 
-    return ic
+    return sdata
 
 
-def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
-    """Segmentation step, the second step of the pipeline, performs cellpose segmentation and creates masks."""
-
-    # crop param for debugging and tuning of parameters
-    if cfg.segmentation.crop_param:
-        ic = ic.crop_corner(
-            y=cfg.segmentation.crop_param[1],
-            x=cfg.segmentation.crop_param[0],
-            size=cfg.segmentation.crop_param[2],
-        )
-
-        # rechunk if you take crop, in order to be able to save as spatialdata object.
-        for layer in ic.data.data_vars:
-            chunksize = ic[layer].data.chunksize[0]
-            ic[layer] = ic[layer].chunk(chunksize)
+def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
+    """Segmentation step, the third step of the pipeline, performs cellpose segmentation and creates masks."""
 
     # Perform segmentation
     sdata = fc.segmentation_cellpose(
-        ic=ic,
-        output_dir=cfg.paths.output_dir,
-        layer="corrected",
+        sdata=sdata,
+        crop_param=cfg.segmentation.crop_param,
         device=cfg.device,
         min_size=cfg.segmentation.min_size,
         flow_threshold=cfg.segmentation.flow_threshold,
@@ -159,7 +129,6 @@ def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
         else cfg.clean.small_size_vis,
-        img_layer="corrected",
         shapes_layer=shapes_layer,
         output=cfg.paths.segmentation,
     )
@@ -175,7 +144,6 @@ def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
             crd=cfg.segmentation.small_size_vis
             if cfg.segmentation.small_size_vis is not None
             else cfg.clean.small_size_vis,
-            img_layer="corrected",
             shapes_layer="expanded_cells" + str(cfg.segmentation.voronoi_radius),
             output=f"{cfg.paths.segmentation}_expanded_cells_{cfg.segmentation.voronoi_radius}",
         )
@@ -184,7 +152,7 @@ def segment(cfg: DictConfig, ic: sq.ImageContainer) -> SpatialData:
 
 
 def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
-    """Allocation step, the third step of the pipeline, creates the adata object from the mask and allocates the transcripts from the supplied file."""
+    """Allocation step, the fourth step of the pipeline, creates the adata object from the mask and allocates the transcripts from the supplied file."""
 
     _ = fc.apply_transform_matrix(
         path_count_matrix=cfg.dataset.coords,
@@ -208,7 +176,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
                 shapes_layer = key
                 break
 
-    sdata, _ = fc.create_adata_from_masks_dask(
+    sdata, _ = fc.allocation(
         path=os.path.join(
             cfg.paths.output_dir, "detected_transcripts_transformed.parquet"
         ),
@@ -300,7 +268,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 def annotate(
     cfg: DictConfig, sdata: SpatialData
 ) -> Tuple[SpatialData, Dict[str, List[str]]]:
-    """Annotation step, the fourth step of the pipeline, annotates the cells with celltypes based on the marker genes file."""
+    """Annotation step, the fifth step of the pipeline, annotates the cells with celltypes based on the marker genes file."""
 
     # Get arguments from cfg else empty objects
     repl_columns = (
@@ -344,7 +312,7 @@ def annotate(
 def visualize(
     cfg: DictConfig, sdata: SpatialData, mg_dict: Dict[str, List[str]]
 ) -> SpatialData:
-    """Visualisation step, the fifth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as SpatialData object."""
+    """Visualisation step, the sixth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as SpatialData object."""
 
     # Perform correction for transcripts (and corresponding celltypes) that occur in all cells and are overexpressed
     if "marker_genes" in cfg.visualize:

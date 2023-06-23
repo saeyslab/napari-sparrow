@@ -1,6 +1,6 @@
 data_dir: ${paths.data_dir}/vizgen/liver/vz-liver-showcase/Liver1Slice1/images
-dtype: zarr
-image: ${dataset.data_dir}/mosaic_DAPI_z3.zarr
+dtype: tiff
+image: ${dataset.data_dir}/mosaic_DAPI_z3.tif
 coords: ${dataset.data_dir}/../detected_transcripts.csv
 transform_matrix: ${dataset.data_dir}/micron_to_mosaic_pixel_transform.csv
 #markers: ${dataset.data_dir}/for_Ranks.csv
