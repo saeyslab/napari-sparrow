@@ -23,3 +23,11 @@ shape_size_alpha: 0.5
 leiden_column: "leiden"
 leiden_cmap: "magma"
 leiden_alpha: 0.5
+
+delimiter: ","
+header: null
+column_x: 0
+column_y: 1
+column_gene: 2
+column_midcount: null
+debug: False
