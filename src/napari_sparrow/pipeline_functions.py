@@ -65,7 +65,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
                 fc.tilingCorrectionPlot(
                     img=sdata[ "tiling_correction" ].isel(c=channel).to_numpy(),
                     flatfield=flatfields[i],
-                    img_orig=sdata[ "tiling_correction" ].isel(c=channel).to_numpy(),
+                    img_orig=sdata[ "raw_image" ].isel(c=channel).to_numpy(),
                     output=f"{cfg.paths.tiling_correction}_{channel}_",
                 )
 

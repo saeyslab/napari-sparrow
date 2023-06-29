@@ -856,9 +856,10 @@ def read_transcripts(
 
 
 def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame):
-    if sdata.points:
-        for points_layer in [*sdata.points]:
-            del sdata.points[points_layer]
+    # TODO below fix to remove transcripts does not work, points not allowed to be deleted on disk.
+    #if sdata.points:
+    #    for points_layer in [*sdata.points]:
+    #        del sdata.points[points_layer]
 
     sdata.add_points(
         name="transcripts",
@@ -1397,8 +1398,15 @@ def preprocessAdata(
             overwrite=True,
         )
 
+    # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
+    _back_sdata_table_to_zarr( sdata )
+
     return sdata
 
+def _back_sdata_table_to_zarr(sdata: SpatialData):
+    adata=sdata.table.copy() 
+    del sdata.table
+    sdata.table = spatialdata.models.TableModel.parse( adata )
 
 def preprocesAdataPlot(sdata: SpatialData, output: str = None) -> None:
     """This function plots the size of the nucleus related to the counts."""
@@ -1518,6 +1526,8 @@ def clustering(
     sc.tl.leiden(sdata.table, resolution=cluster_resolution, random_state=100)
     sc.tl.rank_genes_groups(sdata.table, "leiden", method="wilcoxon")
 
+    _back_sdata_table_to_zarr( sdata=sdata )
+
     return sdata
 
 
@@ -1605,7 +1615,7 @@ def scoreGenes(
             if gene in genes_dict.keys():
                 del genes_dict[gene]
 
-    sdata, scoresper_cluster = annotate_celltype(
+    sdata, scoresper_cluster = _annotate_celltype(
         sdata=sdata,
         celltypes=df_markers.columns,
         row_norm=row_norm,
@@ -1615,6 +1625,8 @@ def scoreGenes(
     # add 'unknown_celltype' to the list of celltypes if it is detected.
     if "unknown_celltype" in sdata.table.obs["annotation"].cat.categories:
         genes_dict["unknown_celltype"] = []
+
+    _back_sdata_table_to_zarr(sdata)
 
     return genes_dict, scoresper_cluster
 
@@ -1732,6 +1744,8 @@ def correct_marker_genes(
             sdata.table.obs[celltype],
         )
 
+    _back_sdata_table_to_zarr(sdata=sdata)
+
     return sdata
 
 
@@ -1757,7 +1771,7 @@ def remove_celltypes(types: str, indexes: dict, sdata):
     return sdata
 
 
-def annotate_celltype(
+def _annotate_celltype(
     sdata: SpatialData,
     celltypes: List[str],
     row_norm: bool = False,
@@ -1815,7 +1829,7 @@ def clustercleanliness(
     color_dict = None
 
     # recalculate annotation, because we possibly did correction on celltype score for certain cells via correct_marker_genes function
-    sdata, _ = annotate_celltype(
+    sdata, _ = _annotate_celltype(
         sdata=sdata,
         celltypes=celltypes,
         row_norm=False,
@@ -1859,6 +1873,8 @@ def clustercleanliness(
     sdata.table.uns["annotation_colors"] = list(
         map(color_dict.get, sdata.table.obs.annotation.cat.categories.values)
     )
+
+    _back_sdata_table_to_zarr(sdata)
 
     return sdata, color_dict
 
@@ -1956,6 +1972,7 @@ def enrichment(sdata, celltype_column: str = "annotation", seed: int = 0):
     # Calculate nhood enrichment
     sq.gr.spatial_neighbors(sdata.table, coord_type="generic")
     sq.gr.nhood_enrichment(sdata.table, cluster_key=celltype_column, seed=seed)
+    _back_sdata_table_to_zarr(sdata=sdata)
     return sdata
 
 
@@ -1969,6 +1986,7 @@ def enrichment_plot(
     sdata.table.uns[f"{celltype_column}_nhood_enrichment"]["zscore"] = np.nan_to_num(
         tmp
     )
+    _back_sdata_table_to_zarr(sdata=sdata)
     sq.pl.nhood_enrichment(sdata.table, cluster_key=celltype_column, method="ward")
 
     # Save the plot to ouput
@@ -1977,25 +1995,6 @@ def enrichment_plot(
     else:
         plt.show()
     plt.close()
-
-
-def save_data(adata: AnnData, output_geojson: str, output_h5ad: str):
-    """Saves the ploygons to output_geojson as GeoJson object and the rest of the AnnData object to output_h5ad as h5ad file."""
-
-    # Save polygons to geojson
-    if color in adata.obsm["polygons"]:
-        del adata.obsm["polygons"]["color"]
-    adata.obsm["polygons"]["geometry"].to_file(output_geojson, driver="GeoJSON")
-    adata.obsm["polygons"] = pd.DataFrame(
-        {
-            "linewidth": adata.obsm["polygons"]["linewidth"],
-            # "X": adata.obsm["polygons"]["X"],
-            # "Y": adata.obsm["polygons"]["Y"],
-        }
-    )
-
-    # Write AnnData object to h5ad file
-    adata.write(output_h5ad)
 
 
 def micron_to_pixels(df, offset_x=45_000, offset_y=45_000, pixelSize=None):
