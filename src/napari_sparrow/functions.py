@@ -1646,7 +1646,7 @@ def scoreGenesPlot(
     sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=False)
 
     if output:
-        plt.savefig(output + "_Cleanliness_annotation.png", bbox_inches="tight")
+        plt.savefig(output + "_Cleanliness_annotation", bbox_inches="tight")
     else:
         plt.show()
     plt.close()
@@ -1654,7 +1654,7 @@ def scoreGenesPlot(
     sc.pl.umap(sdata.table, color=["leiden", "annotation"], show=False)
 
     if output:
-        plt.savefig(output + "_leiden_annotation.png", bbox_inches="tight")
+        plt.savefig(output + "_leiden_annotation", bbox_inches="tight")
     else:
         plt.show()
     plt.close()
@@ -1667,7 +1667,7 @@ def scoreGenesPlot(
         crd=crd,
         img_layer=img_layer,
         shapes_layer=shapes_layer,
-        output=output + "_annotation.png" if output else None,
+        output=output + "_annotation" if output else None,
     )
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
@@ -1679,7 +1679,7 @@ def scoreGenesPlot(
     )
 
     if output:
-        plt.savefig(output + "_leiden_heatmap.png", bbox_inches="tight")
+        plt.savefig(output + "_leiden_heatmap", bbox_inches="tight")
     else:
         plt.show()
     plt.close()
@@ -1701,7 +1701,7 @@ def scoreGenesPlot(
 
         if output:
             plt.savefig(
-                output + f"_leiden_heatmap_filtered_{filter_index}.png",
+                output + f"_leiden_heatmap_filtered_{filter_index}",
                 bbox_inches="tight",
             )
         else:
@@ -1865,7 +1865,7 @@ def clustercleanliness(
 
 def clustercleanlinessPlot(
     sdata: SpatialData,
-    shapes_layer: str= 'segmenation_mask_boundaries',
+    shapes_layer: str= 'segmentation_mask_boundaries',
     crd: List[int] = None,
     color_dict: dict = None,
     celltype_column: str = "annotation",
