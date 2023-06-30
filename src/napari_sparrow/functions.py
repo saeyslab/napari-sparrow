@@ -63,6 +63,7 @@ def create_sdata(
     output_path: str | Path,
     layer_name="raw_image",
     chunks: Optional[int] = None,
+    crd=None
 ):
     dask_array = imread.imread(filename_pattern)
 
@@ -87,7 +88,8 @@ def create_sdata(
     # if z-dimension is 1, then squeeze it.
     else:
         dask_array = dask_array.squeeze(1)
-
+    if crd:
+        dask_array=dask_array[:,crd[0]:crd[1],crd[2]:crd[3]]
     sdata = spatialdata.SpatialData()
 
     spatial_image = spatialdata.models.Image2DModel.parse(
@@ -836,6 +838,7 @@ def allocation(
     # Creating masks from polygons. TODO decide if you want to do this, even if voronoi is not calculated...
     # This is computationaly not heavy, but could take some ram,
     # because it creates image-size array of masks in memory
+    #I guess not if no voronoi was created. 
     print("creating masks from polygons")
     masks = rasterio.features.rasterize(
         zip(
@@ -910,14 +913,23 @@ def allocation(
     )
 
     for i in [*sdata.shapes]:
-        sdata[i].index = list(map(str, sdata[i].index))
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
+        if 'filtered' not in i:
+            print(i)
+            sdata[i].index = list(map(str, sdata[i].index))
+            sdata.add_shapes(
+                name='filtered_segmentation_'+i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][~np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                ),
+                overwrite=True,
+            )
+            sdata.add_shapes(
+                name=i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                ),
+                overwrite=True,
+            )
 
     return sdata
 
@@ -1135,6 +1147,8 @@ def plot_shapes(
     output: str = None,
     vmin=None,
     vmax=None,
+    ax=None,
+    plot_filtered=False,
     figsize=(20, 20),
 ) -> None:
     if img_layer is None:
@@ -1159,7 +1173,7 @@ def plot_shapes(
     # if crd is None, set crd equal to image_boundary
     else:
         crd = image_boundary
-
+    size_im=(crd[1]-crd[0])*(crd[3]-crd[2])
     if column is not None:
         if column + "_colors" in sdata.table.uns:
             cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
@@ -1187,8 +1201,8 @@ def plot_shapes(
         vmin = np.percentile(column, vmin)
     if vmax != None:
         vmax = np.percentile(column, vmax)
-
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=figsize)
 
     sdata[img_layer].squeeze().sel(
         x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
@@ -1198,7 +1212,7 @@ def plot_shapes(
         ax=ax,
         edgecolor="white",
         column=column,
-        linewidth=1,
+        linewidth=1 if size_im< 5000*10000 else 0,
         alpha=alpha,
         legend=True,
         aspect=1,
@@ -1206,7 +1220,18 @@ def plot_shapes(
         vmax=vmax,  # np.percentile(column,vmax),
         vmin=vmin,  # np.percentile(column,vmin)
     )
-
+    if plot_filtered:
+        for i in [*sdata.shapes]:
+            if 'filtered' in i:
+                sdata[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+                ax=ax,
+                edgecolor="red",
+                linewidth=1,
+                alpha=alpha,
+                legend=True,
+                aspect=1,
+                cmap='gray',
+                )
     ax.axes.set_aspect("equal")
     ax.set_xlim(crd[0], crd[1])
     ax.set_ylim(crd[2], crd[3])
@@ -1277,14 +1302,22 @@ def preprocessAdata(
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
     # Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too!
     for i in [*sdata.shapes]:
-        sdata[i].index = sdata[i].index.astype("str")
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
+        if 'filtered' not in i:   
+            sdata.add_shapes(
+                name='filtered_low_counts_'+i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][~np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                ),
+                overwrite=True,
+            )
+            sdata.add_shapes(
+                name=i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                ),
+                overwrite=True,
+            )
+           
 
     return sdata
 
@@ -1355,14 +1388,22 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
     sdata.table = spatialdata.models.TableModel.parse(table)
 
     for i in [*sdata.shapes]:
-        sdata[i].index = sdata[i].index.astype("str")
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
+        if 'filtered'  not in i:
+            sdata[i].index = sdata[i].index.astype("str")
+            sdata.add_shapes(
+                name='filtered_size_'+i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][~np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                ),
+                overwrite=True,
+            )
+            sdata.add_shapes(
+                name=i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                ),
+                overwrite=True,
+            )
     filtered = start - table.shape[0]
     print(str(filtered) + " cells were filtered out based on size.")
 
