@@ -13,6 +13,7 @@ from napari_sparrow.widgets import (
     annotate_widget,
     clean_widget,
     export_widget,
+    load_widget,
     segment_widget,
 )
 
@@ -60,6 +61,15 @@ class Step:
 def get_choices():
     """This function represents the choices that will be displayed in the selection menu of the Wizard widget."""
     return [
+        (
+            "Step 0: Load",
+            Step(
+                "load",
+                "#1 Loa",
+                load_widget,
+                """## Step 1: Loading\n### """,
+            ),
+        ),
         (
             "Step 1: Clean",
             Step(

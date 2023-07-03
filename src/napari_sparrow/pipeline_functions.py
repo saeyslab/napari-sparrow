@@ -28,7 +28,7 @@ def load(cfg: DictConfig) -> SpatialData:
         filename_pattern=cfg.dataset.image
 
     sdata = fc.create_sdata(
-        filename_pattern=filename_pattern,
+        input=filename_pattern,
         output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
         layer_name=layer_name,
         chunks=1024,  # TODO make chunks configurable

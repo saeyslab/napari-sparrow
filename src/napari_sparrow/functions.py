@@ -54,17 +54,20 @@ from scipy.ndimage.filters import gaussian_filter
 from shapely.affinity import translate
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 from shapely.geometry.polygon import LinearRing
-from spatial_image import to_spatial_image
-from spatialdata import SpatialData
+from spatial_image import SpatialImage, to_spatial_image
+from spatialdata import SpatialData, bounding_box_query
+from spatialdata.transformations import get_transformation
 
 
 def create_sdata(
-    filename_pattern: Union[str, Path, List[Union[str, Path]]],
-    output_path: str | Path,
-    layer_name="raw_image",
+    input: Union[str, Path, np.ndarray, List[Union[str, Path, np.ndarray]]],
+    output_path: Optional[str | Path] = None,
+    layer_name: str = "raw_image",
     chunks: Optional[int] = None,
+    dims: Optional[List[str]] = None,
+    crd: Optional[List[int]] = None,
 ):
-    dask_array = load_image_to_dask(filename_pattern=filename_pattern, chunks=chunks)
+    dask_array = load_image_to_dask(input=input, chunks=chunks, dims=dims)
 
     sdata = spatialdata.SpatialData()
 
@@ -72,41 +75,75 @@ def create_sdata(
         dask_array, dims=("c", "y", "x")
     )
 
-    y_coords = xr.DataArray(np.arange(dask_array.shape[1], dtype="float64"), dims="y")
-    x_coords = xr.DataArray(np.arange(dask_array.shape[2], dtype="float64"), dims="x")
+    if crd and any(crd):
+        print( "some", crd )
+        for i, val in enumerate(crd):
+            if val is None:
+                if i == 0 or i == 2:  # x_min or y_min
+                    crd[i] = 0
+                elif i == 1:  # x_max
+                    crd[i] = spatial_image.shape[2]
+                elif i == 3:  # y_max
+                    crd[i] = spatial_image.shape[1]
+
+        spatial_image = bounding_box_query(
+            spatial_image,
+            axes=["x", "y"],
+            min_coordinate=[crd[0], crd[2] ],
+            max_coordinate=[crd[1], crd[3] ],
+            target_coordinate_system="global",
+        )
+        if chunks:
+            spatial_image = spatial_image.chunk(chunks)
+
+        transform_matrix = get_transformation(spatial_image).to_affine_matrix(
+            input_axes=["x", "y"], output_axes=["x", "y"]
+        )
+        offset_x = transform_matrix[:, -1][0]
+        offset_y = transform_matrix[:, -1][1]
+    else:
+        offset_x = 0
+        offset_y = 0
+
+    # y_coords = xr.DataArray(np.arange(offset_y, offset_y + spatial_image.shape[1], dtype="float64"), dims="y")
+    # x_coords = xr.DataArray(np.arange(offset_x, offset_x + spatial_image.shape[2] , dtype="float64"), dims="x")
 
     # If bug in spatialdata is fixed where coordinates are lost when saving to zarr, coordinates should be set here.
     # spatial_image=spatial_image.assign_coords({ 'y': y_coords, 'x': x_coords} )
     sdata.add_image(name=layer_name, image=spatial_image)
 
-    sdata.write(output_path)
+    if output_path is not None:
+        sdata.write(output_path)
 
     # writing to zarr loses coordinates
-    sdata.images[layer_name] = sdata[layer_name].assign_coords(
-        {"y": y_coords, "x": x_coords}
-    )
+    # sdata.images[layer_name] = sdata[layer_name].assign_coords(
+    #    {"y": y_coords, "x": x_coords}
+    # )
 
     return sdata
 
 
 def load_image_to_dask(
-    filename_pattern: Union[str, Path, List[Union[str, Path]]],
+    input: Union[str, Path, np.ndarray, Array, List[Union[str, Path, np.ndarray, Array]]],
     chunks: Optional[int] = None,
+    dims: Optional[List[str]] = None,
+    crd: Optional[List[int]] = None,
 ) -> da.Array:
     """
     Load images into a dask array.
 
     This function facilitates the loading of one or more images into a 3D dask array.
-    These images are designated by a provided filename pattern. The resulting dask
+    These images are designated by a provided filename pattern or numpy array. The resulting dask
     array will have three dimensions structured as follows: channel (c), y, and x.
 
-    The filename pattern parameter can be formatted in three ways:
+    The input parameter can be formatted in four ways:
+
     - A path to a single image, either grayscale or multiple channels.
         Examples:
         DAPI_z3.tif -> single channel
         DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
     - A pattern representing a collection of z-stacks (if this is the case, a z-projection
-    is performed which selects the maximum intensity value across the z-dimension). 
+    is performed which selects the maximum intensity value across the z-dimension).
         Examples:
         DAPI_z*.tif -> z-projection performed
         DAPI_Poly_z*.tif -> z-projection performed
@@ -114,6 +151,9 @@ def load_image_to_dask(
         Examples
         [ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
         [ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
+    -A single numpy or dask array. The dims parameter should specify its dimension, e.g. ['y','x']
+    for a 2D array or [ 'c', 'y', 'x', 'z' ] for a 4D array with channels.
+    If a z-dimension >1 is present, a z-projection is performed.
 
     Parameters
     ----------
@@ -125,6 +165,8 @@ def load_image_to_dask(
     chunks : int, optional
         Chunk size for rechunking the resulting dask array. If not provided (None),
         the array will not be rechunked.
+    dims : int, optional
+        Dimension of the provided array. If input is a str of Path, this parameter is ignored.
 
     Returns
     -------
@@ -137,25 +179,52 @@ def load_image_to_dask(
         If an image is not 3D (z,y,x), a ValueError is raised. z-dimension can be 1.
     """
 
-    if isinstance(filename_pattern, list):
+    if isinstance(input, list):
         # if filename pattern is a list, create (c, y, x) for each filename pattern
-        dask_arrays = [load_image_to_dask(f, chunks) for f in filename_pattern]
+        dask_arrays = [load_image_to_dask(f, chunks, dims) for f in input]
         dask_array = da.concatenate(dask_arrays, axis=0)
         # add z- dimension, we want (c,z,y,x)
         dask_array = dask_array[:, None, :, :]
-    else:
-        dask_array = imread.imread(filename_pattern)
-        # put channel dimension first (dask image puts channel dim last)
-        if len(dask_array.shape) == 4:
-            dask_array = dask_array.transpose(3, 0, 1, 2)
-        # make sure we have ( c, z, y, x )
-        # dask image does not add channel dim for images with channel dim==1, so add it here
-        elif len(dask_array.shape) == 3:
-            dask_array = dask_array[None, :, :, :]
-        elif len(dask_array.shape) < 3:
-            raise ValueError(
-                f"Image has dimension { dask_array.shape }, while (z, y, x) is required."
+
+    elif isinstance(input, (np.ndarray, Array ) ):
+        # make sure we have (c,z,y,x)
+        array = _fix_dims(input, dims=dims)
+        if isinstance( array, np.ndarray ):
+            dask_array = da.from_array(array)
+        else:
+            dask_array=array
+
+    elif isinstance(input, (str, Path)):
+        if dims is not None:
+            warnings.warn(
+                (
+                    f"dims parameter is equal to {dims}, but will be ignored when reading in images from a file"
+                )
             )
+        # make sure we have (c,z,y,x)
+        dask_array = imread.imread(input)
+        if len(dask_array.shape) == 4:
+            # dask_image puts channel dim last
+            dims = ["z", "y", "x", "c"]
+            dask_array = _fix_dims(dask_array, dims=dims)
+        elif len(dask_array.shape) == 3:
+            # dask_image does not add channel dim for grayscale images
+            dims = ["z", "y", "x"]
+            dask_array = _fix_dims(dask_array, dims=dims)
+        elif len(dask_array.shaep) == 2:
+            dims = ["y", "x"]
+            dask_array = _fix_dims(dask_array, dims=dims)
+        else:
+            raise ValueError(
+                f"Image has shape { dask_array.shape }, while (y, x) is required."
+            )
+    else:
+        raise ValueError(f"input of type {type(input)} not supported.")
+
+    if crd:
+        # c,z,y,x
+        # get slice of it:
+        dask_array = dask_array[:, :, crd[2] : crd[3], crd[0] : crd[1]]
 
     if chunks:
         dask_array = dask_array.rechunk(chunks)
@@ -163,12 +232,67 @@ def load_image_to_dask(
     # perform z-projection
     if dask_array.shape[1] > 1:
         dask_array = da.max(dask_array, axis=1)
-        print(dask_array)
     # if z-dimension is 1, then squeeze it.
     else:
         dask_array = dask_array.squeeze(1)
 
     return dask_array
+
+
+def _fix_dims(
+    array: np.ndarray,
+    dims: List[str] = ["c", "z", "y", "x"],
+    target_dims: List[str] = ["c", "z", "y", "x"],
+):
+    dims = list(dims)
+    target_dims = list(target_dims)
+
+    dims_set = set(dims)
+    if len(dims) != len(dims_set):
+        raise ValueError(f"dims list {dims} contains duplicates")
+
+    target_dims_set = set(target_dims)
+
+    extra_dims = dims_set - target_dims_set
+
+    if extra_dims:
+        raise ValueError(
+            f"The dimension(s) {extra_dims} are not present in the target dimensions."
+        )
+
+    # check if the array already has the correct number of dimensions, if not add missing dimensions
+    if len(array.shape) != len(dims):
+        raise ValueError(
+            f"Dimension of array {array.shape} is not equal to dimension of provided dims { dims}"
+        )
+    if len(array.shape) > 4:
+        raise ValueError(
+            f"Arrays with dimension larger than 4 are not supported, shape of array is {array.shape}"
+        )
+
+    for dim in target_dims:
+        if dim not in dims:
+            array = array[None, ...]
+            dims.insert(0, dim)
+
+    # create a mapping from input dims to target dims
+    dim_mapping = {dim: i for i, dim in enumerate(dims)}
+    target_order = [dim_mapping[dim] for dim in target_dims]
+
+    # transpose the array to the target dimension order
+    array = array.transpose(*target_order)
+
+    return array
+
+
+def get_offset(spatial_image: SpatialImage):
+    transform_matrix = get_transformation(spatial_image).to_affine_matrix(
+        input_axes=["x", "y"], output_axes=["x", "y"]
+    )
+    offset_x = transform_matrix[:, -1][0]
+    offset_y = transform_matrix[:, -1][1]
+
+    return offset_x, offset_y
 
 
 def tilingCorrection(
@@ -185,11 +309,10 @@ def tilingCorrection(
 
     layer = [*sdata.images][-1]
 
-    result_list=[]
-    flatfields=[]
+    result_list = []
+    flatfields = []
 
-    for channel in sdata[ layer ].c.data:
-
+    for channel in sdata[layer].c.data:
         ic = sq.im.ImageContainer(sdata[layer].isel(c=channel), layer=layer)
 
         x_coords = ic.data.x.data
@@ -198,7 +321,9 @@ def tilingCorrection(
         # Create the tiles
         tiles = ic.generate_equal_crops(size=tile_size, as_array=layer)
         tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
-        black = np.array([1 if ~np.any(tile - 1) else 0 for tile in tiles])  # determine if
+        black = np.array(
+            [1 if ~np.any(tile - 1) else 0 for tile in tiles]
+        )  # determine if
 
         # create the masks for inpainting
         i_mask = (
@@ -215,11 +340,11 @@ def tilingCorrection(
                 "There aren't enough tiles to perform tiling correction (less than 5). This step will be skipped."
             )
             tiles_corrected = tiles
-            flatfields.append( None )
+            flatfields.append(None)
         else:
             basic = BaSiC(smoothness_flatfield=1)
             basic.fit(tiles)
-            flatfields.append( basic.flatfield )
+            flatfields.append(basic.flatfield)
             tiles_corrected = basic.transform(tiles)
 
         tiles_corrected = np.array(
@@ -268,7 +393,7 @@ def tilingCorrection(
         )
 
         # result for each channel
-        result_list.append( ic[ output_layer ].data )
+        result_list.append(ic[output_layer].data)
 
     # make one dask array of shape (c,y,x)
     result = da.concatenate(result_list, axis=-1).transpose(3, 0, 1, 2).squeeze(-1)
@@ -407,8 +532,8 @@ def clahe_processing(
             copy=True,
             chunks=chunksize_clahe,
             lazy=True,
-            # depth=1000,
-            # boundary='reflect'
+            depth=200,
+            boundary='reflect'
         )
 
         # squeeze channel dim and z-dimension
@@ -442,7 +567,6 @@ def cellpose(
     channels=[1, 0],
     device="cpu",
 ):
-
     gpu = torch.cuda.is_available()
     model = models.Cellpose(gpu=gpu, model_type=model_type, device=torch.device(device))
     masks, _, _, _ = model.eval(
@@ -518,7 +642,7 @@ def segmentation_cellpose(
         lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
     )
 
-    shapes_name = f'{output_layer}_boundaries'
+    shapes_name = f"{output_layer}_boundaries"
 
     sdata.add_shapes(
         name=shapes_name,
@@ -599,8 +723,7 @@ def segmentationPlot(
 
     channels = [channel] if channel is not None else si.c.data
 
-    for ch in channels:    
-
+    for ch in channels:
         fig, ax = plt.subplots(1, 2, figsize=(20, 20))
         si.isel(c=ch).squeeze().sel(
             x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
@@ -632,7 +755,7 @@ def segmentationPlot(
         # Save the plot to ouput
         if output:
             plt.close(fig)
-            fig.savefig( f"{output}_{ch}")
+            fig.savefig(f"{output}_{ch}")
 
 
 def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
@@ -747,7 +870,9 @@ def delete_overlap(voronoi, polygons):
 
 
 def create_voronoi_boundaries(
-    sdata: SpatialData, radius: int = 0, shapes_layer: str = "segmentation_mask_boundaries"
+    sdata: SpatialData,
+    radius: int = 0,
+    shapes_layer: str = "segmentation_mask_boundaries",
 ):
     if radius < 0:
         raise ValueError(
@@ -857,7 +982,7 @@ def read_transcripts(
 
 def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame):
     # TODO below fix to remove transcripts does not work, points not allowed to be deleted on disk.
-    #if sdata.points:
+    # if sdata.points:
     #    for points_layer in [*sdata.points]:
     #        del sdata.points[points_layer]
 
@@ -1235,7 +1360,7 @@ def plot_shapes(
     column: str = None,
     cmap: str = "magma",
     img_layer: Optional[str] = None,
-    channel: Optional[int]=None,
+    channel: Optional[int] = None,
     shapes_layer: str = "segmentation_mask_boundaries",
     alpha: float = 0.5,
     crd=None,
@@ -1295,11 +1420,9 @@ def plot_shapes(
     if vmax != None:
         vmax = np.percentile(column, vmax)
 
-
     channels = [channel] if channel is not None else si.c.data
 
     for ch in channels:
-
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
         sdata[img_layer].isel(c=ch).squeeze().sel(
@@ -1333,7 +1456,7 @@ def plot_shapes(
 
         # Save the plot to ouput
         if output:
-            fig.savefig( f"{output}_{ch}")
+            fig.savefig(f"{output}_{ch}")
         else:
             plt.show()
         plt.close()
@@ -1399,14 +1522,16 @@ def preprocessAdata(
         )
 
     # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
-    _back_sdata_table_to_zarr( sdata )
+    _back_sdata_table_to_zarr(sdata)
 
     return sdata
 
+
 def _back_sdata_table_to_zarr(sdata: SpatialData):
-    adata=sdata.table.copy() 
+    adata = sdata.table.copy()
     del sdata.table
-    sdata.table = spatialdata.models.TableModel.parse( adata )
+    sdata.table = spatialdata.models.TableModel.parse(adata)
+
 
 def preprocesAdataPlot(sdata: SpatialData, output: str = None) -> None:
     """This function plots the size of the nucleus related to the counts."""
@@ -1526,7 +1651,7 @@ def clustering(
     sc.tl.leiden(sdata.table, resolution=cluster_resolution, random_state=100)
     sc.tl.rank_genes_groups(sdata.table, "leiden", method="wilcoxon")
 
-    _back_sdata_table_to_zarr( sdata=sdata )
+    _back_sdata_table_to_zarr(sdata=sdata)
 
     return sdata
 
@@ -1881,7 +2006,7 @@ def clustercleanliness(
 
 def clustercleanlinessPlot(
     sdata: SpatialData,
-    shapes_layer: str= 'segmentation_mask_boundaries',
+    shapes_layer: str = "segmentation_mask_boundaries",
     crd: List[int] = None,
     color_dict: dict = None,
     celltype_column: str = "annotation",
@@ -2167,26 +2292,25 @@ def read_in_zarr_from_path(
 
 def plot_image_container(
     sdata: Union[SpatialData, sq.im.ImageContainer],
-    output_path: Optional[str|Path] =None,
-    crd:Optional[ List[int] ]=None,
-    layer:str="image",
+    output_path: Optional[str | Path] = None,
+    crd: Optional[List[int]] = None,
+    layer: str = "image",
     channel: Optional[int] = None,
-    aspect:str="equal",
-    figsize:Tuple[int]=(10, 10),
+    aspect: str = "equal",
+    figsize: Tuple[int] = (10, 10),
 ):
-    
     if not isinstance(sdata, (SpatialData, sq.im.ImageContainer)):
         raise ValueError("Only SpatialData and ImageContainer objects are supported.")
 
-    channel_key = 'c' if isinstance(sdata, SpatialData) else 'channels'
-    channels = [channel] if channel is not None else sdata[ layer ][ channel_key ].data
-    
+    channel_key = "c" if isinstance(sdata, SpatialData) else "channels"
+    channels = [channel] if channel is not None else sdata[layer][channel_key].data
+
     for ch in channels:
         if isinstance(sdata, SpatialData):
             dataset = sdata[layer].isel(c=ch)
         elif isinstance(sdata, sq.im.ImageContainer):
             dataset = sdata[layer].isel(channels=ch)
-        
+
         if crd is None:
             crd = [
                 sdata[layer].x.data[0],
@@ -2197,15 +2321,15 @@ def plot_image_container(
 
         _, ax = plt.subplots(figsize=figsize)
         cmap = "gray"
-        dataset.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-            cmap=cmap, robust=True, ax=ax, add_colorbar=False
-        )
+        dataset.squeeze().sel(
+            x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
+        ).plot.imshow(cmap=cmap, robust=True, ax=ax, add_colorbar=False)
 
         ax.set_aspect(aspect)
         ax.invert_yaxis()
 
         if output_path:
-            plt.savefig( f"{output_path}_{ch}")
+            plt.savefig(f"{output_path}_{ch}")
         else:
             plt.show()
         plt.close()
