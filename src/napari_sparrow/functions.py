@@ -319,8 +319,8 @@ def clahe_processing(
         copy=True,
         chunks=chunksize_clahe,
         lazy=True,
-        # depth=1000,
-        # boundary='reflect'
+        depth=3000,
+        boundary='reflect'
     )
 
     ic_clahe[output_layer] = ic_clahe[output_layer].assign_coords(
@@ -919,14 +919,14 @@ def allocation(
             sdata.add_shapes(
                 name='filtered_segmentation_'+i,
                 shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][~np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
                 ),
                 overwrite=True,
             )
             sdata.add_shapes(
                 name=i,
                 shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
                 ),
                 overwrite=True,
             )
@@ -1151,6 +1151,19 @@ def plot_shapes(
     plot_filtered=False,
     figsize=(20, 20),
 ) -> None:
+    """
+    This function plots an sdata object, with the cells on top. On default it plots the image layer that was added last.
+    The default color is blue if no color is given as input. 
+    Column: determines based on which column the cells need to be colored. Can be an obs column or a var column. 
+    img_layer: the image layer that needs to be plotted, the last on on default
+    shapes_layer: which shapes to plot, the default is nucleus_boundaries, but when performing an expansion it can be another layer. 
+    alpha: the alpha-parameter of matplotlib: transperancy of the cells 
+    crd: the crop that needs to be plotted, if none is given, the whole region is plotted, list of four coordinates
+    output: whether you want to save it as an output or not, default is none and then plot is shown.
+    vmin/vmax: adapting the color scale for continous data: give the percentile for which to color min and max. 
+    ax: whne wanting to add the plot to another plot
+    plot_filtered: whether or not to plot the cells that were filtered out during previous steps, this is a control function.
+    """
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 
@@ -1306,14 +1319,14 @@ def preprocessAdata(
             sdata.add_shapes(
                 name='filtered_low_counts_'+i,
                 shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][~np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
                 ),
                 overwrite=True,
             )
             sdata.add_shapes(
                 name=i,
                 shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
                 ),
                 overwrite=True,
             )
@@ -1393,14 +1406,14 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
             sdata.add_shapes(
                 name='filtered_size_'+i,
                 shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][~np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
                 ),
                 overwrite=True,
             )
             sdata.add_shapes(
                 name=i,
                 shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
+                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
                 ),
                 overwrite=True,
             )
