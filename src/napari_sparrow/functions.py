@@ -59,13 +59,13 @@ from spatialdata import SpatialData
 
 
 def create_sdata(
-    filename_pattern: str | Path,
+    filename_pattern: Union[str, Path, List[Union[str, Path]]],
     output_path: str | Path,
     layer_name="raw_image",
     chunks: Optional[int] = None,
     crd=None
 ):
-    dask_array = imread.imread(filename_pattern)
+    dask_array = load_image_to_dask(filename_pattern=filename_pattern, chunks=chunks)
 
     # make sure we have ( c, z, y, x )
     if len(dask_array.shape) == 4:
@@ -113,12 +113,94 @@ def create_sdata(
     return sdata
 
 
+def load_image_to_dask(
+    filename_pattern: Union[str, Path, List[Union[str, Path]]],
+    chunks: Optional[int] = None,
+) -> da.Array:
+    """
+    Load images into a dask array.
+
+    This function facilitates the loading of one or more images into a 3D dask array.
+    These images are designated by a provided filename pattern. The resulting dask
+    array will have three dimensions structured as follows: channel (c), y, and x.
+
+    The filename pattern parameter can be formatted in three ways:
+    - A path to a single image, either grayscale or multiple channels.
+        Examples:
+        DAPI_z3.tif -> single channel
+        DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
+    - A pattern representing a collection of z-stacks (if this is the case, a z-projection
+    is performed which selects the maximum intensity value across the z-dimension). 
+        Examples:
+        DAPI_z*.tif -> z-projection performed
+        DAPI_Poly_z*.tif -> z-projection performed
+    - A list of filename patterns (where each list item corresponds to a different channel)
+        Examples
+        [ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
+        [ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
+
+    Parameters
+    ----------
+    filename_pattern : Union[str, Path, List[Union[str, Path]]]
+        The filename pattern, path or list of filename patterns to the images that
+        should be loaded. In case of a list, each list item should represent a different
+        channel, and each image corresponding to a filename pattern should represent
+        a different z-stack.
+    chunks : int, optional
+        Chunk size for rechunking the resulting dask array. If not provided (None),
+        the array will not be rechunked.
+
+    Returns
+    -------
+    dask.array.Array
+        The resulting 3D dask array with dimensions ordered as: (c, y, x).
+
+    Raises
+    ------
+    ValueError
+        If an image is not 3D (z,y,x), a ValueError is raised. z-dimension can be 1.
+    """
+
+    if isinstance(filename_pattern, list):
+        # if filename pattern is a list, create (c, y, x) for each filename pattern
+        dask_arrays = [load_image_to_dask(f, chunks) for f in filename_pattern]
+        dask_array = da.concatenate(dask_arrays, axis=0)
+        # add z- dimension, we want (c,z,y,x)
+        dask_array = dask_array[:, None, :, :]
+    else:
+        dask_array = imread.imread(filename_pattern)
+        # put channel dimension first (dask image puts channel dim last)
+        if len(dask_array.shape) == 4:
+            dask_array = dask_array.transpose(3, 0, 1, 2)
+        # make sure we have ( c, z, y, x )
+        # dask image does not add channel dim for images with channel dim==1, so add it here
+        elif len(dask_array.shape) == 3:
+            dask_array = dask_array[None, :, :, :]
+        elif len(dask_array.shape) < 3:
+            raise ValueError(
+                f"Image has dimension { dask_array.shape }, while (z, y, x) is required."
+            )
+
+    if chunks:
+        dask_array = dask_array.rechunk(chunks)
+
+    # perform z-projection
+    if dask_array.shape[1] > 1:
+        dask_array = da.max(dask_array, axis=1)
+        print(dask_array)
+    # if z-dimension is 1, then squeeze it.
+    else:
+        dask_array = dask_array.squeeze(1)
+
+    return dask_array
+
+
 def tilingCorrection(
     sdata: SpatialData,
     tile_size: int = 2144,
     crop_param: Optional[Tuple[int, int, int]] = None,
     output_layer: str = "tiling_correction",
-) -> Tuple[SpatialData, np.ndarray]:
+) -> Tuple[SpatialData, List[np.ndarray]]:
     """Returns the corrected image and the flatfield array
 
     This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
@@ -127,90 +209,112 @@ def tilingCorrection(
 
     layer = [*sdata.images][-1]
 
-    ic = sq.im.ImageContainer(sdata[layer], layer=layer)
+    result_list=[]
+    flatfields=[]
 
-    x_coords = ic.data.x.data
-    y_coords = ic.data.y.data
+    for channel in sdata[ layer ].c.data:
 
-    # Create the tiles
-    tiles = ic.generate_equal_crops(size=tile_size, as_array=layer)
-    tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
-    black = np.array([1 if ~np.any(tile - 1) else 0 for tile in tiles])  # determine if
+        ic = sq.im.ImageContainer(sdata[layer].isel(c=channel), layer=layer)
 
-    # create the masks for inpainting
-    i_mask = (
-        np.block(
+        x_coords = ic.data.x.data
+        y_coords = ic.data.y.data
+
+        # Create the tiles
+        tiles = ic.generate_equal_crops(size=tile_size, as_array=layer)
+        tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
+        black = np.array([1 if ~np.any(tile - 1) else 0 for tile in tiles])  # determine if
+
+        # create the masks for inpainting
+        i_mask = (
+            np.block(
+                [
+                    list(tiles[i : i + (ic.shape[1] // tile_size)])
+                    for i in range(0, len(tiles), ic.shape[1] // tile_size)
+                ]
+            ).astype(np.uint16)
+            == 0
+        )
+        if tiles.shape[0] < 5:
+            print(
+                "There aren't enough tiles to perform tiling correction (less than 5). This step will be skipped."
+            )
+            tiles_corrected = tiles
+            flatfields.append( None )
+        else:
+            basic = BaSiC(smoothness_flatfield=1)
+            basic.fit(tiles)
+            flatfields.append( basic.flatfield )
+            tiles_corrected = basic.transform(tiles)
+
+        tiles_corrected = np.array(
             [
-                list(tiles[i : i + (ic.shape[1] // tile_size)])
-                for i in range(0, len(tiles), ic.shape[1] // tile_size)
+                tiles[number] if black[number] == 1 else tile
+                for number, tile in enumerate(tiles_corrected)
+            ]
+        )
+
+        # Stitch the tiles back together
+        i_new = np.block(
+            [
+                list(tiles_corrected[i : i + (ic.shape[1] // tile_size)])
+                for i in range(0, len(tiles_corrected), ic.shape[1] // tile_size)
             ]
         ).astype(np.uint16)
-        == 0
-    )
-    if tiles.shape[0] < 5:
-        print(
-            "There aren't enough tiles to perform tiling correction (less than 5). This step will be skipped."
+
+        ic = sq.im.ImageContainer(i_new, layer=layer)
+        ic.add_img(
+            i_mask.astype(np.uint8),
+            layer="mask_black_lines",
         )
-        tiles_corrected = tiles
-        flatfield = None
-    else:
-        basic = BaSiC(smoothness_flatfield=1)
-        basic.fit(tiles)
-        flatfield = basic.flatfield
-        tiles_corrected = basic.transform(tiles)
 
-    tiles_corrected = np.array(
-        [
-            tiles[number] if black[number] == 1 else tile
-            for number, tile in enumerate(tiles_corrected)
-        ]
+        ic[layer] = ic[layer].assign_coords({"y": y_coords, "x": x_coords})
+
+        if crop_param:
+            ic = ic.crop_corner(y=crop_param[1], x=crop_param[0], size=crop_param[2])
+
+            x_coords = ic.data.x.data
+            y_coords = ic.data.y.data
+
+        # Perform inpainting
+        ic.apply(
+            {"0": cv2.inpaint},
+            layer=layer,
+            drop=False,
+            channel=0,
+            new_layer=output_layer,
+            copy=False,
+            # chunks=10,
+            fn_kwargs={
+                "inpaintMask": ic.data.mask_black_lines.squeeze().to_numpy(),
+                "inpaintRadius": 55,
+                "flags": cv2.INPAINT_NS,
+            },
+        )
+
+        # result for each channel
+        result_list.append( ic[ output_layer ].data )
+
+    # make one dask array of shape (c,y,x)
+    result = da.concatenate(result_list, axis=-1).transpose(3, 0, 1, 2).squeeze(-1)
+
+    spatial_image = spatialdata.models.Image2DModel.parse(result, dims=("c", "y", "x"))
+
+    # if bug is fixed in spatialdata, you should set coordinates here, not after adding image to sdata
+    spatial_image = spatial_image.assign_coords({"y": y_coords, "x": x_coords})
+
+    # during adding of image it is written to zarr store
+    sdata.add_image(name=output_layer, image=spatial_image)
+
+    # add coordinates, due to bug these are lost when writing to zarr store
+    sdata.images[output_layer] = sdata[output_layer].assign_coords(
+        {"y": y_coords, "x": x_coords}
     )
 
-    # Stitch the tiles back together
-    i_new = np.block(
-        [
-            list(tiles_corrected[i : i + (ic.shape[1] // tile_size)])
-            for i in range(0, len(tiles_corrected), ic.shape[1] // tile_size)
-        ]
-    ).astype(np.uint16)
-
-    ic = sq.im.ImageContainer(i_new, layer=layer)
-    # mask = sq.im.ImageContainer(i_mask.astype(np.uint8), layer="mask_black_lines")
-    ic.add_img(
-        i_mask.astype(np.uint8),
-        layer="mask_black_lines",
-    )
-
-    ic[layer] = ic[layer].assign_coords({"y": y_coords, "x": x_coords})
-
-    if crop_param:
-        ic = ic.crop_corner(y=crop_param[1], x=crop_param[0], size=crop_param[2])
-
-    # Perform inpainting
-    ic.apply(
-        {"0": cv2.inpaint},
-        layer=layer,
-        drop=False,
-        channel=0,
-        new_layer=output_layer,
-        copy=False,
-        # chunks=10,
-        fn_kwargs={
-            "inpaintMask": ic.data.mask_black_lines.squeeze().to_numpy(),
-            "inpaintRadius": 55,
-            "flags": cv2.INPAINT_NS,
-        },
-    )
-
-    imageContainerToSData(
-        ic=ic, sdata=sdata, layers_im=[output_layer], layers_labels=[]
-    )
-
-    return sdata, flatfield
+    return sdata, flatfields
 
 
 def tilingCorrectionPlot(
-    img: np.ndarray, flatfield, img_orig: np.ndarray, output: str = None
+    img: np.ndarray, flatfield: np.ndarray, img_orig: np.ndarray, output: str = None
 ) -> None:
     """Creates the plots based on the correction overlay and the original and corrected images."""
 
@@ -260,18 +364,23 @@ def tophat_filtering(
     # take the last image as layer to do next step in pipeline
     layer = [*sdata.images][-1]
 
-    # squeeze the channel dim
-    image_array = sdata[layer].data.squeeze(0)
+    # TODO size_tophat maybe different for different channels, probably fix this with size_tophat as a list.
+    # Initialize list to store results
+    result_list = []
 
-    # Apply the minimum filter
-    minimum_t = dask_image.ndfilters.minimum_filter(image_array, size_tophat)
+    for channel in sdata[layer].c.data:
+        image_array = sdata[layer].isel(c=channel).data
 
-    # Apply the maximum filter
-    max_of_min_t = dask_image.ndfilters.maximum_filter(minimum_t, size_tophat)
+        # Apply the minimum filter
+        minimum_t = dask_image.ndfilters.minimum_filter(image_array, size_tophat)
 
-    result = image_array - max_of_min_t
+        # Apply the maximum filter
+        max_of_min_t = dask_image.ndfilters.maximum_filter(minimum_t, size_tophat)
 
-    result = result[None, :, :]
+        # Subtract max_of_min_t from image_array and store in result_list
+        result_list.append(image_array - max_of_min_t)
+
+    result = da.stack(result_list, axis=0)
 
     spatial_image = spatialdata.models.Image2DModel.parse(result, dims=("c", "y", "x"))
 
@@ -302,33 +411,46 @@ def clahe_processing(
 
     layer = [*sdata.images][-1]
 
+    x_coords = sdata[layer].x.data
+    y_coords = sdata[layer].y.data
+
     # convert to imagecontainer, because apply not yet implemented in sdata
     ic = sq.im.ImageContainer(sdata[layer], layer=layer)
 
-    x_coords = ic[layer].x.data
-    y_coords = ic[layer].y.data
+    result_list = []
 
-    clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
+    for channel in sdata[layer].c.data:
+        clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
 
-    ic_clahe = ic.apply(
-        {"0": clahe.apply},
-        layer=layer,
-        new_layer=output_layer,
-        drop=True,
-        channel=0,
-        copy=True,
-        chunks=chunksize_clahe,
-        lazy=True,
-        depth=3000,
-        boundary='reflect'
-    )
+        ic_clahe = ic.apply(
+            {"0": clahe.apply},
+            layer=layer,
+            new_layer=output_layer,
+            drop=True,
+            channel=channel,
+            copy=True,
+            chunks=chunksize_clahe,
+            lazy=True,
+            depth=3000,
+            boundary='reflect'
+        )
 
-    ic_clahe[output_layer] = ic_clahe[output_layer].assign_coords(
+        # squeeze channel dim and z-dimension
+        result_list.append(ic_clahe["clahe"].data.squeeze(axis=(2, 3)))
+
+    result = da.stack(result_list, axis=0)
+
+    spatial_image = spatialdata.models.Image2DModel.parse(result, dims=("c", "y", "x"))
+
+    # if bug is fixed in spatialdata, you should set coordinates here, not after adding image to sdata
+    spatial_image = spatial_image.assign_coords({"y": y_coords, "x": x_coords})
+
+    # during adding of image it is written to zarr store
+    sdata.add_image(name=output_layer, image=spatial_image)
+
+    # add coordinates, due to bug these are lost when writing to zarr store
+    sdata.images[output_layer] = sdata[output_layer].assign_coords(
         {"y": y_coords, "x": x_coords}
-    )
-
-    imageContainerToSData(
-        ic=ic_clahe, sdata=sdata, layers_im=[output_layer], layers_labels=[]
     )
 
     return sdata
@@ -344,6 +466,7 @@ def cellpose(
     channels=[1, 0],
     device="cpu",
 ):
+
     gpu = torch.cuda.is_available()
     model = models.Cellpose(gpu=gpu, model_type=model_type, device=torch.device(device))
     masks, _, _, _ = model.eval(
@@ -360,6 +483,7 @@ def cellpose(
 def segmentation_cellpose(
     sdata: SpatialData,
     layer: Optional[str] = None,
+    output_layer: str = "segmentation_mask",
     crop_param: Optional[Tuple[int, int, int]] = None,
     device: str = "cpu",
     min_size: int = 80,
@@ -388,10 +512,11 @@ def segmentation_cellpose(
         img=ic,
         layer=layer,
         method=cellpose,
+        channel=None,
         chunks=chunks,
         lazy=lazy,
         min_size=min_size,
-        layer_added="segmentation_mask",
+        layer_added=output_layer,
         cellprob_threshold=cellprob_threshold,
         flow_threshold=flow_threshold,
         diameter=diameter,
@@ -401,10 +526,10 @@ def segmentation_cellpose(
     )
 
     imageContainerToSData(
-        ic=ic, sdata=sdata, layers_im=[], layers_labels=["segmentation_mask"]
+        ic=ic, sdata=sdata, layers_im=[], layers_labels=[output_layer]
     )
 
-    polygons = mask_to_polygons_layer_dask(mask=sdata["segmentation_mask"].data)
+    polygons = mask_to_polygons_layer_dask(mask=sdata[output_layer].data)
     polygons = polygons.dissolve(by="cells")
 
     x_coords = ic.data.x.data
@@ -417,16 +542,13 @@ def segmentation_cellpose(
         lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
     )
 
-    if model_type == "nuclei":
-        sdata.add_shapes(
-            name="nucleus_boundaries",
-            shapes=spatialdata.models.ShapesModel.parse(polygons),
-        )
-    elif model_type == "cyto":
-        sdata.add_shapes(
-            name="cell_boundaries",
-            shapes=spatialdata.models.ShapesModel.parse(polygons),
-        )
+    shapes_name = f'{output_layer}_boundaries'
+
+    sdata.add_shapes(
+        name=shapes_name,
+        shapes=spatialdata.models.ShapesModel.parse(polygons),
+    )
+
     return sdata
 
 
@@ -472,7 +594,8 @@ def segmentationPlot(
     sdata,
     crd=None,
     layer: Optional[str] = None,
-    shapes_layer="nucleus_boundaries",
+    channel: Optional[int] = None,
+    shapes_layer="segmentation_mask_boundaries",
     output: str = None,
 ) -> None:
     if layer is None:
@@ -498,38 +621,42 @@ def segmentationPlot(
     else:
         crd = image_boundary
 
-    fig, ax = plt.subplots(1, 2, figsize=(20, 20))
-    si.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-        cmap="gray", robust=True, ax=ax[0], add_colorbar=False
-    )
-    si.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-        cmap="gray", robust=True, ax=ax[1], add_colorbar=False
-    )
-    sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
-        ax=ax[1],
-        edgecolor="white",
-        linewidth=1,
-        alpha=0.5,
-        legend=True,
-        aspect=1,
-    )
-    for i in range(len(ax)):
-        ax[i].axes.set_aspect("equal")
-        ax[i].set_xlim(crd[0], crd[1])
-        ax[i].set_ylim(crd[2], crd[3])
-        ax[i].invert_yaxis()
-        ax[i].set_title("")
-        # ax.axes.xaxis.set_visible(False)
-        # ax.axes.yaxis.set_visible(False)
-        ax[i].spines["top"].set_visible(False)
-        ax[i].spines["right"].set_visible(False)
-        ax[i].spines["bottom"].set_visible(False)
-        ax[i].spines["left"].set_visible(False)
+    channels = [channel] if channel is not None else si.c.data
 
-    # Save the plot to ouput
-    if output:
-        plt.close(fig)
-        fig.savefig(output)
+    for ch in channels:    
+
+        fig, ax = plt.subplots(1, 2, figsize=(20, 20))
+        si.isel(c=ch).squeeze().sel(
+            x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
+        ).plot.imshow(cmap="gray", robust=True, ax=ax[0], add_colorbar=False)
+        si.isel(c=ch).squeeze().sel(
+            x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
+        ).plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
+        sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+            ax=ax[1],
+            edgecolor="white",
+            linewidth=1,
+            alpha=0.5,
+            legend=True,
+            aspect=1,
+        )
+        for i in range(len(ax)):
+            ax[i].axes.set_aspect("equal")
+            ax[i].set_xlim(crd[0], crd[1])
+            ax[i].set_ylim(crd[2], crd[3])
+            ax[i].invert_yaxis()
+            ax[i].set_title("")
+            # ax.axes.xaxis.set_visible(False)
+            # ax.axes.yaxis.set_visible(False)
+            ax[i].spines["top"].set_visible(False)
+            ax[i].spines["right"].set_visible(False)
+            ax[i].spines["bottom"].set_visible(False)
+            ax[i].spines["left"].set_visible(False)
+
+        # Save the plot to ouput
+        if output:
+            plt.close(fig)
+            fig.savefig( f"{output}_{ch}")
 
 
 def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
@@ -644,7 +771,7 @@ def delete_overlap(voronoi, polygons):
 
 
 def create_voronoi_boundaries(
-    sdata: SpatialData, radius: int = 0, shapes_layer: str = "nucleus_boundaries"
+    sdata: SpatialData, radius: int = 0, shapes_layer: str = "segmentation_mask_boundaries"
 ):
     if radius < 0:
         raise ValueError(
@@ -753,9 +880,10 @@ def read_transcripts(
 
 
 def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame):
-    if sdata.points:
-        for points_layer in [*sdata.points]:
-            del sdata.points[points_layer]
+    # TODO below fix to remove transcripts does not work, points not allowed to be deleted on disk.
+    #if sdata.points:
+    #    for points_layer in [*sdata.points]:
+    #        del sdata.points[points_layer]
 
     sdata.add_points(
         name="transcripts",
@@ -821,7 +949,7 @@ def read_stereoseq_transcripts(
 
 def allocation(
     sdata: SpatialData,
-    shapes_layer: str = "nucleus_boundaries",
+    shapes_layer: str = "segmentation_mask_boundaries",
 ) -> Tuple[SpatialData, DaskDataFrame]:
     """Returns the AnnData object with transcript and polygon data."""
 
@@ -1141,13 +1269,13 @@ def plot_shapes(
     column: str = None,
     cmap: str = "magma",
     img_layer: Optional[str] = None,
-    shapes_layer: str = "nucleus_boundaries",
+    channel: Optional[int]=None,
+    shapes_layer: str = "segmentation_mask_boundaries",
     alpha: float = 0.5,
     crd=None,
     output: str = None,
     vmin=None,
     vmax=None,
-    ax=None,
     plot_filtered=False,
     figsize=(20, 20),
 ) -> None:
@@ -1214,55 +1342,60 @@ def plot_shapes(
         vmin = np.percentile(column, vmin)
     if vmax != None:
         vmax = np.percentile(column, vmax)
-    if ax is None:
+    
+
+    channels = [channel] if channel is not None else si.c.data
+
+    for ch in channels:
+
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
-    sdata[img_layer].squeeze().sel(
-        x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
-    ).plot.imshow(cmap="gray", robust=True, ax=ax, add_colorbar=False)
+        sdata[img_layer].isel(c=ch).squeeze().sel(
+            x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
+        ).plot.imshow(cmap="gray", robust=True, ax=ax, add_colorbar=False)
 
-    sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
-        ax=ax,
-        edgecolor="white",
-        column=column,
-        linewidth=1 if size_im< 5000*10000 else 0,
-        alpha=alpha,
-        legend=True,
-        aspect=1,
-        cmap=cmap,
-        vmax=vmax,  # np.percentile(column,vmax),
-        vmin=vmin,  # np.percentile(column,vmin)
-    )
-    if plot_filtered:
-        for i in [*sdata.shapes]:
-            if 'filtered' in i:
-                sdata[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
-                ax=ax,
-                edgecolor="red",
-                linewidth=1,
-                alpha=alpha,
-                legend=True,
-                aspect=1,
-                cmap='gray',
-                )
-    ax.axes.set_aspect("equal")
-    ax.set_xlim(crd[0], crd[1])
-    ax.set_ylim(crd[2], crd[3])
-    ax.invert_yaxis()
-    ax.set_title("")
-    # ax.axes.xaxis.set_visible(False)
-    # ax.axes.yaxis.set_visible(False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["bottom"].set_visible(False)
-    ax.spines["left"].set_visible(False)
+        sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+            ax=ax,
+            edgecolor="white",
+            column=column,
+            linewidth=1 if size_im< 5000*10000 else 0,
+            alpha=alpha,
+            legend=True,
+            aspect=1,
+            cmap=cmap,
+            vmax=vmax,  # np.percentile(column,vmax),
+            vmin=vmin,  # np.percentile(column,vmin)
+        )
+        if plot_filtered:
+            for i in [*sdata.shapes]:
+                if 'filtered' in i:
+                    sdata[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+                    ax=ax,
+                    edgecolor="red",
+                    linewidth=1,
+                    alpha=alpha,
+                    legend=True,
+                    aspect=1,
+                    cmap='gray',
+                    )
+        ax.axes.set_aspect("equal")
+        ax.set_xlim(crd[0], crd[1])
+        ax.set_ylim(crd[2], crd[3])
+        ax.invert_yaxis()
+        ax.set_title("")
+        # ax.axes.xaxis.set_visible(False)
+        # ax.axes.yaxis.set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["bottom"].set_visible(False)
+        ax.spines["left"].set_visible(False)
 
-    # Save the plot to ouput
-    if output:
-        fig.savefig(output)
-    else:
-        plt.show()
-    plt.close()
+        # Save the plot to ouput
+        if output:
+            fig.savefig( f"{output}_{ch}")
+        else:
+            plt.show()
+        plt.close()
 
 
 def preprocessAdata(
@@ -1315,7 +1448,9 @@ def preprocessAdata(
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
     # Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too!
     for i in [*sdata.shapes]:
-        if 'filtered' not in i:   
+        if 'filtered' not in i:
+            sdata[i].index = sdata[i].index.astype("str")
+   
             sdata.add_shapes(
                 name='filtered_low_counts_'+i,
                 shapes=spatialdata.models.ShapesModel.parse(
@@ -1331,9 +1466,16 @@ def preprocessAdata(
                 overwrite=True,
             )
            
+    # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
+    _back_sdata_table_to_zarr( sdata )
+
 
     return sdata
 
+def _back_sdata_table_to_zarr(sdata: SpatialData):
+    adata=sdata.table.copy() 
+    del sdata.table
+    sdata.table = spatialdata.models.TableModel.parse( adata )
 
 def preprocesAdataPlot(sdata: SpatialData, output: str = None) -> None:
     """This function plots the size of the nucleus related to the counts."""
@@ -1461,6 +1603,8 @@ def clustering(
     sc.tl.leiden(sdata.table, resolution=cluster_resolution, random_state=100)
     sc.tl.rank_genes_groups(sdata.table, "leiden", method="wilcoxon")
 
+    _back_sdata_table_to_zarr( sdata=sdata )
+
     return sdata
 
 
@@ -1548,7 +1692,7 @@ def scoreGenes(
             if gene in genes_dict.keys():
                 del genes_dict[gene]
 
-    sdata, scoresper_cluster = annotate_celltype(
+    sdata, scoresper_cluster = _annotate_celltype(
         sdata=sdata,
         celltypes=df_markers.columns,
         row_norm=row_norm,
@@ -1559,6 +1703,8 @@ def scoreGenes(
     if "unknown_celltype" in sdata.table.obs["annotation"].cat.categories:
         genes_dict["unknown_celltype"] = []
 
+    _back_sdata_table_to_zarr(sdata)
+
     return genes_dict, scoresper_cluster
 
 
@@ -1566,7 +1712,7 @@ def scoreGenesPlot(
     sdata: SpatialData,
     scoresper_cluster: pd.DataFrame,
     img_layer: Optional[str] = None,
-    shapes_layer: str = "nucleus_boundaries",
+    shapes_layer: str = "segmentation_mask_boundaries",
     crd=None,
     filter_index: Optional[int] = None,
     output: str = None,
@@ -1589,7 +1735,7 @@ def scoreGenesPlot(
     sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=False)
 
     if output:
-        plt.savefig(output + "_Cleanliness_annotation.png", bbox_inches="tight")
+        plt.savefig(output + "_Cleanliness_annotation", bbox_inches="tight")
     else:
         plt.show()
     plt.close()
@@ -1597,7 +1743,7 @@ def scoreGenesPlot(
     sc.pl.umap(sdata.table, color=["leiden", "annotation"], show=False)
 
     if output:
-        plt.savefig(output + "_leiden_annotation.png", bbox_inches="tight")
+        plt.savefig(output + "_leiden_annotation", bbox_inches="tight")
     else:
         plt.show()
     plt.close()
@@ -1610,7 +1756,7 @@ def scoreGenesPlot(
         crd=crd,
         img_layer=img_layer,
         shapes_layer=shapes_layer,
-        output=output + "_annotation.png" if output else None,
+        output=output + "_annotation" if output else None,
     )
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index
@@ -1622,7 +1768,7 @@ def scoreGenesPlot(
     )
 
     if output:
-        plt.savefig(output + "_leiden_heatmap.png", bbox_inches="tight")
+        plt.savefig(output + "_leiden_heatmap", bbox_inches="tight")
     else:
         plt.show()
     plt.close()
@@ -1644,7 +1790,7 @@ def scoreGenesPlot(
 
         if output:
             plt.savefig(
-                output + f"_leiden_heatmap_filtered_{filter_index}.png",
+                output + f"_leiden_heatmap_filtered_{filter_index}",
                 bbox_inches="tight",
             )
         else:
@@ -1675,6 +1821,8 @@ def correct_marker_genes(
             sdata.table.obs[celltype],
         )
 
+    _back_sdata_table_to_zarr(sdata=sdata)
+
     return sdata
 
 
@@ -1700,7 +1848,7 @@ def remove_celltypes(types: str, indexes: dict, sdata):
     return sdata
 
 
-def annotate_celltype(
+def _annotate_celltype(
     sdata: SpatialData,
     celltypes: List[str],
     row_norm: bool = False,
@@ -1758,7 +1906,7 @@ def clustercleanliness(
     color_dict = None
 
     # recalculate annotation, because we possibly did correction on celltype score for certain cells via correct_marker_genes function
-    sdata, _ = annotate_celltype(
+    sdata, _ = _annotate_celltype(
         sdata=sdata,
         celltypes=celltypes,
         row_norm=False,
@@ -1803,11 +1951,14 @@ def clustercleanliness(
         map(color_dict.get, sdata.table.obs.annotation.cat.categories.values)
     )
 
+    _back_sdata_table_to_zarr(sdata)
+
     return sdata, color_dict
 
 
 def clustercleanlinessPlot(
     sdata: SpatialData,
+    shapes_layer: str= 'segmentation_mask_boundaries',
     crd: List[int] = None,
     color_dict: dict = None,
     celltype_column: str = "annotation",
@@ -1851,6 +2002,7 @@ def clustercleanlinessPlot(
         sdata=sdata,
         column=celltype_column,
         alpha=0.8,
+        shapes_layer=shapes_layer,
         output=output + f"_{celltype_column}" if output else None,
     )
 
@@ -1859,6 +2011,7 @@ def clustercleanlinessPlot(
         column=celltype_column,
         crd=crd,
         alpha=0.8,
+        shapes_layer=shapes_layer,
         output=output + f"_{celltype_column}_crop" if output else None,
     )
 
@@ -1896,6 +2049,7 @@ def enrichment(sdata, celltype_column: str = "annotation", seed: int = 0):
     # Calculate nhood enrichment
     sq.gr.spatial_neighbors(sdata.table, coord_type="generic")
     sq.gr.nhood_enrichment(sdata.table, cluster_key=celltype_column, seed=seed)
+    _back_sdata_table_to_zarr(sdata=sdata)
     return sdata
 
 
@@ -1909,6 +2063,7 @@ def enrichment_plot(
     sdata.table.uns[f"{celltype_column}_nhood_enrichment"]["zscore"] = np.nan_to_num(
         tmp
     )
+    _back_sdata_table_to_zarr(sdata=sdata)
     sq.pl.nhood_enrichment(sdata.table, cluster_key=celltype_column, method="ward")
 
     # Save the plot to ouput
@@ -1917,25 +2072,6 @@ def enrichment_plot(
     else:
         plt.show()
     plt.close()
-
-
-def save_data(adata: AnnData, output_geojson: str, output_h5ad: str):
-    """Saves the ploygons to output_geojson as GeoJson object and the rest of the AnnData object to output_h5ad as h5ad file."""
-
-    # Save polygons to geojson
-    if color in adata.obsm["polygons"]:
-        del adata.obsm["polygons"]["color"]
-    adata.obsm["polygons"]["geometry"].to_file(output_geojson, driver="GeoJSON")
-    adata.obsm["polygons"] = pd.DataFrame(
-        {
-            "linewidth": adata.obsm["polygons"]["linewidth"],
-            # "X": adata.obsm["polygons"]["X"],
-            # "Y": adata.obsm["polygons"]["Y"],
-        }
-    )
-
-    # Write AnnData object to h5ad file
-    adata.write(output_h5ad)
 
 
 def micron_to_pixels(df, offset_x=45_000, offset_y=45_000, pixelSize=None):
@@ -2108,39 +2244,48 @@ def read_in_zarr_from_path(
 
 def plot_image_container(
     sdata: Union[SpatialData, sq.im.ImageContainer],
-    output_path=None,
-    crd=None,
-    layer="image",
-    aspect="equal",
-    figsize=(10, 10),
+    output_path: Optional[str|Path] =None,
+    crd:Optional[ List[int] ]=None,
+    layer:str="image",
+    channel: Optional[int] = None,
+    aspect:str="equal",
+    figsize:Tuple[int]=(10, 10),
 ):
-    if isinstance(sdata, (SpatialData, sq.im.ImageContainer)):
-        dataset = sdata[layer]
-    else:
+    
+    if not isinstance(sdata, (SpatialData, sq.im.ImageContainer)):
         raise ValueError("Only SpatialData and ImageContainer objects are supported.")
 
-    if crd is None:
-        crd = [
-            sdata[layer].x.data[0],
-            sdata[layer].x.data[-1] + 1,
-            sdata[layer].y.data[0],
-            sdata[layer].y.data[-1] + 1,
-        ]
+    channel_key = 'c' if isinstance(sdata, SpatialData) else 'channels'
+    channels = [channel] if channel is not None else sdata[ layer ][ channel_key ].data
+    
+    for ch in channels:
+        if isinstance(sdata, SpatialData):
+            dataset = sdata[layer].isel(c=ch)
+        elif isinstance(sdata, sq.im.ImageContainer):
+            dataset = sdata[layer].isel(channels=ch)
+        
+        if crd is None:
+            crd = [
+                sdata[layer].x.data[0],
+                sdata[layer].x.data[-1] + 1,
+                sdata[layer].y.data[0],
+                sdata[layer].y.data[-1] + 1,
+            ]
 
-    _, ax = plt.subplots(figsize=figsize)
-    cmap = "gray"
-    dataset.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-        cmap=cmap, robust=True, ax=ax, add_colorbar=False
-    )
+        _, ax = plt.subplots(figsize=figsize)
+        cmap = "gray"
+        dataset.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
+            cmap=cmap, robust=True, ax=ax, add_colorbar=False
+        )
 
-    ax.set_aspect(aspect)
-    ax.invert_yaxis()
+        ax.set_aspect(aspect)
+        ax.invert_yaxis()
 
-    if output_path:
-        plt.savefig(output_path)
-    else:
-        plt.show()
-    plt.close()
+        if output_path:
+            plt.savefig( f"{output_path}_{ch}")
+        else:
+            plt.show()
+        plt.close()
 
 
 def overlapping_region_2D(

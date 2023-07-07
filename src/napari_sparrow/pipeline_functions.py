@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import squidpy.im as sq
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 from skimage import io
 from spatialdata import SpatialData
 
@@ -21,8 +21,14 @@ def load(cfg: DictConfig) -> SpatialData:
 
     layer_name = "raw_image"
 
+    # cast to list if cfg.dataset.image is a ListConfig object (i.e. for multiple channels)
+    if isinstance( cfg.dataset.image, ListConfig ):
+        filename_pattern=list(cfg.dataset.image)
+    else:
+        filename_pattern=cfg.dataset.image
+
     sdata = fc.create_sdata(
-        filename_pattern=cfg.dataset.image,
+        filename_pattern=filename_pattern,
         output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
         layer_name=layer_name,
         chunks=1024,  # TODO make chunks configurable
@@ -35,34 +41,37 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     fc.plot_image_container(
         sdata=sdata,
-        output_path=os.path.join(cfg.paths.output_dir, "original.png"),
+        output_path=os.path.join(cfg.paths.output_dir, "original"),
         crd=cfg.clean.small_size_vis,
         layer="raw_image",
     )
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
-        ic, flatfield = fc.tilingCorrection(
+        sdata, flatfields = fc.tilingCorrection(
             sdata=sdata,
             crop_param=cfg.clean.crop_param
             if cfg.clean.crop_param is not None
             else None,
             tile_size=cfg.clean.tile_size,
+            output_layer="tiling_correction",
         )
 
         # Write plot to given path if output is enabled
         if "tiling_correction" in cfg.paths:
             log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
-            fc.tilingCorrectionPlot(
-                img=sdata["tiling_correction"].squeeze().to_numpy(),
-                flatfield=flatfield,
-                img_orig=sdata["raw_image"].squeeze().to_numpy(),
-                output=cfg.paths.tiling_correction,
-            )
+            for i,channel in enumerate(sdata[ "tiling_correction" ].c.data):
+
+                fc.tilingCorrectionPlot(
+                    img=sdata[ "tiling_correction" ].isel(c=channel).to_numpy(),
+                    flatfield=flatfields[i],
+                    img_orig=sdata[ "raw_image" ].isel(c=channel).to_numpy(),
+                    output=f"{cfg.paths.tiling_correction}_{channel}_",
+                )
 
         fc.plot_image_container(
             sdata=sdata,
-            output_path=os.path.join(cfg.paths.output_dir, "tiling_correction.png"),
+            output_path=os.path.join(cfg.paths.output_dir, "tiling_correction"),
             crd=cfg.clean.small_size_vis,
             layer="tiling_correction",
         )
@@ -77,7 +86,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
         fc.plot_image_container(
             sdata=sdata,
-            output_path=os.path.join(cfg.paths.output_dir, "tophat_filtered.png"),
+            output_path=os.path.join(cfg.paths.output_dir, "tophat_filtered"),
             crd=cfg.clean.small_size_vis,
             layer="tophat_filtered",
         )
@@ -93,7 +102,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
         fc.plot_image_container(
             sdata=sdata,
-            output_path=os.path.join(cfg.paths.output_dir, "clahe.png"),
+            output_path=os.path.join(cfg.paths.output_dir, "clahe"),
             crd=cfg.clean.small_size_vis,
             layer="clahe",
         )
@@ -107,6 +116,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # Perform segmentation
     sdata = fc.segmentation_cellpose(
         sdata=sdata,
+        output_layer=cfg.segmentation.output_layer,
         crop_param=cfg.segmentation.crop_param,
         device=cfg.device,
         min_size=cfg.segmentation.min_size,
@@ -331,8 +341,17 @@ def visualize(
         colors=colors,
     )
 
+    if cfg.segmentation.voronoi_radius:
+        shapes_layer = "expanded_cells" + str(cfg.segmentation.voronoi_radius)
+    else:
+        for key in sdata.shapes.keys():
+            if "boundaries" in key:
+                shapes_layer = key
+                break
+
     fc.clustercleanlinessPlot(
         sdata=sdata,
+        shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
         else cfg.clean.small_size_vis,

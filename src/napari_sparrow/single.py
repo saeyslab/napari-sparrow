@@ -7,7 +7,7 @@ import warnings
 from typing import Any
 
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 
 log = logging.getLogger(__name__)
 
@@ -16,15 +16,24 @@ def check_config(cfg: DictConfig):
     """Checks if all paths and dataset paths are existing files, raise assertionError if not."""
     from pathlib import Path
 
-    # Check if all mandatory paths exist
-    for p in [
+    # Define the paths to check
+    paths_to_check = [
         cfg.paths.data_dir,
         cfg.dataset.data_dir,
-        cfg.dataset.image,
         cfg.dataset.coords,
         cfg.paths.output_dir,
-    ]:
-        assert Path(p).exists()
+    ]
+
+    # If cfg.dataset.image is a list of paths, extend the paths_to_check with this list
+    if isinstance(cfg.dataset.image,  ListConfig ):
+        paths_to_check.extend(cfg.dataset.image)
+    # Otherwise, just add the single path to paths_to_check
+    else:
+        paths_to_check.append(cfg.dataset.image)
+
+    # Check if all mandatory paths exist
+    for p in paths_to_check:
+        assert Path(p).exists(), f"Path {p} does not exist."
 
 
 @hydra.main(version_base="1.2", config_path="configs", config_name="pipeline.yaml")
