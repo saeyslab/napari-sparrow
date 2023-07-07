@@ -580,10 +580,8 @@ def segmentationPlot(
     # Update coords
     si, x_coords_orig, y_coords_orig = _apply_transform(si)
 
-    tx, ty = _get_translation(si)
-    image_boundary = [ tx, tx + si.sizes['x'],
-                       ty, ty + si.sizes['y'] ]
-    
+    image_boundary = _get_image_boundary(si)
+
     if crd is not None:
         _crd = crd
         crd = overlapping_region_2D(crd, image_boundary)
@@ -1191,7 +1189,7 @@ def control_transcripts(df, scaling_factor=100):
     Image = np.array(Try.unstack(fill_value=0))
     Image = Image / np.max(Image)
     blurred = gaussian_filter(scaling_factor * Image, sigma=7)
-    return blurred
+    return blurred.T
 
 
 def plot_control_transcripts(blurred, sdata, layer: Optional[str] = None, crd=None):
@@ -1199,27 +1197,31 @@ def plot_control_transcripts(blurred, sdata, layer: Optional[str] = None, crd=No
         layer = [*sdata.images][-1]  # typically layer will be the "clahe" layer
 
     # TODO: find intersection of the translation + size of 'layer' with the (optional) 'crd' crop rectangle
-    # TODO: show coordinates along the axes that correspond to the global coordinates, not to image coordinates.
-    #       (as implementation we will probably have to set/reset the xcoords array to accomplish this)
+
+    si, x_coords_orig, y_coord_orig = _apply_transform(sdata[layer])
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 20))
     if crd:
-        ax[0].imshow(blurred.T[crd[0] : crd[1], crd[2] : crd[3]], cmap="magma", vmax=5)
-        sdata[layer].squeeze().sel(
-            x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
+        ax[0].imshow(blurred[crd[2] : crd[3], crd[0] : crd[1]], cmap="magma", vmax=5, extent=[crd[0],crd[1],crd[3],crd[2]])
+        print(_get_translation(si))
+        si.squeeze().sel(
+            x=slice(crd[0], crd[1]),
+            y=slice(crd[2], crd[3])
         ).plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
     else:
-        ax[0].imshow(blurred.T, cmap="magma", vmax=5)
-        sdata[layer].squeeze().plot.imshow(
+        ax[0].imshow(blurred, cmap="magma", vmax=5)
+        print(_get_translation(si))
+        si.squeeze().plot.imshow(
             cmap="gray", robust=True, ax=ax[1], add_colorbar=False
         )
-    
+
     ax[1].axes.set_aspect("equal")
     ax[1].invert_yaxis()
 
     ax[0].set_title("Transcript density")
     ax[1].set_title("Corrected image")
 
+    si = _unapply_transform(si, x_coords_orig, y_coord_orig)
 
 def analyse_genes_left_out(sdata, df):
     """This function"""
@@ -1272,8 +1274,11 @@ def plot_shapes(
 
     si = sdata.images[img_layer]
 
-    image_boundary = [si.x.data[0], si.x.data[-1] + 1, si.y.data[0], si.y.data[-1] + 1]
+    # Update coords
+    si, x_coords_orig, y_coords_orig = _apply_transform(si)
 
+    image_boundary = _get_image_boundary(si)
+ 
     if crd is not None:
         _crd = crd
         crd = overlapping_region_2D(crd, image_boundary)
@@ -1325,7 +1330,7 @@ def plot_shapes(
 
         fig, ax = plt.subplots(1, 1, figsize=figsize)
 
-        sdata[img_layer].isel(c=ch).squeeze().sel(
+        si.isel(c=ch).squeeze().sel(
             x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
         ).plot.imshow(cmap="gray", robust=True, ax=ax, add_colorbar=False)
 
@@ -1360,6 +1365,9 @@ def plot_shapes(
         else:
             plt.show()
         plt.close()
+
+    # Restore coords
+    si = _unapply_transform(si, x_coords_orig, y_coords_orig)
 
 
 def preprocessAdata(
@@ -1669,13 +1677,13 @@ def scoreGenesPlot(
     si = sdata.images[img_layer]
 
     if crd is None:
-        crd = [si.x.data[0], si.x.data[-1] + 1, si.y.data[0], si.y.data[-1] + 1]
+        crd = _get_image_boundary(si)
 
     # Custom colormap:
     colors = np.concatenate(
         (plt.get_cmap("tab20c")(np.arange(20)), plt.get_cmap("tab20b")(np.arange(20)))
     )
-    colors = [mpl.color.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
+    colors = [mpl.colors.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
 
     # Plot cleanliness and leiden next to annotation
     sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=False)
@@ -2255,6 +2263,14 @@ def plot_image_container(
         else:
             plt.show()
         plt.close()
+
+
+def _get_image_boundary(spatial_image):
+    tx, ty = _get_translation(spatial_image)
+    width = spatial_image.sizes['x']
+    height = spatial_image.sizes['y']
+    return[ tx, tx + width,
+            ty, ty + height ]
 
 
 def _get_translation(spatial_image):
