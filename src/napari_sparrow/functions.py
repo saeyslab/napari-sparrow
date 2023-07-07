@@ -441,7 +441,7 @@ def segmentation_cellpose(
     ic = sq.im.ImageContainer(sdata[layer], layer=layer)
 
     if crop_param:
-        tx, ty = get_translation(sdata[layer])
+        tx, ty = _get_translation(sdata[layer])
         ic = ic.crop_corner(y=crop_param[1]-ty, x=crop_param[0]-tx, size=crop_param[2])
         # FIXME: ic.crop_corner() doesn't like crops where (x,y) doesn't fall within the original
         # pixel data. Check for this situation and handle it...
@@ -476,7 +476,7 @@ def segmentation_cellpose(
     polygons = mask_to_polygons_layer_dask(mask=sdata[output_layer].data)
     polygons = polygons.dissolve(by="cells")
 
-    x_translation, y_translation = get_translation(sdata[output_layer])
+    x_translation, y_translation = _get_translation(sdata[output_layer])
     polygons["geometry"] = polygons["geometry"].apply(
         lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
     )
@@ -522,6 +522,38 @@ def imageContainerToSData(
     return sdata
 
 
+# FIXME: the type "SpatialImage" is probably too restrictive here, see type of sdata[layer], which is more general
+def _apply_transform(si: SpatialImage) -> Tuple[SpatialImage, np.ndarray, np.ndarray]:
+    """
+    Apply the translation (if any) of the given SpatialImage to its x- and y-coordinates
+    array. The new SpatialImage is returned, as well as the original coordinates array.
+    This function is used because some plotting functions ignore the SpatialImage transformation
+    matrix, but do use the coordinates arrays for absolute positioning of the image in the plot.
+    After plotting the coordinates can be restored with _unapply_transform().
+    """
+    # Get current coords
+    x_orig_coords = si.x.data
+    y_orig_coords = si.y.data
+
+    # Translate
+    tx, ty = _get_translation(si)
+    x_coords = xr.DataArray(tx + np.arange(si.sizes['x'], dtype="float64"), dims="x")
+    y_coords = xr.DataArray(ty + np.arange(si.sizes['y'], dtype="float64"), dims="y")
+    si = si.assign_coords({"x": x_coords, "y": y_coords})
+    # QUESTION: should we set the resulting SpatialImage's transformation matrix to the
+    # identity matrix too, for consistency? If so we have to keep track of it too for restoring later.
+
+    return si, x_orig_coords, y_orig_coords
+
+
+def _unapply_transform(si: SpatialImage, x_coords: np.ndarray, y_coords: np.ndarray) -> SpatialImage:
+    """
+    Restore the coordinates which were temporarily modified via _apply_transform().
+    """
+    si = si.assign_coords({"y": y_coords, "x": x_coords})
+    return si
+
+
 def segmentationPlot(
     sdata,
     crd=None,
@@ -545,16 +577,10 @@ def segmentationPlot(
     # temporarily overwrite the x and y coords in the SpatialImage with a translated version before plotting, and then
     # restore it afterwards.
 
-    # Remember origin coords for later
-    x_orig_coords = si.x.data
-    y_orig_coords = si.y.data
+    # Update coords
+    si, x_coords_orig, y_coords_orig = _apply_transform(si)
 
-    # Translate
-    tx, ty = get_translation(si)
-    y_coords = xr.DataArray(ty + np.arange(si.sizes['y'], dtype="float64"), dims="y")
-    x_coords = xr.DataArray(tx + np.arange(si.sizes['x'], dtype="float64"), dims="x")
-    si = si.assign_coords({"y": y_coords, "x": x_coords})
-
+    tx, ty = _get_translation(si)
     image_boundary = [ tx, tx + si.sizes['x'],
                        ty, ty + si.sizes['y'] ]
     
@@ -619,7 +645,7 @@ def segmentationPlot(
             fig.savefig( f"{output}_{ch}")
 
     # Restore coords
-    si = si.assign_coords({"y": y_orig_coords, "x": x_orig_coords})
+    si = _unapply_transform(si, x_coords_orig, y_coords_orig)
 
 
 def mask_to_polygons_layer(mask: np.ndarray) -> geopandas.GeoDataFrame:
@@ -746,18 +772,19 @@ def create_voronoi_boundaries(
     expanded_layer_name = "expanded_cells" + str(radius)
     # sdata[shape_layer].index = list(map(str, sdata[shape_layer].index))
 
-    si = sdata[[*sdata.images][0]]
+    si = sdata[[*sdata.images][0]] 
 
-    tx, ty = get_translation(si)
-    print(f'create_voronoi_boundaries: translation tx, ty = {tx}, {ty}')
+    # CHECKME: below we specify a boundary rectangle the size of the uncropped raw input image that was segmented.
+    # Is that okay, or should we try to specify a "tight" boundary rectangle if the segmentation was only run on
+    # crop of the image?
 
-    margin = 200
+    margin = 200  # CHECKME: needed? why are margins not applied symmetrical along 4 sides of the boundary rectangle?
     boundary = Polygon(
         [
-            (tx                         , ty),
-            (tx + si.sizes['x'] + margin, ty),
-            (tx + si.sizes['x'] + margin, ty + si.sizes['y'] + margin),
-            (tx                         , ty + si.sizes['y'] + margin),
+            (0                     , 0),
+            (si.sizes['x'] + margin, 0),
+            (si.sizes['x'] + margin, si.sizes['y'] + margin),
+            (0                     , si.sizes['y'] + margin),
         ]
     )
 
@@ -927,7 +954,7 @@ def allocation(
     # because the polygons have same offset coords.x0 and coords.y0 as in segmentation_mask
     Coords = namedtuple("Coords", ["x0", "y0"])
     s_mask = sdata["segmentation_mask"]
-    coords = Coords(s_mask.x.data[0], s_mask.y.data[0])
+    coords = Coords(*_get_translation(s_mask))
 
     transform = Affine.translation(coords.x0, coords.y0)
 
@@ -1054,23 +1081,25 @@ def sanity_plot_transcripts_matrix(
     fig, ax = plt.subplots(figsize=(10, 10))
 
     if isinstance(xarray, np.ndarray):
-        xarray = xr.DataArray(
-            xarray,
-            dims=("y", "x"),
-            coords={"y": np.arange(xarray.shape[0]), "x": np.arange(xarray.shape[1])},
-        )
+        # CHECKME: is this case useful? Will the input always have a channel dimension?
+        xarray = spatialdata.models.Image2DModel.parse(xarray, dims=("c", "y", "x"))
+
+    tx, ty = _get_translation(xarray)
 
     if crd is None:
         crd = [
-            xarray.x.data[0],
-            xarray.x.data[-1] + 1,
-            xarray.y.data[0],
-            xarray.y.data[-1] + 1,
+            tx,
+            tx + xarray.sizes['x'],
+            ty,
+            ty + xarray.sizes['y'],
         ]
 
+    xarray, x_coords_orig, y_coords_orig = _apply_transform(xarray)
+
     xarray.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-        cmap=cmap, robust=True, ax=ax, add_colorbar=False
-    )
+        cmap=cmap, robust=True, ax=ax, add_colorbar=False)
+
+    xarray = _unapply_transform(xarray, x_coords_orig, y_coords_orig)
 
     # update so that a sample is taken from the dataframe (otherwise plotting takes too long), i.e. take n points max
 
@@ -1167,22 +1196,24 @@ def control_transcripts(df, scaling_factor=100):
 
 def plot_control_transcripts(blurred, sdata, layer: Optional[str] = None, crd=None):
     if layer is None:
-        layer = [*sdata.images][-1]
-    if crd:
-        fig, ax = plt.subplots(1, 2, figsize=(20, 20))
+        layer = [*sdata.images][-1]  # typically layer will be the "clahe" layer
 
+    # TODO: find intersection of the translation + size of 'layer' with the (optional) 'crd' crop rectangle
+    # TODO: show coordinates along the axes that correspond to the global coordinates, not to image coordinates.
+    #       (as implementation we will probably have to set/reset the xcoords array to accomplish this)
+
+    fig, ax = plt.subplots(1, 2, figsize=(20, 20))
+    if crd:
         ax[0].imshow(blurred.T[crd[0] : crd[1], crd[2] : crd[3]], cmap="magma", vmax=5)
         sdata[layer].squeeze().sel(
             x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
         ).plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
-        ax[0].set_title("Transcript density")
-        ax[1].set_title("Corrected image")
-    fig, ax = plt.subplots(1, 2, figsize=(20, 20))
-
-    ax[0].imshow(blurred.T, cmap="magma", vmax=5)
-    sdata[layer].squeeze().plot.imshow(
-        cmap="gray", robust=True, ax=ax[1], add_colorbar=False
-    )
+    else:
+        ax[0].imshow(blurred.T, cmap="magma", vmax=5)
+        sdata[layer].squeeze().plot.imshow(
+            cmap="gray", robust=True, ax=ax[1], add_colorbar=False
+        )
+    
     ax[1].axes.set_aspect("equal")
     ax[1].invert_yaxis()
 
@@ -2173,7 +2204,7 @@ def plot_image_container(
     channel_key = 'c' if isinstance(sdata, SpatialData) else 'channels'
     channels = [channel] if channel is not None else sdata[ layer ][ channel_key ].data
 
-    tx, ty = get_translation(sdata[layer])
+    tx, ty = _get_translation(sdata[layer])
     
     for ch in channels:
         if isinstance(sdata, SpatialData):
@@ -2181,7 +2212,7 @@ def plot_image_container(
         elif isinstance(sdata, sq.im.ImageContainer):
             dataset = sdata[layer].isel(channels=ch)
         
-        # `crd` is a crop rectangle, specifief in global coordinates.
+        # `crd` is a crop rectangle, specified in global coordinates.
         if crd is None:
             crd = [ tx, tx + sdata[layer].sizes['x'],
                     ty, ty + sdata[layer].sizes['y'] ]
@@ -2226,7 +2257,7 @@ def plot_image_container(
         plt.close()
 
 
-def get_translation(spatial_image: SpatialImage):
+def _get_translation(spatial_image):
     transform_matrix = get_transformation(spatial_image).to_affine_matrix(
         input_axes=("x", "y"),
         output_axes=("x", "y")
