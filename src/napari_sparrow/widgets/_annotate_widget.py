@@ -2,37 +2,46 @@
 Annotation widget for scoring the genes, returns markergenes and adata objects.
 """
 import pathlib
-from typing import Callable
+from typing import Callable, Dict, List, Tuple
+import os
 
 import napari
 import napari.layers
 import napari.types
-from anndata import AnnData
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
+from omegaconf.dictconfig import DictConfig
+from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow import functions as fc
+
+from napari_sparrow.functions import (
+    get_offset,
+)
+
+from napari_sparrow.pipeline_functions import annotate
 
 log = utils.get_pylogger(__name__)
 
 
 def annotateImage(
-    adata: AnnData, path_marker_genes: str, row_norm: bool = False
-) -> dict:
+    sdata: SpatialData,
+    cfg: DictConfig,
+) -> Tuple[SpatialData, Dict[str, List[str]]]:
     """Function representing the annotation step, this calls all the needed functions to annotate the cells with the celltype."""
 
-    mg_dict, _ = fc.scoreGenes(adata, path_marker_genes, row_norm)
-    return mg_dict
+    sdata, mg_dict = annotate(cfg, sdata)
+
+    return sdata, mg_dict
 
 
 @thread_worker(progress=True)
-def _annotation_worker(method: Callable, fn_kwargs) -> dict:
+def _annotation_worker(sdata: SpatialData, method: Callable, fn_kwargs) -> dict:
     """
     annotate data with marker genes in a thread worker
     """
-    return method(**fn_kwargs)
+    return method(sdata, **fn_kwargs)
 
 
 @magic_factory(
@@ -42,7 +51,9 @@ def _annotation_worker(method: Callable, fn_kwargs) -> dict:
 def annotate_widget(
     viewer: napari.Viewer,
     markers_file: pathlib.Path = pathlib.Path(""),
+    delimiter: str = ",",
     row_norm: bool = False,
+    del_celltypes: List[str] = [],
 ):
     """This function represents the annotation widget and is called by the wizard to create the widget."""
 
@@ -53,31 +64,47 @@ def annotate_widget(
 
     # Load data from previous layers
     try:
-        adata = viewer.layers[utils.SEGMENT].metadata["adata"]
+        sdata = viewer.layers[utils.SEGMENT].metadata["sdata"]
+        cfg = viewer.layers[utils.SEGMENT].metadata["cfg"]
     except KeyError:
         raise RuntimeError("Please run previous steps first")
 
+    cfg.dataset.markers = markers_file
+    cfg.annotate.row_norm = row_norm
+    cfg.annotate.del_celltypes = del_celltypes
+    cfg.annotate.delimiter = delimiter
+
     fn_kwargs = {
-        "adata": adata,
-        "path_marker_genes": str(markers_file),
-        "row_norm": row_norm,
+        "cfg": cfg,
     }
 
-    worker = _annotation_worker(annotateImage, fn_kwargs)
+    worker = _annotation_worker(sdata, annotateImage, fn_kwargs)
 
-    def add_metadata(result: dict):
+    def add_metadata(
+        sdata: SpatialData,
+        mg_dict: Dict[str, List[str]],
+        cfg: DictConfig,
+        layer_name: str,
+    ):
         """Add the metadata to the previous layer, this way it becomes available in the next steps."""
 
         try:
-            # check if the previous layer exists
-            layer = viewer.layers[utils.SEGMENT]
+            # if the layer exists, update its data
+            viewer.layers[layer_name]
         except KeyError:
-            log.info(f"Layer does not exist {utils.SEGMENT}")
+            log.info(f"Layer does not exist {layer_name}")
 
         # Store data in previous layer
-        layer.metadata["mg_dict"] = result
+
+        viewer.layers[layer_name].metadata["adata"] = sdata.table
+        viewer.layers[layer_name].metadata["sdata"] = sdata
+        viewer.layers[layer_name].metadata["cfg"] = cfg
+        viewer.layers[layer_name].metadata["mg_dict"] = mg_dict
+
+        sdata.write( os.path.join( cfg.paths.output_dir, 'sdata_annotation.zarr' ) )
+
         show_info("Annotation finished")
 
-    worker.returned.connect(add_metadata)
+    worker.returned.connect(lambda data: add_metadata(*data, cfg, utils.SEGMENT))
     show_info("Annotation started")
     worker.start()

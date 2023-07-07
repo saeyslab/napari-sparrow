@@ -1,6 +1,6 @@
 from napari_sparrow.utils._singletons import get_ic
 from napari_sparrow.utils.pylogger import get_pylogger
-from napari_sparrow.utils.utils import ic_to_da, parse_subset
+from napari_sparrow.utils.utils import ic_to_da, parse_subset, _get_polygons_in_napari_format
 
 LOAD= "raw_image"
 IMAGE = "image"

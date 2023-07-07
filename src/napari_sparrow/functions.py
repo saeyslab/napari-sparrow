@@ -76,7 +76,6 @@ def create_sdata(
     )
 
     if crd and any(crd):
-        print( "some", crd )
         for i, val in enumerate(crd):
             if val is None:
                 if i == 0 or i == 2:  # x_min or y_min
@@ -105,20 +104,20 @@ def create_sdata(
         offset_x = 0
         offset_y = 0
 
-    # y_coords = xr.DataArray(np.arange(offset_y, offset_y + spatial_image.shape[1], dtype="float64"), dims="y")
-    # x_coords = xr.DataArray(np.arange(offset_x, offset_x + spatial_image.shape[2] , dtype="float64"), dims="x")
+    y_coords = xr.DataArray(np.arange(offset_y, offset_y + spatial_image.shape[1], dtype="float64"), dims="y")
+    x_coords = xr.DataArray(np.arange(offset_x, offset_x + spatial_image.shape[2] , dtype="float64"), dims="x")
 
     # If bug in spatialdata is fixed where coordinates are lost when saving to zarr, coordinates should be set here.
-    # spatial_image=spatial_image.assign_coords({ 'y': y_coords, 'x': x_coords} )
+    spatial_image=spatial_image.assign_coords({ 'y': y_coords, 'x': x_coords} )
     sdata.add_image(name=layer_name, image=spatial_image)
 
     if output_path is not None:
         sdata.write(output_path)
 
     # writing to zarr loses coordinates
-    # sdata.images[layer_name] = sdata[layer_name].assign_coords(
-    #    {"y": y_coords, "x": x_coords}
-    # )
+    sdata.images[layer_name] = sdata[layer_name].assign_coords(
+        {"y": y_coords, "x": x_coords}
+     )
 
     return sdata
 
@@ -532,8 +531,8 @@ def clahe_processing(
             copy=True,
             chunks=chunksize_clahe,
             lazy=True,
-            depth=200,
-            boundary='reflect'
+            #depth=200,
+            #boundary='reflect'
         )
 
         # squeeze channel dim and z-dimension
@@ -1152,6 +1151,19 @@ def allocation(
 
     return sdata
 
+def extract_boundaries_from_geometry_collection(geometry):
+    if isinstance(geometry, Polygon):
+        return [geometry.boundary]
+    elif isinstance(geometry, MultiPolygon):
+        return [polygon.boundary for polygon in geometry.geoms]
+    elif isinstance(geometry, GeometryCollection):
+        boundaries = []
+        for geom in geometry:
+            boundaries.extend(extract_boundaries_from_geometry_collection(geom))
+        return boundaries
+    else:
+        return []
+
 
 def sanity_plot_transcripts_matrix(
     xarray: Union[np.ndarray, xr.DataArray],
@@ -1170,19 +1182,6 @@ def sanity_plot_transcripts_matrix(
     # in_df can be dask dataframe or pandas dataframe
 
     # plot for sanity check
-
-    def extract_boundaries_from_geometry_collection(geometry):
-        if isinstance(geometry, Polygon):
-            return [geometry.boundary]
-        elif isinstance(geometry, MultiPolygon):
-            return [polygon.boundary for polygon in geometry.geoms]
-        elif isinstance(geometry, GeometryCollection):
-            boundaries = []
-            for geom in geometry:
-                boundaries.extend(extract_boundaries_from_geometry_collection(geom))
-            return boundaries
-        else:
-            return []
 
     fig, ax = plt.subplots(figsize=(10, 10))
 

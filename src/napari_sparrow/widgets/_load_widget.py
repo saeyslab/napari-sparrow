@@ -5,7 +5,11 @@ is to improve the image quality so that subsequent image segmentation
 will be more accurate.
 """
 
+import os
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+os.environ["USE_PYGEOS"] = "0"
 
 import napari
 import napari.layers
@@ -13,19 +17,16 @@ import napari.types
 import napari.utils
 import numpy as np
 import squidpy.im as sq
+from hydra import compose, initialize_config_dir
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
-import os
+from omegaconf.dictconfig import DictConfig
+from pkg_resources import resource_filename
+from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow.functions import (
-    create_sdata,
-    get_offset,
-)
-
-from spatialdata import SpatialData
-from pathlib import Path
+from napari_sparrow.functions import create_sdata, get_offset
 
 log = utils.get_pylogger(__name__)
 
@@ -64,23 +65,29 @@ def load_widget(
     viewer: napari.Viewer,
     path_image: Path = Path(""),
     output_dir: Path = Path(""),
-    x_min: Optional[str] = "-",
-    x_max: Optional[str] = "-",
-    y_min: Optional[str] = "-",
-    y_max: Optional[str] = "-",
+    x_min: Optional[str] = "",
+    x_max: Optional[str] = "",
+    y_min: Optional[str] = "",
+    y_max: Optional[str] = "",
 ):
     """This function represents the clean widget and is called by the wizard to create the widget."""
 
+    # get the default values for the configs
+    abs_config_dir = resource_filename("napari_sparrow", "configs")
 
+    with initialize_config_dir(version_base=None, config_dir=abs_config_dir):
+        cfg = compose(config_name="pipeline")
 
-    crd=[x_min, x_max, y_min, y_max]
-    crd = [None if val == "-" else int(val) for val in crd]
+    cfg.paths.output_dir=output_dir
+
+    crd = [x_min, x_max, y_min, y_max]
+    crd = [None if val == "" else int(val) for val in crd]
 
     show_info("Creating SpatialData object")
     if path_image:
         sdata = create_sdata(
             input=path_image,
-            output_path=os.path.join(output_dir, 'sdata.zarr' ),
+            output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
             layer_name=utils.LOAD,
             chunks=1024,
             crd=crd if crd else None,
@@ -96,12 +103,11 @@ def load_widget(
     else:
         raise ValueError("Please select an image, or set a path to an image")
 
-
     fn_kwargs: Dict[str, Any] = {}
 
     worker = _load_worker(sdata, method=loadImage, fn_kwargs=fn_kwargs)
 
-    def add_image(sdata: SpatialData, layer_name: str, output_dir: str):
+    def add_image(sdata: SpatialData, cfg: DictConfig, layer_name:str ):
         """Add the image to the napari viewer, overwrite if it already exists."""
         try:
             # if the layer exists, update its data
@@ -126,9 +132,9 @@ def load_widget(
         )
 
         viewer.layers[utils.LOAD].metadata["sdata"] = sdata
-        viewer.layers[utils.LOAD].metadata["output_dir"] = output_dir
+        viewer.layers[utils.LOAD].metadata["cfg"] = cfg
         show_info("Loading finished")
 
-    worker.returned.connect(lambda data: add_image(data, utils.LOAD, output_dir ))
+    worker.returned.connect(lambda data: add_image(data, cfg, utils.LOAD))
     show_info("Loading started")
     worker.start()

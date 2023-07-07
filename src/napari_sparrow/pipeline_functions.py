@@ -2,12 +2,11 @@
 Some steps consist of multiple substeps from the functions file. """
 
 import os
-from pathlib import Path
 from typing import Dict, List, Tuple
 
-import squidpy.im as sq
+os.environ["USE_PYGEOS"] = "0"
+
 from omegaconf import DictConfig, ListConfig
-from skimage import io
 from spatialdata import SpatialData
 
 from napari_sparrow import functions as fc

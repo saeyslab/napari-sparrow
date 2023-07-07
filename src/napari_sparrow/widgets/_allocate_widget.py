@@ -2,72 +2,74 @@
 Allocation widget for creating and preprocesing the adata object, filtering the cells and performing clustering.
 """
 import pathlib
-from typing import Callable
+from typing import Any, Callable, Dict, Optional
 
 import napari
 import napari.layers
 import napari.types
-import numpy as np
-import squidpy.im as sq
-from anndata import AnnData
+
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
+from omegaconf.dictconfig import DictConfig
+from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow import functions as fc
+from napari_sparrow.functions import (
+    get_offset,
+)
+from napari_sparrow.pipeline_functions import allocate
 
 log = utils.get_pylogger(__name__)
 
 
 def allocateImage(
-    path: str,
-    ic: sq.ImageContainer,
-    masks: np.ndarray,
-    pcs: int,
-    neighbors: int,
-    library_id: str = "melanoma",
-    min_size: int = 100,
-    max_size: int = 100000,
-    cluster_resolution: float = 0.8,
-    n_comps: int = 50,
-) -> AnnData:
+    sdata: SpatialData,
+    cfg: DictConfig,
+) -> SpatialData:
     """Function representing the allocation step, this calls all the needed functions to allocate the transcripts to the cells."""
 
-    adata = fc.create_adata_quick(path, ic, masks, library_id)
-    adata, _ = fc.preprocessAdata(adata, masks, n_comps=n_comps)
-    adata, _ = fc.filter_on_size(adata, min_size, max_size)
-    adata = fc.extract(ic, adata)
-    adata = fc.clustering(adata, pcs, neighbors, cluster_resolution)
-    return adata
+    sdata = allocate(cfg, sdata)
+
+    return sdata
 
 
 @thread_worker(progress=True)
 def _allocation_worker(
+    sdata: SpatialData,
     method: Callable,
-    fn_kwargs,
-) -> AnnData:
+    fn_kwargs: Dict[str, Any],
+) -> SpatialData:
     """
     allocate transcripts in a thread worker
     """
 
-    return method(**fn_kwargs)
+    return method(sdata, **fn_kwargs)
 
 
 @magic_factory(
     call_button="Allocate",
     transcripts_file={"widget_type": "FileEdit", "filter": "*.txt"},
+    transform_matrix={"widget_type": "FileEdit", "filter": "*.csv"},
 )
 def allocate_widget(
     viewer: napari.Viewer,
     transcripts_file: pathlib.Path = pathlib.Path(""),
-    library_id: str = "melanoma",
-    min_size=500,
-    max_size=100000,
+    delimiter: str = "\t",
+    header: bool = False,
+    column_x: int = 0,
+    column_y: int = 1,
+    column_gene: int = 3,
+    midcount: bool = False,
+    column_midcount: Optional[int] = None,
+    transform_matrix: Optional[pathlib.Path] = None,
+    nuc_size_norm: bool = True,
+    n_comps: int = 50,
+    min_size: int = 500,
+    max_size: int = 100000,
     pcs: int = 17,
     neighbors: int = 35,
     cluster_resolution: float = 0.8,
-    n_components: int = 50,
 ):
     """This function represents the allocate widget and is called by the wizard to create the widget."""
 
@@ -78,47 +80,101 @@ def allocate_widget(
 
     # Load data from previous layers
     try:
-        ic = viewer.layers[utils.SEGMENT].metadata["ic"]
-        masks = viewer.layers[utils.SEGMENT].data_raw
+        sdata = viewer.layers[utils.SEGMENT].metadata["sdata"]
+        cfg = viewer.layers[utils.SEGMENT].metadata["cfg"]
     except KeyError:
         raise RuntimeError("Please run previous steps first")
 
+    # napari widget does not support the type Optional[int], therefore only choose whether there is a header or not,
+    # and do same for midcount column
+    if header:
+        header = 0
+    else:
+        header = None
+
+    if midcount:
+        column_midcount = column_midcount
+    else:
+        column_midcount = None
+
+    cfg.dataset.coords = transcripts_file
+    if transform_matrix:
+        cfg.dataset.transform_matrix = transform_matrix
+
+    cfg.allocate.nuc_size_norm = nuc_size_norm
+    cfg.allocate.n_comps = n_comps
+    cfg.allocate.min_size = min_size
+    cfg.allocate.max_size = max_size
+    cfg.allocate.pcs = pcs
+    cfg.allocate.neighbors = neighbors
+    cfg.allocate.cluster_resolution = cluster_resolution
+    cfg.allocate.delimiter = delimiter
+    cfg.allocate.header = header
+    cfg.allocate.column_x = column_x
+    cfg.allocate.column_y = column_y
+    cfg.allocate.column_gene = column_gene
+    cfg.allocate.column_midcount = column_midcount
+
     fn_kwargs = {
-        "path": str(transcripts_file),
-        "ic": ic,
-        "masks": masks,
-        "pcs": pcs,
-        "neighbors": neighbors,
-        "library_id": library_id,
-        "min_size": min_size,
-        "max_size": max_size,
-        "cluster_resolution": cluster_resolution,
-        "n_comps": n_components,
+        "cfg": cfg,
     }
 
-    worker = _allocation_worker(allocateImage, fn_kwargs)
+    worker = _allocation_worker(sdata, allocateImage, fn_kwargs=fn_kwargs)
 
-    def add_metadata(result: AnnData):
+    def add_metadata(sdata: SpatialData, cfg: DictConfig, layer_name: str):
         """Add the metadata to the previous layer, this way it becomes available in the next steps."""
 
         try:
-            # check if the previous layer exists
-            layer = viewer.layers[utils.SEGMENT]
+            # if the layer exists, update its data
+            layer = viewer.layers[layer_name]
+            viewer.layers.remove(layer)
+            log.info(f"Refreshing {layer_name}")
+            
         except KeyError:
-            log.info(f"Layer does not exist {utils.SEGMENT}")
+            log.info(f"Layer '{layer_name}' does not exist.")
+
+        # TODO check if fix with setting coordinates correct, and if we need an offset.
+        offset_x, offset_y = get_offset(sdata[cfg.segmentation.output_layer])
+
+        if cfg.segmentation.voronoi_radius:
+            shapes_layer = f"expanded_cells{cfg.segmentation.voronoi_radius}"
+        else:
+            shapes_layer = f"{cfg.segmentation.output_layer}_boundaries"
+
+        polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[shapes_layer])
+
+        show_info("Adding updated segmentation shapes, this can be slow on large images...")
+        viewer.add_shapes(
+            polygons,
+            name=layer_name,
+            shape_type="polygon",
+            edge_color="coral",
+            face_color="royalblue",
+            edge_width=2,
+            opacity=0.5,
+        )
+
+        viewer.layers[layer_name].metadata["adata"] = sdata.table
+        viewer.layers[layer_name].metadata["sdata"] = sdata
+        viewer.layers[layer_name].metadata["cfg"] = cfg
+
 
         # Store data in previous layer
-        layer.metadata["adata"] = result
-        layer.metadata["library_id"] = library_id
-        layer.metadata["labels_key"] = "cell_ID"
-        layer.metadata["points"] = result.uns["spatial"][library_id]["points"]
-        layer.metadata["point_diameter"] = 10
+        #layer.metadata["adata"] = sdata.table
+        #layer.metadata["sdata"] = sdata
+        #layer.metadata["labels_key"] = "cells"
+        #layer.metadata["cfg"] = cfg
+
+        print(sdata )
+
         show_info("Allocation finished")
 
         # Options for napari-spatialData plugin
         viewer.scale_bar.visible = True
         viewer.scale_bar.unit = "um"
 
-    worker.returned.connect(add_metadata)
+        # sdata.write( os.path.join( cfg.paths.output_dir, 'sdata_allocate.zarr' ) )
+
+    worker.returned.connect(lambda data: add_metadata(data, cfg, utils.SEGMENT))
     show_info("Allocation started")
     worker.start()
