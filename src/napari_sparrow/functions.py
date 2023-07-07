@@ -63,9 +63,33 @@ def create_sdata(
     output_path: str | Path,
     layer_name="raw_image",
     chunks: Optional[int] = None,
+    crd=None
 ):
     dask_array = load_image_to_dask(filename_pattern=filename_pattern, chunks=chunks)
 
+    # make sure we have ( c, z, y, x )
+    if len(dask_array.shape) == 4:
+        # put channel dimension first (dask image puts channel dim last)
+        dask_array = dask_array.transpose(3, 0, 1, 2)
+    elif len(dask_array.shape) == 3:
+        dask_array = dask_array[None, :, :, :]
+    else:
+        raise ValueError(
+            f"Image has dimension { dask_array.shape }, while (c, z, y, x) is required."
+        )
+
+    if chunks:
+        dask_array = dask_array.rechunk(chunks)
+
+    # perform z-projection
+    if dask_array.shape[1] > 1:
+        dask_array = da.max(dask_array, axis=1)
+
+    # if z-dimension is 1, then squeeze it.
+    else:
+        dask_array = dask_array.squeeze(1)
+    if crd:
+        dask_array=dask_array[:,crd[0]:crd[1],crd[2]:crd[3]]
     sdata = spatialdata.SpatialData()
 
     spatial_image = spatialdata.models.Image2DModel.parse(
@@ -407,8 +431,8 @@ def clahe_processing(
             copy=True,
             chunks=chunksize_clahe,
             lazy=True,
-            # depth=1000,
-            # boundary='reflect'
+            depth=3000,
+            boundary='reflect'
         )
 
         # squeeze channel dim and z-dimension
@@ -942,6 +966,7 @@ def allocation(
     # Creating masks from polygons. TODO decide if you want to do this, even if voronoi is not calculated...
     # This is computationaly not heavy, but could take some ram,
     # because it creates image-size array of masks in memory
+    #I guess not if no voronoi was created. 
     print("creating masks from polygons")
     masks = rasterio.features.rasterize(
         zip(
@@ -1016,14 +1041,23 @@ def allocation(
     )
 
     for i in [*sdata.shapes]:
-        sdata[i].index = list(map(str, sdata[i].index))
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
+        if 'filtered' not in i:
+            print(i)
+            sdata[i].index = list(map(str, sdata[i].index))
+            sdata.add_shapes(
+                name='filtered_segmentation_'+i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
+                ),
+                overwrite=True,
+            )
+            sdata.add_shapes(
+                name=i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
+                ),
+                overwrite=True,
+            )
 
     return sdata
 
@@ -1242,8 +1276,22 @@ def plot_shapes(
     output: str = None,
     vmin=None,
     vmax=None,
+    plot_filtered=False,
     figsize=(20, 20),
 ) -> None:
+    """
+    This function plots an sdata object, with the cells on top. On default it plots the image layer that was added last.
+    The default color is blue if no color is given as input. 
+    Column: determines based on which column the cells need to be colored. Can be an obs column or a var column. 
+    img_layer: the image layer that needs to be plotted, the last on on default
+    shapes_layer: which shapes to plot, the default is nucleus_boundaries, but when performing an expansion it can be another layer. 
+    alpha: the alpha-parameter of matplotlib: transperancy of the cells 
+    crd: the crop that needs to be plotted, if none is given, the whole region is plotted, list of four coordinates
+    output: whether you want to save it as an output or not, default is none and then plot is shown.
+    vmin/vmax: adapting the color scale for continous data: give the percentile for which to color min and max. 
+    ax: whne wanting to add the plot to another plot
+    plot_filtered: whether or not to plot the cells that were filtered out during previous steps, this is a control function.
+    """
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 
@@ -1266,7 +1314,7 @@ def plot_shapes(
     # if crd is None, set crd equal to image_boundary
     else:
         crd = image_boundary
-
+    size_im=(crd[1]-crd[0])*(crd[3]-crd[2])
     if column is not None:
         if column + "_colors" in sdata.table.uns:
             cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
@@ -1294,7 +1342,7 @@ def plot_shapes(
         vmin = np.percentile(column, vmin)
     if vmax != None:
         vmax = np.percentile(column, vmax)
-
+    
 
     channels = [channel] if channel is not None else si.c.data
 
@@ -1310,7 +1358,7 @@ def plot_shapes(
             ax=ax,
             edgecolor="white",
             column=column,
-            linewidth=1,
+            linewidth=1 if size_im< 5000*10000 else 0,
             alpha=alpha,
             legend=True,
             aspect=1,
@@ -1318,7 +1366,18 @@ def plot_shapes(
             vmax=vmax,  # np.percentile(column,vmax),
             vmin=vmin,  # np.percentile(column,vmin)
         )
-
+        if plot_filtered:
+            for i in [*sdata.shapes]:
+                if 'filtered' in i:
+                    sdata[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+                    ax=ax,
+                    edgecolor="red",
+                    linewidth=1,
+                    alpha=alpha,
+                    legend=True,
+                    aspect=1,
+                    cmap='gray',
+                    )
         ax.axes.set_aspect("equal")
         ax.set_xlim(crd[0], crd[1])
         ax.set_ylim(crd[2], crd[3])
@@ -1389,17 +1448,27 @@ def preprocessAdata(
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
     # Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too!
     for i in [*sdata.shapes]:
-        sdata[i].index = sdata[i].index.astype("str")
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
-
+        if 'filtered' not in i:
+            sdata[i].index = sdata[i].index.astype("str")
+   
+            sdata.add_shapes(
+                name='filtered_low_counts_'+i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
+                ),
+                overwrite=True,
+            )
+            sdata.add_shapes(
+                name=i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
+                ),
+                overwrite=True,
+            )
+           
     # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
     _back_sdata_table_to_zarr( sdata )
+
 
     return sdata
 
@@ -1474,14 +1543,22 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
     sdata.table = spatialdata.models.TableModel.parse(table)
 
     for i in [*sdata.shapes]:
-        sdata[i].index = sdata[i].index.astype("str")
-        sdata.add_shapes(
-            name=i,
-            shapes=spatialdata.models.ShapesModel.parse(
-                sdata[i][np.isin(sdata[i].index.values, sdata.table.obs.index.values)]
-            ),
-            overwrite=True,
-        )
+        if 'filtered'  not in i:
+            sdata[i].index = sdata[i].index.astype("str")
+            sdata.add_shapes(
+                name='filtered_size_'+i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
+                ),
+                overwrite=True,
+            )
+            sdata.add_shapes(
+                name=i,
+                shapes=spatialdata.models.ShapesModel.parse(
+                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
+                ),
+                overwrite=True,
+            )
     filtered = start - table.shape[0]
     print(str(filtered) + " cells were filtered out based on size.")
 
