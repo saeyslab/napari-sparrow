@@ -515,7 +515,7 @@ def segmentation_cellpose(
     return sdata
 
 
-def imageContainerToSData(
+def imageContainerToSData( # TODO: simplify this function (in its most general case the transformations may not be correct)
     ic,
     trf,
     sdata=None,
