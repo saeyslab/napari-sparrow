@@ -320,10 +320,10 @@ def visualize(
     """Visualisation step, the sixth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as SpatialData object."""
 
     # Perform correction for transcripts (and corresponding celltypes) that occur in all cells and are overexpressed
-    if "marker_genes" in cfg.visualize:
+    if "correct_marker_genes_dict" in cfg.visualize:
         sdata = fc.correct_marker_genes(
             sdata,
-            celltype_correction_dict=cfg.visualize.marker_genes,
+            celltype_correction_dict=cfg.visualize.correct_marker_genes_dict,
         )
 
     # Get arguments from cfg else None objects

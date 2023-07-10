@@ -224,8 +224,6 @@ def segment_widget(
         )
         """
 
-        print( sdata )
-
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
 

@@ -122,14 +122,15 @@ def allocate_widget(
     worker = _allocation_worker(sdata, allocateImage, fn_kwargs=fn_kwargs)
 
     def add_metadata(sdata: SpatialData, cfg: DictConfig, layer_name: str):
-        """Add the metadata to the previous layer, this way it becomes available in the next steps."""
+        """Update the polygons, add anndata object to the metadata, so it can be viewed via napari spatialdata plugin, and it
+        becomes visible in next steps."""
 
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]
             viewer.layers.remove(layer)
             log.info(f"Refreshing {layer_name}")
-            
+
         except KeyError:
             log.info(f"Layer '{layer_name}' does not exist.")
 
@@ -143,7 +144,12 @@ def allocate_widget(
 
         polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[shapes_layer])
 
-        show_info("Adding updated segmentation shapes, this can be slow on large images...")
+        # we add the polygons again in this step, because some of them are filtered out in the allocate step
+        # (i.e. due to size of polygons etc). If we do not update the polygons here, napari complains because
+        # number of polygons does not match any more with e.g. number of polygons with a leiden cluster assigned.
+        show_info(
+            "Adding updated segmentation shapes, this can be slow on large images..."
+        )
         viewer.add_shapes(
             polygons,
             name=layer_name,
@@ -158,22 +164,11 @@ def allocate_widget(
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
 
-
-        # Store data in previous layer
-        #layer.metadata["adata"] = sdata.table
-        #layer.metadata["sdata"] = sdata
-        #layer.metadata["labels_key"] = "cells"
-        #layer.metadata["cfg"] = cfg
-
-        print(sdata )
-
         show_info("Allocation finished")
 
         # Options for napari-spatialData plugin
         viewer.scale_bar.visible = True
         viewer.scale_bar.unit = "um"
-
-        # sdata.write( os.path.join( cfg.paths.output_dir, 'sdata_allocate.zarr' ) )
 
     worker.returned.connect(lambda data: add_metadata(data, cfg, utils.SEGMENT))
     show_info("Allocation started")

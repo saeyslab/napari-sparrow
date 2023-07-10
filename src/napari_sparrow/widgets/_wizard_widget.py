@@ -107,12 +107,12 @@ def get_choices():
             ),
         ),
         (
-            "Step 5: Export",
+            "Step 5: Visualize",
             Step(
-                "Export",
-                "#5 Export",
+                "Visualize",
+                "#5 Visualize",
                 export_widget,
-                """## Step 5 Export:\n### Checks cluster cleanliness and saves data\n - Select the output directory""",
+                """## Step 5 Visualize:\n### Creation of visualizations in output directory""",
             ),
         ),
     ]

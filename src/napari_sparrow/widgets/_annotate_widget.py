@@ -2,7 +2,7 @@
 Annotation widget for scoring the genes, returns markergenes and adata objects.
 """
 import pathlib
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Any
 import os
 
 import napari
@@ -37,7 +37,9 @@ def annotateImage(
 
 
 @thread_worker(progress=True)
-def _annotation_worker(sdata: SpatialData, method: Callable, fn_kwargs) -> dict:
+def _annotation_worker(
+    sdata: SpatialData, method: Callable, fn_kwargs: Dict[str, Any]
+) -> Tuple[SpatialData, Dict[str, List[str]]]:
     """
     annotate data with marker genes in a thread worker
     """
@@ -100,8 +102,6 @@ def annotate_widget(
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
         viewer.layers[layer_name].metadata["mg_dict"] = mg_dict
-
-        sdata.write( os.path.join( cfg.paths.output_dir, 'sdata_annotation.zarr' ) )
 
         show_info("Annotation finished")
 
