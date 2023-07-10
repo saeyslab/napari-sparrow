@@ -1255,18 +1255,19 @@ def analyse_genes_left_out(sdata, df):
     return filtered
 
 
-def plot_shapes(
+def plot_shapes(  # FIXME: rename, this does not always plot a shapes layer anymore
     sdata,
-    column: str = None,
+    column: Optional[str] = None,
     cmap: str = "magma",
     img_layer: Optional[str] = None,
     channel: Optional[int]=None,
-    shapes_layer: str = "segmentation_mask_boundaries",
+    shapes_layer: Optional[str] = "segmentation_mask_boundaries",
     alpha: float = 0.5,
     crd=None,
-    output: str = None,
+    output: Optional[str|Path] = None,
     vmin=None,
     vmax=None,
+    aspect:str="equal",
     figsize=(20, 20),
 ) -> None:
     if img_layer is None:
@@ -1334,20 +1335,21 @@ def plot_shapes(
             x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
         ).plot.imshow(cmap="gray", robust=True, ax=ax, add_colorbar=False)
 
-        sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
-            ax=ax,
-            edgecolor="white",
-            column=column,
-            linewidth=1,
-            alpha=alpha,
-            legend=True,
-            aspect=1,
-            cmap=cmap,
-            vmax=vmax,  # np.percentile(column,vmax),
-            vmin=vmin,  # np.percentile(column,vmin)
-        )
+        if shapes_layer:
+            sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+                ax=ax,
+                edgecolor="white",
+                column=column,
+                linewidth=1,
+                alpha=alpha,
+                legend=True,
+                aspect=1,
+                cmap=cmap,
+                vmax=vmax,  # np.percentile(column,vmax),
+                vmin=vmin,  # np.percentile(column,vmin)
+            )
 
-        ax.axes.set_aspect("equal")
+        ax.axes.set_aspect(aspect)
         ax.set_xlim(crd[0], crd[1])
         ax.set_ylim(crd[2], crd[3])
         ax.invert_yaxis()
@@ -2196,8 +2198,8 @@ def read_in_zarr_from_path(
     return ic
 
 
-def plot_image_container(
-    sdata: Union[SpatialData, sq.im.ImageContainer],
+def plot_image_container(  # TODO: rename since it doesn't plot ImageContainers anymore, or remove altogether
+    sdata: SpatialData,
     output_path: Optional[str|Path] =None,
     crd:Optional[ List[int] ]=None,
     layer:str="image",
@@ -2205,65 +2207,8 @@ def plot_image_container(
     aspect:str="equal",
     figsize:Tuple[int]=(10, 10),
 ):
-    
-    if not isinstance(sdata, (SpatialData, sq.im.ImageContainer)):
-        raise ValueError("Only SpatialData and ImageContainer objects are supported.")
-
-    channel_key = 'c' if isinstance(sdata, SpatialData) else 'channels'
-    channels = [channel] if channel is not None else sdata[ layer ][ channel_key ].data
-
-    tx, ty = _get_translation(sdata[layer])
-    
-    for ch in channels:
-        if isinstance(sdata, SpatialData):
-            dataset = sdata[layer].isel(c=ch)
-        elif isinstance(sdata, sq.im.ImageContainer):
-            dataset = sdata[layer].isel(channels=ch)
-        
-        # `crd` is a crop rectangle, specified in global coordinates.
-        if crd is None:
-            crd = [ tx, tx + sdata[layer].sizes['x'],
-                    ty, ty + sdata[layer].sizes['y'] ]
-
-        # Extract all pixels that lie inside the crop rectangle `crd` from the dataset.
-        # For converting from global coordinates to pixel coordinates we need to
-        # take a possible offset (tx, ty) into account.
-        image = dataset.squeeze().sel(x=slice(crd[0] - tx, crd[1] - tx),
-                                      y=slice(crd[2] - ty, crd[3] - ty))
-        
-        # FIXME: if dataset was already cropped, and that crop does not overlap with `crd`,
-        # image will have zero rows or zero columns, or both. In that case plotting the image
-        # will throw an exception. Issue a warning and perhaps plot the image instead.
-        # (Though that might be empty as well because of an earlier crop. Personally I would
-        # prefer not to throw an error or issue warnings, but just draw an empty plot instead.
-        # Drawing an empty spatialdata object is not allowed though, so we need a trick here.)
-
-        # Plot the image. We want the plot to show the full range of `crd`
-        # even if this rectangle is larger than the underlying pixel data
-        # (so we set xlim and ylim). We also want to display global coordinates
-        # as tick values on the axes, so we use a tick formatter to convert
-        # from pixel coordinates to global coordinates by adding the possible
-        # offset (tx, ty).
-        cmap = "gray"
-        _, ax = plt.subplots(figsize=figsize)
-        ax.xaxis.set_major_formatter(lambda tick_val, _: tick_val + tx)
-        ax.yaxis.set_major_formatter(lambda tick_val, _: tick_val + ty)
-        image.plot.imshow(cmap=cmap,
-                          robust=True,
-                          ax=ax,
-                          add_colorbar=False,
-                          xlim=[crd[0] - tx, crd[1] - tx],
-                          ylim=[crd[2] - ty, crd[3] - ty])
-
-        ax.set_aspect(aspect)
-        ax.invert_yaxis()
-
-        if output_path:
-            plt.savefig( f"{output_path}_{ch}")
-        else:
-            plt.show()
-        plt.close()
-
+    plot_shapes(sdata, output=output_path, crd=crd, img_layer=layer, shapes_layer=None, channel=channel, aspect=aspect, figsize=figsize)
+ 
 
 def _get_image_boundary(spatial_image):
     tx, ty = _get_translation(spatial_image)
