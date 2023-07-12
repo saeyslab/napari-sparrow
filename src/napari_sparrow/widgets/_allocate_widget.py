@@ -15,9 +15,6 @@ from omegaconf.dictconfig import DictConfig
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow.functions import (
-    get_offset,
-)
 from napari_sparrow.pipeline_functions import allocate
 
 log = utils.get_pylogger(__name__)
@@ -133,9 +130,6 @@ def allocate_widget(
 
         except KeyError:
             log.info(f"Layer '{layer_name}' does not exist.")
-
-        # TODO check if fix with setting coordinates correct, and if we need an offset.
-        offset_x, offset_y = get_offset(sdata[cfg.segmentation.output_layer])
 
         if cfg.segmentation.voronoi_radius:
             shapes_layer = f"expanded_cells{cfg.segmentation.voronoi_radius}"

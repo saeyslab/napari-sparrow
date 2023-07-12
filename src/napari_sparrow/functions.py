@@ -49,12 +49,10 @@ from spatial_image import SpatialImage
 from numcodecs import Blosc
 from pandas import DataFrame as PandasDataFrame
 from rasterio import features
-from scipy import ndimage
 from scipy.ndimage import gaussian_filter
 from scipy.ndimage.filters import gaussian_filter
 from shapely.affinity import translate
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
-from shapely.geometry.polygon import LinearRing
 from spatial_image import to_spatial_image
 from spatialdata import SpatialData, bounding_box_query
 from spatialdata.transformations import (Translation, set_transformation, get_transformation)
@@ -91,8 +89,6 @@ def create_sdata(
     # if z-dimension is 1, then squeeze it.
     else:
         dask_array = dask_array.squeeze(1)
-    if crd:
-        dask_array=dask_array[:,crd[0]:crd[1],crd[2]:crd[3]]
     sdata = spatialdata.SpatialData()
 
     spatial_image = spatialdata.models.Image2DModel.parse(
@@ -122,26 +118,11 @@ def create_sdata(
         transform_matrix = get_transformation(spatial_image).to_affine_matrix(
             input_axes=["x", "y"], output_axes=["x", "y"]
         )
-        offset_x = transform_matrix[:, -1][0]
-        offset_y = transform_matrix[:, -1][1]
-    else:
-        offset_x = 0
-        offset_y = 0
 
-    y_coords = xr.DataArray(np.arange(offset_y, offset_y + spatial_image.shape[1], dtype="float64"), dims="y")
-    x_coords = xr.DataArray(np.arange(offset_x, offset_x + spatial_image.shape[2] , dtype="float64"), dims="x")
-
-    # If bug in spatialdata is fixed where coordinates are lost when saving to zarr, coordinates should be set here.
-    spatial_image=spatial_image.assign_coords({ 'y': y_coords, 'x': x_coords} )
     sdata.add_image(name=layer_name, image=spatial_image)
 
     if output_path is not None:
         sdata.write(output_path)
-
-    # writing to zarr loses coordinates
-    sdata.images[layer_name] = sdata[layer_name].assign_coords(
-        {"y": y_coords, "x": x_coords}
-     )
 
     return sdata
 
@@ -307,21 +288,10 @@ def _fix_dims(
 
     return array
 
-
-def get_offset(spatial_image: SpatialImage):
-    transform_matrix = get_transformation(spatial_image).to_affine_matrix(
-        input_axes=["x", "y"], output_axes=["x", "y"]
-    )
-    offset_x = transform_matrix[:, -1][0]
-    offset_y = transform_matrix[:, -1][1]
-
-    return offset_x, offset_y
-
-
 def tilingCorrection(
     sdata: SpatialData,
     tile_size: int = 2144,
-    crop_param: Optional[Tuple[int, int, int]] = None,
+    crd: Optional[Tuple[int, int, int, int]] = None,
     output_layer: str = "tiling_correction",
 ) -> Tuple[SpatialData, List[np.ndarray]]:
     """Returns the corrected image and the flatfield array
@@ -332,14 +302,19 @@ def tilingCorrection(
 
     layer = [*sdata.images][-1]
 
+    # crd is specified on original uncropped pixel coordinates
+    # need to substract possible translation, because we use crd to crop imagecontainer, which does not take 
+    # translation into account
+    if crd:
+        crd=_substract_translation_crd( sdata[ layer ], crd )
+
+    tx, ty = _get_translation(sdata[layer])
+
     result_list = []
     flatfields = []
 
     for channel in sdata[layer].c.data:
         ic = sq.im.ImageContainer(sdata[layer].isel(c=channel), layer=layer)
-        # CHECKME: what if sdata[layer] is already cropped, and crop_param is not None?
-        # Do we use the intersection of both crops? Is crop_param specified in pixel coordinates
-        # on the original uncropped image?
 
         # Create the tiles
         tiles = ic.generate_equal_crops(size=tile_size, as_array=layer)
@@ -391,8 +366,12 @@ def tilingCorrection(
             layer="mask_black_lines",
         )
 
-        if crop_param:
-            ic = ic.crop_corner(y=crop_param[1], x=crop_param[0], size=crop_param[2])
+        if crd:
+            x0=crd[0]
+            x_size=crd[1]-crd[0]
+            y0=crd[2]
+            y_size=crd[3]-crd[2]
+            ic = ic.crop_corner(y=y0, x=x0, size=( y_size, x_size ) )
 
         # Perform inpainting
         ic.apply(
@@ -417,14 +396,38 @@ def tilingCorrection(
     result = da.concatenate(result_list, axis=-1).transpose(3, 0, 1, 2).squeeze(-1)
 
     spatial_image = spatialdata.models.Image2DModel.parse(result, dims=("c", "y", "x"))
-    if crop_param and (crop_param[0] > 0 or crop_param[1] > 0):
-        translation = Translation([crop_param[0], crop_param[1]], axes=('x', 'y'))
-        set_transformation(spatial_image, translation) # CHECKME: should we concatenate with a possibly existing transformation?
+
+    if crd:
+        tx=tx+crd[0]
+        ty=ty+crd[2]
+
+    translation = Translation([tx, ty ], axes=('x', 'y'))
+    set_transformation(spatial_image, translation)
 
     # during adding of image it is written to zarr store
     sdata.add_image(name=output_layer, image=spatial_image)
 
     return sdata, flatfields
+
+
+def _substract_translation_crd( spatialimage: SpatialImage, crd=Tuple[ int,int,int,int ] )->Tuple[ int,int,int,int ]:
+
+    tx,ty=_get_translation( spatialimage )
+
+    _crd=crd
+    crd = [ int( max(0, crd[0]-tx) ), 
+                max(0, int( min(spatialimage.sizes['x'], crd[1]-tx)) ), 
+                    int(max(0, crd[2]-ty)), 
+                    max(0, int( min(spatialimage.sizes['y'], crd[3]-ty)) ), 
+                    ]
+    
+    if crd[1] - crd[0] <= 0 or crd[3] - crd[2] <= 0:
+        warnings.warn(f"Crop param {_crd} after correction for possible translation on " 
+                      f"spatialimage object '{spatialimage.name}' is "
+                        f"'{crd}. Falling back to setting crd to 'None'.")
+        crd=None
+
+    return crd
 
 
 def tilingCorrectionPlot(
@@ -511,10 +514,23 @@ def clahe_processing(
     output_layer: str = "clahe",
     contrast_clip: int = 3.5,
     chunksize_clahe: int = 10000,
+    depth: int = 3000,
 ) -> SpatialData:
     # TODO take whole image as chunksize + overlap tuning
 
     layer = [*sdata.images][-1]
+
+    # set depth
+    min_size=min( sdata[ layer ].sizes['x'], sdata[ layer ].sizes['y'] )
+    _depth=depth
+    if min_size<depth:
+        if min_size<chunksize_clahe//4:
+            depth=min_size//4
+            warnings.warn( f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'min_size//4 ({depth}')" )
+
+        else:
+            depth=chunksize_clahe//4
+            warnings.warn( f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'chunksize_clahe//4 ({depth}')" )
 
     # convert to imagecontainer, because apply not yet implemented in sdata
     ic = sq.im.ImageContainer(sdata[layer], layer=layer)
@@ -533,7 +549,7 @@ def clahe_processing(
             copy=True,
             chunks=chunksize_clahe,
             lazy=True,
-            depth=3000,
+            depth=depth,
             boundary='reflect'
         )
 
@@ -579,7 +595,7 @@ def segmentation_cellpose(
     sdata: SpatialData,
     layer: Optional[str] = None,
     output_layer: str = "segmentation_mask",
-    crop_param: Optional[Tuple[int, int, int]] = None,
+    crd: Optional[Tuple[int, int, int, int]] = None,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.6,
@@ -595,17 +611,25 @@ def segmentation_cellpose(
 
     ic = sq.im.ImageContainer(sdata[layer], layer=layer)
 
-    if crop_param:
-        tx, ty = _get_translation(sdata[layer])
-        ic = ic.crop_corner(y=crop_param[1]-ty, x=crop_param[0]-tx, size=crop_param[2])
-        # FIXME: ic.crop_corner() doesn't like crops where (x,y) doesn't fall within the original
-        # pixel data. Check for this situation and handle it...
+    # crd is specified on original uncropped pixel coordinates
+    # need to substract possible translation, because we use crd to crop imagecontainer, which does not take 
+    # translation into account
+    if crd:
+        crd=_substract_translation_crd( sdata[layer], crd )
+    if crd:
+        x0=crd[0]
+        x_size=crd[1]-crd[0]
+        y0=crd[2]
+        y_size=crd[3]-crd[2]
+        ic = ic.crop_corner(y=y0, x=x0, size=( y_size, x_size ) )
 
         # rechunk if you take crop, in order to be able to save as spatialdata object.
         # TODO check if this still necessary
         # for layer in ic.data.data_vars:
         #    chunksize = ic[layer].data.chunksize[0]
         #    ic[layer] = ic[layer].chunk(chunksize)
+
+    tx, ty = _get_translation(sdata[layer])
 
     sq.im.segment(
         img=ic,
@@ -624,9 +648,21 @@ def segmentation_cellpose(
         device=device,
     )
 
-    imageContainerToSData(
-        ic=ic, trf=get_transformation(sdata[layer]), sdata=sdata, layers_im=[], layers_labels=[output_layer]
+    if crd:
+        tx=tx+crd[0]
+        ty=ty+crd[2]
+
+    translation = Translation([tx, ty ], axes=('x', 'y'))
+
+    temp = ic.data.rename_dims({"channels": "c"})
+    spatial_label = spatialdata.models.Labels2DModel.parse(
+        temp[output_layer].squeeze().transpose("y", "x")
     )
+
+    set_transformation(spatial_label, translation)
+
+    # during adding of image it is written to zarr store
+    sdata.add_labels(name=output_layer, labels=spatial_label)
 
     polygons = mask_to_polygons_layer_dask(mask=sdata[output_layer].data)
     polygons = polygons.dissolve(by="cells")

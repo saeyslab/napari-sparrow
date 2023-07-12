@@ -5,7 +5,7 @@ is to improve the image quality so that subsequent image segmentation
 will be more accurate.
 """
 
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Optional
 
 import napari
 import napari.layers
@@ -20,7 +20,7 @@ from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
 import napari_sparrow.utils as utils
-from napari_sparrow.functions import create_sdata, get_offset
+from napari_sparrow.functions import create_sdata, _get_translation
 from napari_sparrow.pipeline_functions import clean
 
 log = utils.get_pylogger(__name__)
@@ -29,8 +29,6 @@ log = utils.get_pylogger(__name__)
 def cleanImage(
     sdata: SpatialData,
     cfg: DictConfig,
-    left_corner: Tuple[int, int] = None,
-    size: Tuple[int, int] = None,
 ) -> SpatialData:
     """Function representing the cleaning step, this calls all the needed functions to improve the image quality."""
 
@@ -66,7 +64,7 @@ def _clean_worker(
 def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
-    subset: napari.layers.Shapes,
+    subset: Optional[napari.layers.Shapes] = None,
     tiling_correction_step: bool = True,
     tile_size: int = 2144,
     tophat_filtering_step: bool = True,
@@ -92,10 +90,6 @@ def clean_widget(
     cfg.clean.contrast_clip = contrast_clip
     cfg.clean.chunksize_clahe = chunksize_clahe
 
-    fn_kwargs: Dict[str, Any] = {
-        "cfg": cfg,
-    }
-
     # update this
     if len(image.data_raw.shape) == 3:
         dims = ["c", "y", "x"]
@@ -111,7 +105,7 @@ def clean_widget(
         )
 
         # get offset of previous layer, and set it to newly created sdata object:
-        offset_x, offset_y = get_offset(
+        offset_x, offset_y = _get_translation(
             viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD]
         )
         translation = Translation([offset_x, offset_y], axes=("x", "y"))
@@ -125,21 +119,28 @@ def clean_widget(
             f"it seems layer with name '{image.name}' was selected."
         )
 
-    # Subset shape TODO need to update
     if subset:
         # Check if shapes layer only holds one shape and shape is rectangle
         if len(subset.shape_type) != 1 or subset.shape_type[0] != "rectangle":
             raise ValueError("Please select one rectangular subset")
 
         coordinates = np.array(subset.data[0])
-        left_corner = coordinates[coordinates.sum(axis=1).argmin()].astype(int)
-        size = (
-            int(coordinates[:, 0].max() - coordinates[:, 0].min()),
-            int(coordinates[:, 1].max() - coordinates[:, 1].min()),
-        )
+        crd = [
+            int(coordinates[:, 1].min()),
+            int(coordinates[:, 1].max()),
+            int(coordinates[:, 0].min()),
+            int(coordinates[:, 0].max()),
+        ]
 
-        fn_kwargs["left_corner"] = left_corner
-        fn_kwargs["size"] = size
+        # FIXME note crd will be ignored if you do not do tiling correction
+        cfg.clean.crop_param = crd
+
+    else:
+        cfg.clean.crop_param = None
+
+    fn_kwargs: Dict[str, Any] = {
+        "cfg": cfg,
+    }
 
     worker = _clean_worker(sdata, method=cleanImage, fn_kwargs=fn_kwargs)
 
@@ -156,7 +157,7 @@ def clean_widget(
             log.info(f"Adding {layer_name}")
 
         # TODO check if fix with setting coordinates correct, sets these offsets correct
-        offset_x, offset_y = get_offset(sdata[layer_name])
+        offset_x, offset_y = _get_translation(sdata[layer_name])
 
         # Translate image to appear on selected region
         viewer.add_image(
@@ -170,7 +171,7 @@ def clean_widget(
 
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
-        
+
         show_info("Cleaning finished")
 
     worker.returned.connect(lambda data: add_image(data, cfg, utils.CLEAN))

@@ -49,7 +49,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     if cfg.clean.tilingCorrection:
         sdata, flatfields = fc.tilingCorrection(
             sdata=sdata,
-            crop_param=cfg.clean.crop_param
+            crd=cfg.clean.crop_param
             if cfg.clean.crop_param is not None
             else None,
             tile_size=cfg.clean.tile_size,
@@ -116,7 +116,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     sdata = fc.segmentation_cellpose(
         sdata=sdata,
         output_layer=cfg.segmentation.output_layer,
-        crop_param=cfg.segmentation.crop_param,
+        crd=cfg.segmentation.crop_param,
         device=cfg.device,
         min_size=cfg.segmentation.min_size,
         flow_threshold=cfg.segmentation.flow_threshold,

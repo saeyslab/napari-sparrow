@@ -26,7 +26,7 @@ from geopandas.geodataframe import GeoDataFrame
 import napari_sparrow.utils as utils
 from napari_sparrow.functions import (
     create_sdata,
-    get_offset,
+    _get_translation,
 )
 from napari_sparrow.pipeline_functions import segment
 
@@ -41,15 +41,8 @@ class ModelOption(Enum):
 def segmentImage(
     sdata: SpatialData,
     cfg: DictConfig,
-    left_corner: Tuple[int, int] = None,
-    size: Tuple[int, int] = None,
 ) -> Tuple[SpatialData, DictConfig]:
     """Function representing the segmentation step, this calls the segmentation function."""
-
-    # Crop imageContainer
-    # TODO: should we do cropping here or later...
-    # if left_corner is not None and size is not None:
-    #    ic = ic.crop_corner(*left_corner, size)
 
     sdata = segment(cfg, sdata)
 
@@ -95,22 +88,6 @@ def segment_widget(
 
     fn_kwargs: Dict[str, Any] = {}
 
-    # Subset shape
-    if subset:
-        # Check if shapes layer only holds one shape and shape is rectangle
-        if len(subset.shape_type) != 1 or subset.shape_type[0] != "rectangle":
-            raise ValueError("Please select one rectangular subset")
-
-        coordinates = np.array(subset.data[0])
-        left_corner = coordinates[coordinates.sum(axis=1).argmin()].astype(int)
-        size = (
-            int(coordinates[:, 0].max() - coordinates[:, 0].min()),
-            int(coordinates[:, 1].max() - coordinates[:, 1].min()),
-        )
-
-        fn_kwargs["left_corner"] = left_corner
-        fn_kwargs["size"] = size
-
     # Load SpatialData object from previous layer
     if image.name == utils.CLEAN:
         cfg = viewer.layers[utils.CLEAN].metadata["cfg"]
@@ -122,12 +99,6 @@ def segment_widget(
         for labels in [*sdata.labels]:
             del sdata.labels[labels]
 
-        # TODO update
-        # If we select the cleaned image which is cropped, adjust for corner coordinates offset
-        # if subset:
-        #    fn_kwargs["left_corner"] = left_corner - np.array(
-        #        [ic.data.attrs["coords"].y0, ic.data.attrs["coords"].x0]
-        #    )
     # Create new spatialdata
     elif image.name == utils.LOAD:
         # update this
@@ -146,7 +117,7 @@ def segment_widget(
         )
 
         # get offset of previous layer, and set it to newly created sdata object:
-        offset_x, offset_y = get_offset(
+        offset_x, offset_y = _get_translation(
             viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD]
         )
         translation = Translation([offset_x, offset_y], axes=("x", "y"))
@@ -159,6 +130,26 @@ def segment_widget(
             f"Please run the cleaning step on the layer with name '{utils.LOAD}' or '{utils.CLEAN}',"
             f"it seems layer with name '{image.name}' was selected."
         )
+
+    # Subset shape
+    if subset:
+        # Check if shapes layer only holds one shape and shape is rectangle
+        if len(subset.shape_type) != 1 or subset.shape_type[0] != "rectangle":
+            raise ValueError("Please select one rectangular subset")
+
+        coordinates = np.array(subset.data[0])
+        crd = [
+            int(coordinates[:, 1].min()),
+            int(coordinates[:, 1].max()),
+            int(coordinates[:, 0].min()),
+            int(coordinates[:, 0].max()),
+        ]
+
+        # FIXME note crd will be ignored if you do not do tiling correction
+        cfg.segmentation.crop_param = crd
+
+    else:
+        cfg.segmentation.crop_param = None
 
     # update config
     cfg.device = device
@@ -186,9 +177,6 @@ def segment_widget(
         except KeyError:
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
-
-        # TODO check if fix with setting coordinates correct, and if we need an offset.
-        offset_x, offset_y = get_offset(sdata[cfg.segmentation.output_layer])
 
         if cfg.segmentation.voronoi_radius:
             shapes_layer = f"expanded_cells{cfg.segmentation.voronoi_radius}"

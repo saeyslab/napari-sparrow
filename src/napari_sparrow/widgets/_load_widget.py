@@ -26,7 +26,7 @@ from pkg_resources import resource_filename
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow.functions import create_sdata, get_offset
+from napari_sparrow.functions import create_sdata, _get_translation
 
 log = utils.get_pylogger(__name__)
 
@@ -119,7 +119,7 @@ def load_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        offset_x, offset_y = get_offset(sdata[layer_name])
+        offset_x, offset_y = _get_translation(sdata[layer_name])
 
         # Translate image to appear on selected region
         viewer.add_image(

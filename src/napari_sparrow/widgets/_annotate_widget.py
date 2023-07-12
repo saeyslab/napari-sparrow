@@ -1,9 +1,9 @@
 """
 Annotation widget for scoring the genes, returns markergenes and adata objects.
 """
-import pathlib
-from typing import Callable, Dict, List, Tuple, Any
 import os
+import pathlib
+from typing import Any, Callable, Dict, List, Tuple
 
 import napari
 import napari.layers
@@ -15,11 +15,6 @@ from omegaconf.dictconfig import DictConfig
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-
-from napari_sparrow.functions import (
-    get_offset,
-)
-
 from napari_sparrow.pipeline_functions import annotate
 
 log = utils.get_pylogger(__name__)
