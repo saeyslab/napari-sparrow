@@ -1,9 +1,10 @@
 """
 Annotation widget for scoring the genes, returns markergenes and adata objects.
 """
-import os
 import pathlib
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List
+
+import os
 
 import napari
 import napari.layers
@@ -15,7 +16,7 @@ from omegaconf.dictconfig import DictConfig
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow.pipeline_functions import annotate
+from napari_sparrow.pipeline_functions import annotate, visualize
 
 log = utils.get_pylogger(__name__)
 
@@ -23,18 +24,24 @@ log = utils.get_pylogger(__name__)
 def annotateImage(
     sdata: SpatialData,
     cfg: DictConfig,
-) -> Tuple[SpatialData, Dict[str, List[str]]]:
+) -> SpatialData:
     """Function representing the annotation step, this calls all the needed functions to annotate the cells with the celltype."""
 
     sdata, mg_dict = annotate(cfg, sdata)
 
-    return sdata, mg_dict
+    sdata = visualize(
+        cfg=cfg,
+        sdata=sdata,
+        mg_dict=mg_dict,
+    )
+
+    return sdata
 
 
 @thread_worker(progress=True)
 def _annotation_worker(
     sdata: SpatialData, method: Callable, fn_kwargs: Dict[str, Any]
-) -> Tuple[SpatialData, Dict[str, List[str]]]:
+) -> SpatialData:
     """
     annotate data with marker genes in a thread worker
     """
@@ -61,10 +68,16 @@ def annotate_widget(
 
     # Load data from previous layers
     try:
-        sdata = viewer.layers[utils.SEGMENT].metadata["sdata"]
-        cfg = viewer.layers[utils.SEGMENT].metadata["cfg"]
+        segment_layer=viewer.layers[utils.SEGMENT]
     except KeyError:
-        raise RuntimeError("Please run previous steps first")
+        raise RuntimeError(f"Layer with name '{utils.SEGMENT}' is not available.")
+
+    try:
+        segment_layer.metadata["adata"]
+        sdata=segment_layer.metadata["sdata"]
+        cfg = segment_layer.metadata["cfg"]
+    except KeyError:
+        raise RuntimeError(f"Please run allocation step before running annotation step.")
 
     cfg.dataset.markers = markers_file
     cfg.annotate.row_norm = row_norm
@@ -79,7 +92,6 @@ def annotate_widget(
 
     def add_metadata(
         sdata: SpatialData,
-        mg_dict: Dict[str, List[str]],
         cfg: DictConfig,
         layer_name: str,
     ):
@@ -96,10 +108,9 @@ def annotate_widget(
         viewer.layers[layer_name].metadata["adata"] = sdata.table
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
-        viewer.layers[layer_name].metadata["mg_dict"] = mg_dict
 
         show_info("Annotation finished")
 
-    worker.returned.connect(lambda data: add_metadata(*data, cfg, utils.SEGMENT))
+    worker.returned.connect(lambda data: add_metadata(data, cfg, utils.SEGMENT))
     show_info("Annotation started")
     worker.start()

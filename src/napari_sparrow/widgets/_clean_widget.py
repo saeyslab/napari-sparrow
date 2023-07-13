@@ -99,7 +99,7 @@ def clean_widget(
     if image.name == utils.LOAD:
         # We need to create new sdata object, because sdata object in
         # viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD] is backed by .zarr store
-        # and we are not allowed to overwrite it (i.e. we are not allowed to run the cleaning step twice)
+        # and we are not allowed to overwrite it (i.e. we would not be allowed to run the cleaning step twice)
         sdata = create_sdata(
             input=image.data_raw, layer_name="raw_image", chunks=1024, dims=dims
         )

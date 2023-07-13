@@ -107,12 +107,12 @@ def get_choices():
             ),
         ),
         (
-            "Step 5: Visualize",
+            "Step 5: Export",
             Step(
-                "Visualize",
-                "#5 Visualize",
+                "Export",
+                "#5 Export",
                 export_widget,
-                """## Step 5 Visualize:\n### Creation of visualizations in output directory""",
+                """## Step 4: Annotation\n### Annotates cells with celltype:\n - Marker genes file with marker genes per celltype (.csv)\n - Normalize rows""",
             ),
         ),
     ]

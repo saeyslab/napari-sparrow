@@ -56,7 +56,10 @@ def _get_polygons_in_napari_format(df: GeoDataFrame) -> List:
         df["area"] = df.area
         df = df.sort_values(by="area", ascending=False)  # sort by area
         df = df[~df.index.duplicated(keep="first")]  # only keep the largest area
-        df = df.sort_index()  # reset the index to the first order
+        df.index = df.index.astype(int)  # convert index to integer
+        df = df.sort_index() 
+        df.index=df.index.astype( str )
+
     if len(df) < 100:
         for i in range(0, len(df)):
             polygons.append(list(df.geometry.iloc[i].exterior.coords))

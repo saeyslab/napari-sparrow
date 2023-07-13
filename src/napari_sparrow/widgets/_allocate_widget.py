@@ -1,8 +1,10 @@
 """
 Allocation widget for creating and preprocesing the adata object, filtering the cells and performing clustering.
 """
+import os
 import pathlib
 from typing import Any, Callable, Dict, Optional
+
 
 import napari
 import napari.layers
@@ -46,13 +48,13 @@ def _allocation_worker(
 
 @magic_factory(
     call_button="Allocate",
-    transcripts_file={"widget_type": "FileEdit", "filter": "*.txt"},
-    transform_matrix={"widget_type": "FileEdit", "filter": "*.csv"},
+    transcripts_file={"widget_type": "FileEdit" },
+    transform_matrix={"widget_type": "FileEdit" },
 )
 def allocate_widget(
     viewer: napari.Viewer,
     transcripts_file: pathlib.Path = pathlib.Path(""),
-    delimiter: str = "\t",
+    delimiter: str = '\t',
     header: bool = False,
     column_x: int = 0,
     column_y: int = 1,
@@ -77,10 +79,15 @@ def allocate_widget(
 
     # Load data from previous layers
     try:
-        sdata = viewer.layers[utils.SEGMENT].metadata["sdata"]
-        cfg = viewer.layers[utils.SEGMENT].metadata["cfg"]
+        segment_layer=viewer.layers[utils.SEGMENT]
+    except:
+        raise RuntimeError(f"Layer with name '{utils.SEGMENT}' is not available")
+
+    try:
+        sdata = segment_layer.metadata["sdata"]
+        cfg = segment_layer.metadata["cfg"]
     except KeyError:
-        raise RuntimeError("Please run previous steps first")
+        raise RuntimeError(f"Please run segmentation step before running allocation step.")
 
     # napari widget does not support the type Optional[int], therefore only choose whether there is a header or not,
     # and do same for midcount column
@@ -162,7 +169,6 @@ def allocate_widget(
 
         # Options for napari-spatialData plugin
         viewer.scale_bar.visible = True
-        viewer.scale_bar.unit = "um"
 
     worker.returned.connect(lambda data: add_metadata(data, cfg, utils.SEGMENT))
     show_info("Allocation started")

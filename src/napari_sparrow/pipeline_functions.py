@@ -125,7 +125,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         model_type=cfg.segmentation.model_type,
         channels=cfg.segmentation.channels,
         chunks=cfg.segmentation.chunks,
-        lazy=True,
+        lazy=cfg.segmentation.lazy,
     )
 
     for key in sdata.shapes.keys():

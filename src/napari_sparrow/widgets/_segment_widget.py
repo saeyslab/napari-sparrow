@@ -161,6 +161,9 @@ def segment_widget(
     cfg.segmentation.channels = channels
     cfg.segmentation.chunks = chunks
     cfg.segmentation.voronoi_radius = voronoi_radius
+    # we override default settings, because for plugin, we want to keep things in memory,
+    # otherwise export step would redo segmentation step.
+    cfg.segmentation.lazy=False
 
     fn_kwargs["cfg"] = cfg
 
@@ -184,8 +187,6 @@ def segment_widget(
             shapes_layer = f"{cfg.segmentation.output_layer}_boundaries"
 
         polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[shapes_layer])
-
-        # TODO: do we need a translation here? probably not, because polygons are relative to original.
 
         show_info("Adding segmentation shapes, this can be slow on large images...")
         viewer.add_shapes(

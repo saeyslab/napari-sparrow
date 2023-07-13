@@ -1065,10 +1065,10 @@ def read_transcripts(
 
 
 def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame):
-    # TODO below fix to remove transcripts does not work, points not allowed to be deleted on disk.
-    # if sdata.points:
-    #    for points_layer in [*sdata.points]:
-    #        del sdata.points[points_layer]
+    # TODO below fix to remove transcripts does not work when backed by zarr store, points not allowed to be deleted on disk.
+    if sdata.points:
+        for points_layer in [*sdata.points]:
+            del sdata.points[points_layer]
 
     sdata.add_points(
         name="transcripts",
@@ -1225,26 +1225,41 @@ def allocation(
         adata, region_key="region", region=1, instance_key="instance"
     )
 
-    for i in [*sdata.shapes]:
-        if 'filtered' not in i:
-            print(i)
-            sdata[i].index = list(map(str, sdata[i].index))
+    sdata=_parse_shapes( sdata, filtered_name='segmentation' )
+
+    return sdata
+
+
+def _parse_shapes( sdata: SpatialData, filtered_name:str ):
+
+    for _shapes_layer in [*sdata.shapes]:
+        if 'filtered' not in _shapes_layer:
+            print(_shapes_layer)
+            sdata[_shapes_layer].index = list(map(str, sdata[_shapes_layer].index))
+            filtered_indexes=~np.isin(sdata[_shapes_layer].index.values.astype(int), sdata.table.obs.index.values.astype(int))
+
+            if sum( filtered_indexes )!=0:
+                sdata.add_shapes(
+                    name=f"filtered_{filtered_name}_{_shapes_layer}",
+                    shapes=spatialdata.models.ShapesModel.parse(
+                        sdata[_shapes_layer][ filtered_indexes ]
+                    ),
+                    overwrite=True,
+                )
+
+            kept_indexes=np.isin(sdata[_shapes_layer].index.values.astype(int), sdata.table.obs.index.values.astype(int))
+            # we assume that sum(kept_indexes)!=0, i.e. that we did not filter all cells
             sdata.add_shapes(
-                name='filtered_segmentation_'+i,
+                name=_shapes_layer,
                 shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
-                ),
-                overwrite=True,
-            )
-            sdata.add_shapes(
-                name=i,
-                shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
+                    sdata[_shapes_layer][ kept_indexes]
                 ),
                 overwrite=True,
             )
 
     return sdata
+
+
 
 def extract_boundaries_from_geometry_collection(geometry):
     if isinstance(geometry, Polygon):
@@ -1372,6 +1387,8 @@ def sanity_plot_transcripts_matrix(
 
     ax.set_xlim(crd[0], crd[1])
     ax.set_ylim(crd[2], crd[3])
+
+    ax.invert_yaxis()
 
     ax.axis("on")
 
@@ -1647,28 +1664,11 @@ def preprocessAdata(
 
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
     # Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too!
-    for i in [*sdata.shapes]:
-        if 'filtered' not in i:
-            sdata[i].index = sdata[i].index.astype("str")
-   
-            sdata.add_shapes(
-                name='filtered_low_counts_'+i,
-                shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
-                ),
-                overwrite=True,
-            )
-            sdata.add_shapes(
-                name=i,
-                shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
-                ),
-                overwrite=True,
-            )
-           
+
+    sdata=_parse_shapes( sdata, filtered_name='low_counts' )
+
     # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
     _back_sdata_table_to_zarr(sdata)
-
 
     return sdata
 
@@ -1744,23 +1744,8 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
     ## TODO: Look for a better way of doing this!
     sdata.table = spatialdata.models.TableModel.parse(table)
 
-    for i in [*sdata.shapes]:
-        if 'filtered'  not in i:
-            sdata[i].index = sdata[i].index.astype("str")
-            sdata.add_shapes(
-                name='filtered_size_'+i,
-                shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][~np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
-                ),
-                overwrite=True,
-            )
-            sdata.add_shapes(
-                name=i,
-                shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[i][np.isin(sdata[i].index.values.astype(int), sdata.table.obs.index.values.astype(int))]
-                ),
-                overwrite=True,
-            )
+    sdata=_parse_shapes( sdata, filtered_name='size' )
+
     filtered = start - table.shape[0]
     print(str(filtered) + " cells were filtered out based on size.")
 
