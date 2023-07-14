@@ -55,7 +55,11 @@ from shapely.affinity import translate
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 from spatial_image import to_spatial_image
 from spatialdata import SpatialData, bounding_box_query
-from spatialdata.transformations import (Translation, set_transformation, get_transformation)
+from spatialdata.transformations import (
+    Translation,
+    set_transformation,
+    get_transformation,
+)
 
 
 def create_sdata(
@@ -108,8 +112,8 @@ def create_sdata(
         spatial_image = bounding_box_query(
             spatial_image,
             axes=["x", "y"],
-            min_coordinate=[crd[0], crd[2] ],
-            max_coordinate=[crd[1], crd[3] ],
+            min_coordinate=[crd[0], crd[2]],
+            max_coordinate=[crd[1], crd[3]],
             target_coordinate_system="global",
         )
         if chunks:
@@ -128,7 +132,9 @@ def create_sdata(
 
 
 def load_image_to_dask(
-    input: Union[str, Path, np.ndarray, Array, List[Union[str, Path, np.ndarray, Array]]],
+    input: Union[
+        str, Path, np.ndarray, Array, List[Union[str, Path, np.ndarray, Array]]
+    ],
     chunks: Optional[int] = None,
     dims: Optional[List[str]] = None,
     crd: Optional[List[int]] = None,
@@ -190,13 +196,13 @@ def load_image_to_dask(
         # add z- dimension, we want (c,z,y,x)
         dask_array = dask_array[:, None, :, :]
 
-    elif isinstance(input, (np.ndarray, Array ) ):
+    elif isinstance(input, (np.ndarray, Array)):
         # make sure we have (c,z,y,x)
         array = _fix_dims(input, dims=dims)
-        if isinstance( array, np.ndarray ):
+        if isinstance(array, np.ndarray):
             dask_array = da.from_array(array)
         else:
-            dask_array=array
+            dask_array = array
 
     elif isinstance(input, (str, Path)):
         if dims is not None:
@@ -288,6 +294,7 @@ def _fix_dims(
 
     return array
 
+
 def tilingCorrection(
     sdata: SpatialData,
     tile_size: int = 2144,
@@ -302,11 +309,17 @@ def tilingCorrection(
 
     layer = [*sdata.images][-1]
 
+    if sdata[layer].sizes["x"] % tile_size or sdata[layer].sizes["y"] % tile_size:
+        raise ValueError(
+            f"Dimension of image layer '{layer}' ({sdata[layer].shape}) on which to run the "
+            f"tilingCorrection is not a multiple of the given tile size ({tile_size})."
+        )
+
     # crd is specified on original uncropped pixel coordinates
-    # need to substract possible translation, because we use crd to crop imagecontainer, which does not take 
+    # need to substract possible translation, because we use crd to crop imagecontainer, which does not take
     # translation into account
     if crd:
-        crd=_substract_translation_crd( sdata[ layer ], crd )
+        crd = _substract_translation_crd(sdata[layer], crd)
 
     tx, ty = _get_translation(sdata[layer])
 
@@ -367,11 +380,11 @@ def tilingCorrection(
         )
 
         if crd:
-            x0=crd[0]
-            x_size=crd[1]-crd[0]
-            y0=crd[2]
-            y_size=crd[3]-crd[2]
-            ic = ic.crop_corner(y=y0, x=x0, size=( y_size, x_size ) )
+            x0 = crd[0]
+            x_size = crd[1] - crd[0]
+            y0 = crd[2]
+            y_size = crd[3] - crd[2]
+            ic = ic.crop_corner(y=y0, x=x0, size=(y_size, x_size))
 
         # Perform inpainting
         ic.apply(
@@ -398,10 +411,10 @@ def tilingCorrection(
     spatial_image = spatialdata.models.Image2DModel.parse(result, dims=("c", "y", "x"))
 
     if crd:
-        tx=tx+crd[0]
-        ty=ty+crd[2]
+        tx = tx + crd[0]
+        ty = ty + crd[2]
 
-    translation = Translation([tx, ty ], axes=('x', 'y'))
+    translation = Translation([tx, ty], axes=("x", "y"))
     set_transformation(spatial_image, translation)
 
     # during adding of image it is written to zarr store
@@ -410,22 +423,26 @@ def tilingCorrection(
     return sdata, flatfields
 
 
-def _substract_translation_crd( spatialimage: SpatialImage, crd=Tuple[ int,int,int,int ] )->Tuple[ int,int,int,int ]:
+def _substract_translation_crd(
+    spatialimage: SpatialImage, crd=Tuple[int, int, int, int]
+) -> Tuple[int, int, int, int]:
+    tx, ty = _get_translation(spatialimage)
 
-    tx,ty=_get_translation( spatialimage )
+    _crd = crd
+    crd = [
+        int(max(0, crd[0] - tx)),
+        max(0, int(min(spatialimage.sizes["x"], crd[1] - tx))),
+        int(max(0, crd[2] - ty)),
+        max(0, int(min(spatialimage.sizes["y"], crd[3] - ty))),
+    ]
 
-    _crd=crd
-    crd = [ int( max(0, crd[0]-tx) ), 
-                max(0, int( min(spatialimage.sizes['x'], crd[1]-tx)) ), 
-                    int(max(0, crd[2]-ty)), 
-                    max(0, int( min(spatialimage.sizes['y'], crd[3]-ty)) ), 
-                    ]
-    
     if crd[1] - crd[0] <= 0 or crd[3] - crd[2] <= 0:
-        warnings.warn(f"Crop param {_crd} after correction for possible translation on " 
-                      f"spatialimage object '{spatialimage.name}' is "
-                        f"'{crd}. Falling back to setting crd to 'None'.")
-        crd=None
+        warnings.warn(
+            f"Crop param {_crd} after correction for possible translation on "
+            f"spatialimage object '{spatialimage.name}' is "
+            f"'{crd}. Falling back to setting crd to 'None'."
+        )
+        crd = None
 
     return crd
 
@@ -521,16 +538,20 @@ def clahe_processing(
     layer = [*sdata.images][-1]
 
     # set depth
-    min_size=min( sdata[ layer ].sizes['x'], sdata[ layer ].sizes['y'] )
-    _depth=depth
-    if min_size<depth:
-        if min_size<chunksize_clahe//4:
-            depth=min_size//4
-            warnings.warn( f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'min_size//4 ({depth}')" )
+    min_size = min(sdata[layer].sizes["x"], sdata[layer].sizes["y"])
+    _depth = depth
+    if min_size < depth:
+        if min_size < chunksize_clahe // 4:
+            depth = min_size // 4
+            warnings.warn(
+                f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'min_size//4 ({depth}')"
+            )
 
         else:
-            depth=chunksize_clahe//4
-            warnings.warn( f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'chunksize_clahe//4 ({depth}')" )
+            depth = chunksize_clahe // 4
+            warnings.warn(
+                f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'chunksize_clahe//4 ({depth}')"
+            )
 
     # convert to imagecontainer, because apply not yet implemented in sdata
     ic = sq.im.ImageContainer(sdata[layer], layer=layer)
@@ -550,7 +571,7 @@ def clahe_processing(
             chunks=chunksize_clahe,
             lazy=True,
             depth=depth,
-            boundary='reflect'
+            boundary="reflect",
         )
 
         # squeeze channel dim and z-dimension
@@ -612,16 +633,16 @@ def segmentation_cellpose(
     ic = sq.im.ImageContainer(sdata[layer], layer=layer)
 
     # crd is specified on original uncropped pixel coordinates
-    # need to substract possible translation, because we use crd to crop imagecontainer, which does not take 
+    # need to substract possible translation, because we use crd to crop imagecontainer, which does not take
     # translation into account
     if crd:
-        crd=_substract_translation_crd( sdata[layer], crd )
+        crd = _substract_translation_crd(sdata[layer], crd)
     if crd:
-        x0=crd[0]
-        x_size=crd[1]-crd[0]
-        y0=crd[2]
-        y_size=crd[3]-crd[2]
-        ic = ic.crop_corner(y=y0, x=x0, size=( y_size, x_size ) )
+        x0 = crd[0]
+        x_size = crd[1] - crd[0]
+        y0 = crd[2]
+        y_size = crd[3] - crd[2]
+        ic = ic.crop_corner(y=y0, x=x0, size=(y_size, x_size))
 
         # rechunk if you take crop, in order to be able to save as spatialdata object.
         # TODO check if this still necessary
@@ -649,10 +670,10 @@ def segmentation_cellpose(
     )
 
     if crd:
-        tx=tx+crd[0]
-        ty=ty+crd[2]
+        tx = tx + crd[0]
+        ty = ty + crd[2]
 
-    translation = Translation([tx, ty ], axes=('x', 'y'))
+    translation = Translation([tx, ty], axes=("x", "y"))
 
     temp = ic.data.rename_dims({"channels": "c"})
     spatial_label = spatialdata.models.Labels2DModel.parse(
@@ -682,7 +703,7 @@ def segmentation_cellpose(
     return sdata
 
 
-def imageContainerToSData( # TODO: simplify this function (in its most general case the transformations may not be correct)
+def imageContainerToSData(  # TODO: simplify this function (in its most general case the transformations may not be correct)
     ic,
     trf,
     sdata=None,
@@ -728,8 +749,8 @@ def _apply_transform(si: SpatialImage) -> Tuple[SpatialImage, np.ndarray, np.nda
 
     # Translate
     tx, ty = _get_translation(si)
-    x_coords = xr.DataArray(tx + np.arange(si.sizes['x'], dtype="float64"), dims="x")
-    y_coords = xr.DataArray(ty + np.arange(si.sizes['y'], dtype="float64"), dims="y")
+    x_coords = xr.DataArray(tx + np.arange(si.sizes["x"], dtype="float64"), dims="x")
+    y_coords = xr.DataArray(ty + np.arange(si.sizes["y"], dtype="float64"), dims="y")
     si = si.assign_coords({"x": x_coords, "y": y_coords})
     # QUESTION: should we set the resulting SpatialImage's transformation matrix to the
     # identity matrix too, for consistency? If so we have to keep track of it too for restoring later.
@@ -737,7 +758,9 @@ def _apply_transform(si: SpatialImage) -> Tuple[SpatialImage, np.ndarray, np.nda
     return si, x_orig_coords, y_orig_coords
 
 
-def _unapply_transform(si: SpatialImage, x_coords: np.ndarray, y_coords: np.ndarray) -> SpatialImage:
+def _unapply_transform(
+    si: SpatialImage, x_coords: np.ndarray, y_coords: np.ndarray
+) -> SpatialImage:
     """
     Restore the coordinates which were temporarily modified via _apply_transform().
     """
@@ -796,24 +819,21 @@ def segmentationPlot(
 
         # Contrast enhanced image
         si.isel(c=ch).squeeze().sel(
-            x=slice(crd[0], crd[1]),
-            y=slice(crd[2], crd[3])
+            x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
         ).plot.imshow(cmap="gray", robust=True, ax=ax[0], add_colorbar=False)
 
         # Contrast enhanced image with segmentation shapes overlaid on top of it
         si.isel(c=ch).squeeze().sel(
-            x=slice(crd[0], crd[1]),
-            y=slice(crd[2], crd[3])
+            x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
         ).plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
-        sdata[shapes_layer].cx[crd[0] : crd[1],
-                               crd[2] : crd[3]].plot(
-                                                            ax=ax[1],
-                                                            edgecolor="white",
-                                                            linewidth=1,
-                                                            alpha=0.5,
-                                                            legend=True,
-                                                            aspect=1,
-                                                        )
+        sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+            ax=ax[1],
+            edgecolor="white",
+            linewidth=1,
+            alpha=0.5,
+            legend=True,
+            aspect=1,
+        )
         for i in range(len(ax)):
             ax[i].axes.set_aspect("equal")
             ax[i].set_xlim(crd[0], crd[1])
@@ -962,7 +982,7 @@ def create_voronoi_boundaries(
     expanded_layer_name = "expanded_cells" + str(radius)
     # sdata[shape_layer].index = list(map(str, sdata[shape_layer].index))
 
-    si = sdata[[*sdata.images][0]] 
+    si = sdata[[*sdata.images][0]]
 
     # CHECKME: below we specify a boundary rectangle the size of the uncropped raw input image that was segmented.
     # Is that okay, or should we try to specify a "tight" boundary rectangle if the segmentation was only run on
@@ -971,10 +991,10 @@ def create_voronoi_boundaries(
     margin = 200  # CHECKME: needed? why are margins not applied symmetrical along 4 sides of the boundary rectangle?
     boundary = Polygon(
         [
-            (0                     , 0),
-            (si.sizes['x'] + margin, 0),
-            (si.sizes['x'] + margin, si.sizes['y'] + margin),
-            (0                     , si.sizes['y'] + margin),
+            (0, 0),
+            (si.sizes["x"] + margin, 0),
+            (si.sizes["x"] + margin, si.sizes["y"] + margin),
+            (0, si.sizes["y"] + margin),
         ]
     )
 
@@ -1151,7 +1171,7 @@ def allocation(
     # Creating masks from polygons. TODO decide if you want to do this, even if voronoi is not calculated...
     # This is computationaly not heavy, but could take some ram,
     # because it creates image-size array of masks in memory
-    #I guess not if no voronoi was created. 
+    # I guess not if no voronoi was created.
     print("creating masks from polygons")
     masks = rasterio.features.rasterize(
         zip(
@@ -1225,40 +1245,44 @@ def allocation(
         adata, region_key="region", region=1, instance_key="instance"
     )
 
-    sdata=_filter_shapes( sdata, filtered_name='segmentation' )
+    sdata = _filter_shapes(sdata, filtered_name="segmentation")
 
     return sdata
 
 
-def _filter_shapes( sdata: SpatialData, filtered_name:str ):
-
+def _filter_shapes(sdata: SpatialData, filtered_name: str):
     for _shapes_layer in [*sdata.shapes]:
-        if 'filtered' not in _shapes_layer:
+        if "filtered" not in _shapes_layer:
             print(_shapes_layer)
             sdata[_shapes_layer].index = list(map(str, sdata[_shapes_layer].index))
-            filtered_indexes=~np.isin(sdata[_shapes_layer].index.values.astype(int), sdata.table.obs.index.values.astype(int))
+            filtered_indexes = ~np.isin(
+                sdata[_shapes_layer].index.values.astype(int),
+                sdata.table.obs.index.values.astype(int),
+            )
 
-            if sum( filtered_indexes )!=0:
+            if sum(filtered_indexes) != 0:
                 sdata.add_shapes(
                     name=f"filtered_{filtered_name}_{_shapes_layer}",
                     shapes=spatialdata.models.ShapesModel.parse(
-                        sdata[_shapes_layer][ filtered_indexes ]
+                        sdata[_shapes_layer][filtered_indexes]
                     ),
                     overwrite=True,
                 )
 
-            kept_indexes=np.isin(sdata[_shapes_layer].index.values.astype(int), sdata.table.obs.index.values.astype(int))
+            kept_indexes = np.isin(
+                sdata[_shapes_layer].index.values.astype(int),
+                sdata.table.obs.index.values.astype(int),
+            )
             # we assume that sum(kept_indexes)!=0, i.e. that we did not filter all cells
             sdata.add_shapes(
                 name=_shapes_layer,
                 shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[_shapes_layer][ kept_indexes]
+                    sdata[_shapes_layer][kept_indexes]
                 ),
                 overwrite=True,
             )
 
     return sdata
-
 
 
 def extract_boundaries_from_geometry_collection(geometry):
@@ -1304,15 +1328,16 @@ def sanity_plot_transcripts_matrix(
     if crd is None:
         crd = [
             tx,
-            tx + xarray.sizes['x'],
+            tx + xarray.sizes["x"],
             ty,
-            ty + xarray.sizes['y'],
+            ty + xarray.sizes["y"],
         ]
 
     xarray, x_coords_orig, y_coords_orig = _apply_transform(xarray)
 
     xarray.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-        cmap=cmap, robust=True, ax=ax, add_colorbar=False)
+        cmap=cmap, robust=True, ax=ax, add_colorbar=False
+    )
 
     xarray = _unapply_transform(xarray, x_coords_orig, y_coords_orig)
 
@@ -1421,18 +1446,20 @@ def plot_control_transcripts(blurred, sdata, layer: Optional[str] = None, crd=No
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 20))
     if crd:
-        ax[0].imshow(blurred[crd[2] : crd[3], crd[0] : crd[1]], cmap="magma", vmax=5, extent=[crd[0],crd[1],crd[3],crd[2]])
+        ax[0].imshow(
+            blurred[crd[2] : crd[3], crd[0] : crd[1]],
+            cmap="magma",
+            vmax=5,
+            extent=[crd[0], crd[1], crd[3], crd[2]],
+        )
         print(_get_translation(si))
-        si.squeeze().sel(
-            x=slice(crd[0], crd[1]),
-            y=slice(crd[2], crd[3])
-        ).plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
+        si.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
+            cmap="gray", robust=True, ax=ax[1], add_colorbar=False
+        )
     else:
         ax[0].imshow(blurred, cmap="magma", vmax=5)
         print(_get_translation(si))
-        si.squeeze().plot.imshow(
-            cmap="gray", robust=True, ax=ax[1], add_colorbar=False
-        )
+        si.squeeze().plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
 
     ax[1].axes.set_aspect("equal")
     ax[1].invert_yaxis()
@@ -1441,6 +1468,7 @@ def plot_control_transcripts(blurred, sdata, layer: Optional[str] = None, crd=No
     ax[1].set_title("Corrected image")
 
     si = _unapply_transform(si, x_coords_orig, y_coord_orig)
+
 
 def analyse_genes_left_out(sdata, df):
     """This function"""
@@ -1479,27 +1507,27 @@ def plot_shapes(  # FIXME: rename, this does not always plot a shapes layer anym
     column: Optional[str] = None,
     cmap: str = "magma",
     img_layer: Optional[str] = None,
-    channel: Optional[int]=None,
+    channel: Optional[int] = None,
     shapes_layer: Optional[str] = "segmentation_mask_boundaries",
     alpha: float = 0.5,
     crd=None,
-    output: Optional[str|Path] = None,
+    output: Optional[str | Path] = None,
     vmin=None,
     vmax=None,
     plot_filtered=False,
-    aspect:str="equal",
+    aspect: str = "equal",
     figsize=(20, 20),
 ) -> None:
     """
     This function plots an sdata object, with the cells on top. On default it plots the image layer that was added last.
-    The default color is blue if no color is given as input. 
-    Column: determines based on which column the cells need to be colored. Can be an obs column or a var column. 
+    The default color is blue if no color is given as input.
+    Column: determines based on which column the cells need to be colored. Can be an obs column or a var column.
     img_layer: the image layer that needs to be plotted, the last on on default
-    shapes_layer: which shapes to plot, the default is nucleus_boundaries, but when performing an expansion it can be another layer. 
-    alpha: the alpha-parameter of matplotlib: transperancy of the cells 
+    shapes_layer: which shapes to plot, the default is nucleus_boundaries, but when performing an expansion it can be another layer.
+    alpha: the alpha-parameter of matplotlib: transperancy of the cells
     crd: the crop that needs to be plotted, if none is given, the whole region is plotted, list of four coordinates
     output: whether you want to save it as an output or not, default is none and then plot is shown.
-    vmin/vmax: adapting the color scale for continous data: give the percentile for which to color min and max. 
+    vmin/vmax: adapting the color scale for continous data: give the percentile for which to color min and max.
     ax: whne wanting to add the plot to another plot
     plot_filtered: whether or not to plot the cells that were filtered out during previous steps, this is a control function.
     """
@@ -1512,7 +1540,7 @@ def plot_shapes(  # FIXME: rename, this does not always plot a shapes layer anym
     si, x_coords_orig, y_coords_orig = _apply_transform(si)
 
     image_boundary = _get_image_boundary(si)
- 
+
     if crd is not None:
         _crd = crd
         crd = overlapping_region_2D(crd, image_boundary)
@@ -1528,7 +1556,7 @@ def plot_shapes(  # FIXME: rename, this does not always plot a shapes layer anym
     # if crd is None, set crd equal to image_boundary
     else:
         crd = image_boundary
-    size_im=(crd[1]-crd[0])*(crd[3]-crd[2])
+    size_im = (crd[1] - crd[0]) * (crd[3] - crd[2])
     if column is not None:
         if column + "_colors" in sdata.table.uns:
             cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
@@ -1556,7 +1584,6 @@ def plot_shapes(  # FIXME: rename, this does not always plot a shapes layer anym
         vmin = np.percentile(column, vmin)
     if vmax != None:
         vmax = np.percentile(column, vmax)
-    
 
     channels = [channel] if channel is not None else si.c.data
 
@@ -1572,7 +1599,7 @@ def plot_shapes(  # FIXME: rename, this does not always plot a shapes layer anym
                 ax=ax,
                 edgecolor="white",
                 column=column,
-                linewidth=1 if size_im< 5000*10000 else 0,
+                linewidth=1 if size_im < 5000 * 10000 else 0,
                 alpha=alpha,
                 legend=True,
                 aspect=1,
@@ -1582,15 +1609,15 @@ def plot_shapes(  # FIXME: rename, this does not always plot a shapes layer anym
             )
             if plot_filtered:
                 for i in [*sdata.shapes]:
-                    if 'filtered' in i:
+                    if "filtered" in i:
                         sdata[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
-                        ax=ax,
-                        edgecolor="red",
-                        linewidth=1,
-                        alpha=alpha,
-                        legend=True,
-                        aspect=1,
-                        cmap='gray',
+                            ax=ax,
+                            edgecolor="red",
+                            linewidth=1,
+                            alpha=alpha,
+                            legend=True,
+                            aspect=1,
+                            cmap="gray",
                         )
         ax.axes.set_aspect(aspect)
         ax.set_xlim(crd[0], crd[1])
@@ -1665,7 +1692,7 @@ def preprocessAdata(
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
     # Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too!
 
-    sdata=_filter_shapes( sdata, filtered_name='low_counts' )
+    sdata = _filter_shapes(sdata, filtered_name="low_counts")
 
     # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
     _back_sdata_table_to_zarr(sdata)
@@ -1744,7 +1771,7 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
     ## TODO: Look for a better way of doing this!
     sdata.table = spatialdata.models.TableModel.parse(table)
 
-    sdata=_filter_shapes( sdata, filtered_name='size' )
+    sdata = _filter_shapes(sdata, filtered_name="size")
 
     filtered = start - table.shape[0]
     print(str(filtered) + " cells were filtered out based on size.")
@@ -1916,7 +1943,9 @@ def scoreGenesPlot(
     colors = np.concatenate(
         (plt.get_cmap("tab20c")(np.arange(20)), plt.get_cmap("tab20b")(np.arange(20)))
     )
-    colors = [mpl.colors.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
+    colors = [
+        mpl.colors.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)
+    ]
 
     # Plot cleanliness and leiden next to annotation
     sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=False)
@@ -2108,7 +2137,9 @@ def clustercleanliness(
                 plt.get_cmap("tab20b")(np.arange(20)),
             )
         )
-        colors = [mpl.colors.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)]
+        colors = [
+            mpl.colors.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)
+        ]
 
     sdata.table.uns["annotation_colors"] = colors
 
@@ -2431,28 +2462,35 @@ def read_in_zarr_from_path(
 
 def plot_image_container(  # TODO: rename since it doesn't plot ImageContainers anymore, or remove altogether
     sdata: SpatialData,
-    output_path: Optional[str|Path] =None,
-    crd:Optional[ List[int] ]=None,
-    layer:str="image",
+    output_path: Optional[str | Path] = None,
+    crd: Optional[List[int]] = None,
+    layer: str = "image",
     channel: Optional[int] = None,
     aspect: str = "equal",
     figsize: Tuple[int] = (10, 10),
 ):
-    plot_shapes(sdata, output=output_path, crd=crd, img_layer=layer, shapes_layer=None, channel=channel, aspect=aspect, figsize=figsize)
- 
+    plot_shapes(
+        sdata,
+        output=output_path,
+        crd=crd,
+        img_layer=layer,
+        shapes_layer=None,
+        channel=channel,
+        aspect=aspect,
+        figsize=figsize,
+    )
+
 
 def _get_image_boundary(spatial_image):
     tx, ty = _get_translation(spatial_image)
-    width = spatial_image.sizes['x']
-    height = spatial_image.sizes['y']
-    return[ tx, tx + width,
-            ty, ty + height ]
+    width = spatial_image.sizes["x"]
+    height = spatial_image.sizes["y"]
+    return [tx, tx + width, ty, ty + height]
 
 
 def _get_translation(spatial_image):
     transform_matrix = get_transformation(spatial_image).to_affine_matrix(
-        input_axes=("x", "y"),
-        output_axes=("x", "y")
+        input_axes=("x", "y"), output_axes=("x", "y")
     )
 
     # Extract translation components from transformation matrix
