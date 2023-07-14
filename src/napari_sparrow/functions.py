@@ -1225,12 +1225,12 @@ def allocation(
         adata, region_key="region", region=1, instance_key="instance"
     )
 
-    sdata=_parse_shapes( sdata, filtered_name='segmentation' )
+    sdata=_filter_shapes( sdata, filtered_name='segmentation' )
 
     return sdata
 
 
-def _parse_shapes( sdata: SpatialData, filtered_name:str ):
+def _filter_shapes( sdata: SpatialData, filtered_name:str ):
 
     for _shapes_layer in [*sdata.shapes]:
         if 'filtered' not in _shapes_layer:
@@ -1665,7 +1665,7 @@ def preprocessAdata(
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
     # Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too!
 
-    sdata=_parse_shapes( sdata, filtered_name='low_counts' )
+    sdata=_filter_shapes( sdata, filtered_name='low_counts' )
 
     # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
     _back_sdata_table_to_zarr(sdata)
@@ -1744,7 +1744,7 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
     ## TODO: Look for a better way of doing this!
     sdata.table = spatialdata.models.TableModel.parse(table)
 
-    sdata=_parse_shapes( sdata, filtered_name='size' )
+    sdata=_filter_shapes( sdata, filtered_name='size' )
 
     filtered = start - table.shape[0]
     print(str(filtered) + " cells were filtered out based on size.")

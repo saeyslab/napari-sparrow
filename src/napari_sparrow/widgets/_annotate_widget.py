@@ -68,14 +68,14 @@ def annotate_widget(
 
     # Load data from previous layers
     try:
-        segment_layer=viewer.layers[utils.SEGMENT]
+        allocation_layer=viewer.layers[utils.ALLOCATION]
     except KeyError:
-        raise RuntimeError(f"Layer with name '{utils.SEGMENT}' is not available.")
+        raise RuntimeError(f"Layer with name '{utils.ALLOCATION}' is not available.")
 
     try:
-        segment_layer.metadata["adata"]
-        sdata=segment_layer.metadata["sdata"]
-        cfg = segment_layer.metadata["cfg"]
+        allocation_layer.metadata["adata"]
+        sdata=allocation_layer.metadata["sdata"]
+        cfg = allocation_layer.metadata["cfg"]
     except KeyError:
         raise RuntimeError(f"Please run allocation step before running annotation step.")
 
@@ -111,6 +111,6 @@ def annotate_widget(
 
         show_info("Annotation finished")
 
-    worker.returned.connect(lambda data: add_metadata(data, cfg, utils.SEGMENT))
+    worker.returned.connect(lambda data: add_metadata(data, cfg, utils.ALLOCATION))
     show_info("Annotation started")
     worker.start()

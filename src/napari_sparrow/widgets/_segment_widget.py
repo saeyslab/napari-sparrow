@@ -5,8 +5,6 @@ microscopy images with nuclear stains.
 Segmentation is performed with Squidpy ImageContainer and segment.
 """
 
-
-import os
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -14,14 +12,12 @@ import napari
 import napari.layers
 import napari.types
 import numpy as np
-import squidpy.im as sq
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
 from omegaconf.dictconfig import DictConfig
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
-from geopandas.geodataframe import GeoDataFrame
 
 import napari_sparrow.utils as utils
 from napari_sparrow.functions import (
@@ -163,7 +159,7 @@ def segment_widget(
     cfg.segmentation.voronoi_radius = voronoi_radius
     # we override default settings, because for plugin, we want to keep things in memory,
     # otherwise export step would redo segmentation step.
-    cfg.segmentation.lazy=False
+    cfg.segmentation.lazy = False
 
     fn_kwargs["cfg"] = cfg
 
@@ -214,6 +210,8 @@ def segment_widget(
         """
 
         viewer.layers[layer_name].metadata["sdata"] = sdata
+        # we need the original shapes, in order for next step (allocation) to be able to run multiple times
+        viewer.layers[layer_name].metadata["shapes"] = sdata.shapes.copy()
         viewer.layers[layer_name].metadata["cfg"] = cfg
 
         show_info("Segmentation finished")

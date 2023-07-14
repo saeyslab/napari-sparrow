@@ -6,5 +6,6 @@ LOAD= "raw_image"
 IMAGE = "image"
 CLEAN = "cleaned"
 SEGMENT = "segment"
+ALLOCATION = "allocation"
 
 __all__ = ["get_pylogger", "parse_subset", "ic_to_da", "get_ic"]

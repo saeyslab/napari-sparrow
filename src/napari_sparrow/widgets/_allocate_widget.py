@@ -14,6 +14,7 @@ from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
 from omegaconf.dictconfig import DictConfig
+import spatialdata
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
@@ -48,13 +49,13 @@ def _allocation_worker(
 
 @magic_factory(
     call_button="Allocate",
-    transcripts_file={"widget_type": "FileEdit" },
-    transform_matrix={"widget_type": "FileEdit" },
+    transcripts_file={"widget_type": "FileEdit"},
+    transform_matrix={"widget_type": "FileEdit"},
 )
 def allocate_widget(
     viewer: napari.Viewer,
     transcripts_file: pathlib.Path = pathlib.Path(""),
-    delimiter: str = '\t',
+    delimiter: str = "\t",
     header: bool = False,
     column_x: int = 0,
     column_y: int = 1,
@@ -79,15 +80,27 @@ def allocate_widget(
 
     # Load data from previous layers
     try:
-        segment_layer=viewer.layers[utils.SEGMENT]
+        segment_layer = viewer.layers[utils.SEGMENT]
     except:
         raise RuntimeError(f"Layer with name '{utils.SEGMENT}' is not available")
 
     try:
         sdata = segment_layer.metadata["sdata"]
+        shapes = segment_layer.metadata["shapes"]
         cfg = segment_layer.metadata["cfg"]
     except KeyError:
-        raise RuntimeError(f"Please run segmentation step before running allocation step.")
+        raise RuntimeError(
+            f"Please run segmentation step before running allocation step."
+        )
+
+    # need to add original unfiltered shapes to sdata object at the beginning of the allocation step.
+    # otherwise polygons that were filtered out would not be available any more if you do a rerun of the allocation step.
+    for shapes_name in [*shapes]:
+        sdata.add_shapes(
+            name=shapes_name,
+            shapes=spatialdata.models.ShapesModel.parse(shapes[shapes_name]),
+            overwrite=True,
+        )
 
     # napari widget does not support the type Optional[int], therefore only choose whether there is a header or not,
     # and do same for midcount column
@@ -170,6 +183,6 @@ def allocate_widget(
         # Options for napari-spatialData plugin
         viewer.scale_bar.visible = True
 
-    worker.returned.connect(lambda data: add_metadata(data, cfg, utils.SEGMENT))
+    worker.returned.connect(lambda data: add_metadata(data, cfg, f"{utils.ALLOCATION}"))
     show_info("Allocation started")
     worker.start()
