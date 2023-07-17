@@ -14,8 +14,8 @@ def cfg_pipeline_global() -> DictConfig:
             config_name="pipeline",
             overrides=[
                 "dataset=resolve_liver",
-                "segmentation=watershed",
-                "dataset.image=${dataset.data_dir}/subset_20272_slide1_A1-1_DAPI.tiff",
+                "segmentation=cellpose",
+                "dataset.image=${dataset.data_dir}/20272_slide1_A1-1_DAPI.tiff",
             ],
             return_hydra_config=True,
         )

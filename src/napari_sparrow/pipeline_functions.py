@@ -30,6 +30,7 @@ def load(cfg: DictConfig) -> SpatialData:
         input=filename_pattern,
         output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
         layer_name=layer_name,
+        crd=cfg.clean.crop_param,
         chunks=1024,  # TODO make chunks configurable
     )
     return sdata
