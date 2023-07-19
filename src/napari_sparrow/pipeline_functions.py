@@ -9,10 +9,10 @@ os.environ["USE_PYGEOS"] = "0"
 from omegaconf import DictConfig, ListConfig
 from spatialdata import SpatialData
 
-from napari_sparrow import functions as fc
-from napari_sparrow import utils
+import napari_sparrow as nas
+from napari_sparrow.utils import get_pylogger
 
-log = utils.get_pylogger(__name__)
+log = get_pylogger(__name__)
 
 
 def load(cfg: DictConfig) -> SpatialData:
@@ -26,7 +26,7 @@ def load(cfg: DictConfig) -> SpatialData:
     else:
         filename_pattern=cfg.dataset.image
 
-    sdata = fc.create_sdata(
+    sdata = nas.io.create_sdata(
         input=filename_pattern,
         output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
         layer_name=layer_name,
@@ -39,7 +39,7 @@ def load(cfg: DictConfig) -> SpatialData:
 def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Cleaning step, the second step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
 
-    fc.plot_image_container(
+    nas.pl.plot_image_container(
         sdata=sdata,
         output_path=os.path.join(cfg.paths.output_dir, "original"),
         crd=cfg.clean.small_size_vis,
@@ -48,7 +48,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
-        sdata, flatfields = fc.tilingCorrection(
+        sdata, flatfields = nas.im.tilingCorrection(
             sdata=sdata,
             crd=cfg.clean.crop_param
             if cfg.clean.crop_param is not None
@@ -62,14 +62,14 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
             for i,channel in enumerate(sdata[ "tiling_correction" ].c.data):
 
-                fc.tilingCorrectionPlot(
+                nas.pl.tilingCorrectionPlot(
                     img=sdata[ "tiling_correction" ].isel(c=channel).to_numpy(),
                     flatfield=flatfields[i],
                     img_orig=sdata[ "raw_image" ].isel(c=channel).to_numpy(),
                     output=f"{cfg.paths.tiling_correction}_{channel}_",
                 )
 
-        fc.plot_image_container(
+        nas.pl.plot_image_container(
             sdata=sdata,
             output_path=os.path.join(cfg.paths.output_dir, "tiling_correction"),
             crd=cfg.clean.small_size_vis,
@@ -79,12 +79,12 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # tophat filtering
 
     if cfg.clean.tophatFiltering:
-        sdata = fc.tophat_filtering(
+        sdata = nas.im.tophat_filtering(
             sdata=sdata,
             size_tophat=cfg.clean.size_tophat,
         )
 
-        fc.plot_image_container(
+        nas.pl.plot_image_container(
             sdata=sdata,
             output_path=os.path.join(cfg.paths.output_dir, "tophat_filtered"),
             crd=cfg.clean.small_size_vis,
@@ -94,13 +94,13 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # clahe processing
 
     if cfg.clean.claheProcessing:
-        sdata = fc.clahe_processing(
+        sdata = nas.im.clahe_processing(
             sdata=sdata,
             contrast_clip=cfg.clean.contrast_clip,
             chunksize_clahe=cfg.clean.chunksize_clahe,
         )
 
-        fc.plot_image_container(
+        nas.pl.plot_image_container(
             sdata=sdata,
             output_path=os.path.join(cfg.paths.output_dir, "clahe"),
             crd=cfg.clean.small_size_vis,
@@ -114,7 +114,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Segmentation step, the third step of the pipeline, performs cellpose segmentation and creates masks."""
 
     # Perform segmentation
-    sdata = fc.segmentation_cellpose(
+    sdata = nas.im.segmentation_cellpose(
         sdata=sdata,
         output_layer=cfg.segmentation.output_layer,
         crd=cfg.segmentation.crop_param,
@@ -129,12 +129,13 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         lazy=cfg.segmentation.lazy,
     )
 
+    shapes_layer = None
     for key in sdata.shapes.keys():
         if "boundaries" in key:
             shapes_layer = key
             break
 
-    fc.segmentationPlot(
+    nas.pl.segmentationPlot(
         sdata=sdata,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
@@ -144,12 +145,12 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     )
 
     if cfg.segmentation.voronoi_radius:
-        sdata = fc.create_voronoi_boundaries(
+        sdata = nas.sh.create_voronoi_boundaries(
             sdata,
             radius=cfg.segmentation.voronoi_radius,
             shapes_layer=shapes_layer,
         )
-        fc.segmentationPlot(
+        nas.pl.segmentationPlot(
             sdata=sdata,
             crd=cfg.segmentation.small_size_vis
             if cfg.segmentation.small_size_vis is not None
@@ -164,7 +165,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Allocation step, the fourth step of the pipeline, creates the adata object from the mask and allocates the transcripts from the supplied file."""
 
-    sdata = fc.read_transcripts(
+    sdata = nas.io.read_transcripts(
         sdata,
         path_count_matrix=cfg.dataset.coords,
         path_transform_matrix=cfg.dataset.transform_matrix,
@@ -185,12 +186,12 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
                 shapes_layer = key
                 break
 
-    sdata = fc.allocation(
+    sdata = nas.tb.allocation(
         sdata=sdata,
         shapes_layer=shapes_layer,
     )
 
-    fc.plot_shapes(
+    nas.pl.plot_shapes(
         sdata,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
@@ -200,18 +201,18 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     )
 
     # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
-    sdata = fc.preprocessAdata(
+    sdata = nas.tb.preprocessAdata(
         sdata,
         nuc_size_norm=cfg.allocate.nuc_size_norm,
         shapes_layer=shapes_layer,
     )
 
-    fc.preprocesAdataPlot(
+    nas.pl.preprocesAdataPlot(
         sdata,
         output=cfg.paths.preprocess_adata,
     )
 
-    fc.plot_shapes(
+    nas.pl.plot_shapes(
         sdata,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
@@ -224,13 +225,13 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     )
 
     # Filter all cells based on size and distance
-    sdata = fc.filter_on_size(
+    sdata = nas.tb.filter_on_size(
         sdata,
         min_size=cfg.allocate.min_size,
         max_size=cfg.allocate.max_size,
     )
 
-    fc.plot_shapes(
+    nas.pl.plot_shapes(
         sdata,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
@@ -244,19 +245,19 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     print("Start clustering")
 
-    sdata = fc.clustering(
+    sdata = nas.tb.clustering(
         sdata,
         pcs=cfg.allocate.pcs,
         neighbors=cfg.allocate.neighbors,
         cluster_resolution=cfg.allocate.cluster_resolution,
     )
 
-    fc.clustering_plot(
+    nas.pl.clustering_plot(
         sdata,
         output=cfg.paths.cluster,
     )
 
-    fc.plot_shapes(
+    nas.pl.plot_shapes(
         sdata,
         shapes_layer=shapes_layer,
         column=cfg.allocate.leiden_column,
@@ -285,7 +286,7 @@ def annotate(
     )
 
     # Load marker genes, replace columns with different name, delete genes from list
-    mg_dict, scoresper_cluster = fc.scoreGenes(
+    mg_dict, scoresper_cluster = nas.tb.scoreGenes(
         sdata=sdata,
         path_marker_genes=cfg.dataset.markers,
         delimiter=cfg.annotate.delimiter,
@@ -302,7 +303,7 @@ def annotate(
                 shapes_layer = key
                 break
 
-    fc.scoreGenesPlot(
+    nas.pl.scoreGenesPlot(
         sdata=sdata,
         scoresper_cluster=scoresper_cluster,
         shapes_layer=shapes_layer,
@@ -322,7 +323,7 @@ def visualize(
 
     # Perform correction for transcripts (and corresponding celltypes) that occur in all cells and are overexpressed
     if "correct_marker_genes_dict" in cfg.visualize:
-        sdata = fc.correct_marker_genes(
+        sdata = nas.tb.correct_marker_genes(
             sdata,
             celltype_correction_dict=cfg.visualize.correct_marker_genes_dict,
         )
@@ -334,7 +335,7 @@ def visualize(
     colors = cfg.visualize.colors if "colors" in cfg.visualize else None
 
     # Check cluster cleanliness
-    sdata, color_dict = fc.clustercleanliness(
+    sdata, color_dict = nas.tb.clustercleanliness(
         sdata,
         genes=list(mg_dict.keys()),
         gene_indexes=celltype_indexes,
@@ -349,7 +350,7 @@ def visualize(
                 shapes_layer = key
                 break
 
-    fc.clustercleanlinessPlot(
+    nas.pl.clustercleanlinessPlot(
         sdata=sdata,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
@@ -360,8 +361,8 @@ def visualize(
     )
 
     # calculate nhood enrichment
-    sdata = fc.enrichment(sdata)
-    fc.enrichment_plot(
+    sdata = nas.tb.enrichment(sdata)
+    nas.pl.enrichment_plot(
         sdata,
         output=cfg.paths.nhood,
     )
