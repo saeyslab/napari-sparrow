@@ -1,4 +1,5 @@
 from typing import Tuple, Optional, List, Dict
+from itertools import chain
 import warnings
 import matplotlib.pyplot as plt
 import matplotlib as mpl
