@@ -10,9 +10,8 @@ from omegaconf import DictConfig, ListConfig
 from spatialdata import SpatialData
 
 import napari_sparrow as nas
-from napari_sparrow.utils import get_pylogger
 
-log = get_pylogger(__name__)
+log = nas.utils.get_pylogger(__name__)
 
 
 def load(cfg: DictConfig) -> SpatialData:
