@@ -6,7 +6,7 @@ import scanpy as sc
 from napari_sparrow.plot._plot import plot_shapes
 
 
-def clustercleanlinessPlot(
+def cluster_cleanliness(
     sdata: SpatialData,
     shapes_layer: str = "segmentation_mask_boundaries",
     crd: Optional[List[int]] = None,

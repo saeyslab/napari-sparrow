@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from spatialdata import SpatialData
 
 
-def clustering_plot(sdata: SpatialData, output: Optional[str] = None) -> None:
+def cluster(sdata: SpatialData, output: Optional[str] = None) -> None:
     """This function plots the clusters and genes ranking"""
 
     # Leiden clustering

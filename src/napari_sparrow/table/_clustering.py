@@ -5,7 +5,7 @@ from napari_sparrow.table._table import _back_sdata_table_to_zarr
 
 # TODO: add type hints
 
-def clustering(
+def cluster(
     sdata: SpatialData, pcs: int, neighbors: int, cluster_resolution: float = 0.8
 ) -> SpatialData:
     """Returns the AnnData object.

@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def tilingCorrectionPlot(
+def tiling_correction(
     img: np.ndarray, flatfield: np.ndarray, img_orig: np.ndarray, output: Optional[str] = None
 ) -> None:
     """Creates the plots based on the correction overlay and the original and corrected images."""

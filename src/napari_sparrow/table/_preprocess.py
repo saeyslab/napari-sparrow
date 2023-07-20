@@ -4,7 +4,7 @@ from napari_sparrow.table._table import _back_sdata_table_to_zarr, _filter_shape
 
 # TODO: add type hinting
 
-def preprocessAdata(
+def preprocess_anndata(
     sdata,
     nuc_size_norm: bool = True,
     n_comps: int = 50,

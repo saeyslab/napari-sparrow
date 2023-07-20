@@ -14,7 +14,7 @@ from napari_sparrow.image._image import _get_translation
 from napari_sparrow.table._table import _filter_shapes
 
 
-def allocation(
+def allocate(
     sdata: SpatialData,
     shapes_layer: str = "segmentation_mask_boundaries",
 ) -> Tuple[SpatialData, DaskDataFrame]:

@@ -5,7 +5,7 @@ from napari_sparrow.table._table import _back_sdata_table_to_zarr
 # TODO: type add type hinting
 
 
-def enrichment(sdata, celltype_column: str = "annotation", seed: int = 0):
+def nhood_enrichment(sdata, celltype_column: str = "annotation", seed: int = 0):
     """Returns the AnnData object.
 
     Performs some adaptations to save the data.

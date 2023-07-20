@@ -10,7 +10,7 @@ from napari_sparrow.shape import intersect_rectangles
 from napari_sparrow.image._image import _apply_transform, _unapply_transform, _get_image_boundary
 
 
-def plot_image_container(  # TODO: rename since it doesn't plot ImageContainers anymore, or remove altogether
+def plot_image(  # TODO: perhaps plot_image and plot_shapes can be merged into 1 function? Of if we keep this function, see if we need to rename it a bit or change its API.
     sdata: SpatialData,
     output_path: Optional[str | Path] = None,
     crd: Optional[List[int]] = None,

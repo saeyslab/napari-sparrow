@@ -7,7 +7,7 @@ import warnings
 from spatialdata.transformations import set_transformation, get_transformation
 
 
-def clahe_processing(
+def enhance_contrast(
     sdata: SpatialData,
     output_layer: str = "clahe",
     contrast_clip: int = 3.5,   # FIXME: is contrast_clip an integer or a float?

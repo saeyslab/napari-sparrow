@@ -21,7 +21,7 @@ def load(cfg: DictConfig) -> SpatialData:
     layer_name = "raw_image"
 
     # cast to list if cfg.dataset.image is a ListConfig object (i.e. for multiple channels)
-    if isinstance( cfg.dataset.image, ListConfig ):
+    if isinstance(cfg.dataset.image, ListConfig):
         filename_pattern=list(cfg.dataset.image)
     else:
         filename_pattern=cfg.dataset.image
@@ -39,7 +39,7 @@ def load(cfg: DictConfig) -> SpatialData:
 def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Cleaning step, the second step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
 
-    nas.pl.plot_image_container(
+    nas.pl.plot_image(
         sdata=sdata,
         output_path=os.path.join(cfg.paths.output_dir, "original"),
         crd=cfg.clean.small_size_vis,
@@ -48,7 +48,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
-        sdata, flatfields = nas.im.tilingCorrection(
+        sdata, flatfields = nas.im.tiling_correction(
             sdata=sdata,
             crd=cfg.clean.crop_param
             if cfg.clean.crop_param is not None
@@ -62,14 +62,14 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
             for i,channel in enumerate(sdata[ "tiling_correction" ].c.data):
 
-                nas.pl.tilingCorrectionPlot(
+                nas.pl.tiling_correction(
                     img=sdata[ "tiling_correction" ].isel(c=channel).to_numpy(),
                     flatfield=flatfields[i],
                     img_orig=sdata[ "raw_image" ].isel(c=channel).to_numpy(),
                     output=f"{cfg.paths.tiling_correction}_{channel}_",
                 )
 
-        nas.pl.plot_image_container(
+        nas.pl.plot_image(
             sdata=sdata,
             output_path=os.path.join(cfg.paths.output_dir, "tiling_correction"),
             crd=cfg.clean.small_size_vis,
@@ -84,23 +84,23 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             size_tophat=cfg.clean.size_tophat,
         )
 
-        nas.pl.plot_image_container(
+        nas.pl.plot_image(
             sdata=sdata,
             output_path=os.path.join(cfg.paths.output_dir, "tophat_filtered"),
             crd=cfg.clean.small_size_vis,
             layer="tophat_filtered",
         )
 
-    # clahe processing
+    # contrast enhancement
 
-    if cfg.clean.claheProcessing:
-        sdata = nas.im.clahe_processing(
+    if cfg.clean.claheProcessing: # TODO: perhaps remove clahe from parameters/options?
+        sdata = nas.im.enhance_contrast(
             sdata=sdata,
             contrast_clip=cfg.clean.contrast_clip,
             chunksize_clahe=cfg.clean.chunksize_clahe,
         )
 
-        nas.pl.plot_image_container(
+        nas.pl.plot_image(
             sdata=sdata,
             output_path=os.path.join(cfg.paths.output_dir, "clahe"),
             crd=cfg.clean.small_size_vis,
@@ -135,7 +135,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             shapes_layer = key
             break
 
-    nas.pl.segmentationPlot(
+    nas.pl.segment(
         sdata=sdata,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
@@ -150,7 +150,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             radius=cfg.segmentation.voronoi_radius,
             shapes_layer=shapes_layer,
         )
-        nas.pl.segmentationPlot(
+        nas.pl.segment(
             sdata=sdata,
             crd=cfg.segmentation.small_size_vis
             if cfg.segmentation.small_size_vis is not None
@@ -186,7 +186,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
                 shapes_layer = key
                 break
 
-    sdata = nas.tb.allocation(
+    sdata = nas.tb.allocate(
         sdata=sdata,
         shapes_layer=shapes_layer,
     )
@@ -201,13 +201,13 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     )
 
     # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
-    sdata = nas.tb.preprocessAdata(
+    sdata = nas.tb.preprocess_anndata(
         sdata,
         nuc_size_norm=cfg.allocate.nuc_size_norm,
         shapes_layer=shapes_layer,
     )
 
-    nas.pl.preprocesAdataPlot(
+    nas.pl.preprocess_anndata(
         sdata,
         output=cfg.paths.preprocess_adata,
     )
@@ -245,14 +245,14 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     print("Start clustering")
 
-    sdata = nas.tb.clustering(
+    sdata = nas.tb.cluster(
         sdata,
         pcs=cfg.allocate.pcs,
         neighbors=cfg.allocate.neighbors,
         cluster_resolution=cfg.allocate.cluster_resolution,
     )
 
-    nas.pl.clustering_plot(
+    nas.pl.cluster(
         sdata,
         output=cfg.paths.cluster,
     )
@@ -286,7 +286,7 @@ def annotate(
     )
 
     # Load marker genes, replace columns with different name, delete genes from list
-    mg_dict, scoresper_cluster = nas.tb.scoreGenes(
+    mg_dict, scoresper_cluster = nas.tb.score_genes(
         sdata=sdata,
         path_marker_genes=cfg.dataset.markers,
         delimiter=cfg.annotate.delimiter,
@@ -303,7 +303,7 @@ def annotate(
                 shapes_layer = key
                 break
 
-    nas.pl.scoreGenesPlot(
+    nas.pl.score_genes(
         sdata=sdata,
         scoresper_cluster=scoresper_cluster,
         shapes_layer=shapes_layer,
@@ -335,7 +335,7 @@ def visualize(
     colors = cfg.visualize.colors if "colors" in cfg.visualize else None
 
     # Check cluster cleanliness
-    sdata, color_dict = nas.tb.clustercleanliness(
+    sdata, color_dict = nas.tb.cluster_cleanliness(
         sdata,
         genes=list(mg_dict.keys()),
         gene_indexes=celltype_indexes,
@@ -350,7 +350,7 @@ def visualize(
                 shapes_layer = key
                 break
 
-    nas.pl.clustercleanlinessPlot(
+    nas.pl.cluster_cleanliness(
         sdata=sdata,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
@@ -361,8 +361,8 @@ def visualize(
     )
 
     # calculate nhood enrichment
-    sdata = nas.tb.enrichment(sdata)
-    nas.pl.enrichment_plot(
+    sdata = nas.tb.nhood_enrichment(sdata)
+    nas.pl.nhood_enrichment(
         sdata,
         output=cfg.paths.nhood,
     )

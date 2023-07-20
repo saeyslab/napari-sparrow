@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from napari_sparrow.image._image import (_get_translation, _apply_transform, _unapply_transform)
 
 
-def plot_control_transcripts(blurred, sdata, layer: Optional[str] = None, crd=None):  # TODO: add type hints
+def transcript_density(blurred, sdata, layer: Optional[str] = None, crd=None):  # TODO: add type hints
     if layer is None:
         layer = [*sdata.images][-1]  # typically layer will be the "clahe" layer
 

@@ -1,5 +1,6 @@
-from pathlib import Path
 from typing import List, Optional, Union
+from pathlib import Path
+import warnings
 import numpy as np
 import dask.array as da
 from dask_image import imread
@@ -145,7 +146,7 @@ def _load_image_to_dask(
 
     elif isinstance(input, (np.ndarray, da.Array)):
         # make sure we have (c,z,y,x)
-        array = _fix_dims(input, dims=dims)
+        array = _fix_dimensions(input, dims=dims)
         if isinstance(array, np.ndarray):
             dask_array = da.from_array(array)
         else:
@@ -163,14 +164,14 @@ def _load_image_to_dask(
         if len(dask_array.shape) == 4:
             # dask_image puts channel dim last
             dims = ["z", "y", "x", "c"]
-            dask_array = _fix_dims(dask_array, dims=dims)
+            dask_array = _fix_dimensions(dask_array, dims=dims)
         elif len(dask_array.shape) == 3:
             # dask_image does not add channel dim for grayscale images
             dims = ["z", "y", "x"]
-            dask_array = _fix_dims(dask_array, dims=dims)
+            dask_array = _fix_dimensions(dask_array, dims=dims)
         elif len(dask_array.shaep) == 2:
             dims = ["y", "x"]
-            dask_array = _fix_dims(dask_array, dims=dims)
+            dask_array = _fix_dimensions(dask_array, dims=dims)
         else:
             raise ValueError(
                 f"Image has shape { dask_array.shape }, while (y, x) is required."
@@ -196,7 +197,7 @@ def _load_image_to_dask(
     return dask_array
 
 
-def _fix_dims(
+def _fix_dimensions(
     array: np.ndarray,
     dims: List[str] = ["c", "z", "y", "x"],
     target_dims: List[str] = ["c", "z", "y", "x"],

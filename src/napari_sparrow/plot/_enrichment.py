@@ -6,7 +6,7 @@ import numpy as np
 from napari_sparrow.table._table import _back_sdata_table_to_zarr
 
 
-def enrichment_plot(
+def nhood_enrichment(
     sdata, celltype_column: str = "annotation", output: Optional[str] = None
 ) -> None:
     """This function plots the nhood enrichment between different celltypes."""

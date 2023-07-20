@@ -12,7 +12,7 @@ from spatialdata.transformations import set_transformation, Translation
 from napari_sparrow.image._image import _substract_translation_crd, _get_translation  
 
 
-def tilingCorrection(
+def tiling_correction(
     sdata: SpatialData,
     tile_size: int = 2144,
     crd: Optional[Tuple[int, int, int, int]] = None,

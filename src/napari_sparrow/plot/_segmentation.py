@@ -8,7 +8,7 @@ from napari_sparrow.image._image import (_get_image_boundary, _apply_transform, 
 from napari_sparrow.shape import intersect_rectangles
 
 
-def segmentationPlot(
+def segment(
     sdata,
     crd=None,
     layer: Optional[str] = None,

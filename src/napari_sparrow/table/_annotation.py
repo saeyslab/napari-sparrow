@@ -10,7 +10,7 @@ import scanpy as sc
 from napari_sparrow.table._table import _back_sdata_table_to_zarr
 
 
-def scoreGenes(
+def score_genes(
     sdata: SpatialData,
     path_marker_genes: str,
     delimiter=",",
@@ -91,7 +91,7 @@ def scoreGenes(
     return genes_dict, scoresper_cluster
 
 
-def clustercleanliness(
+def cluster_cleanliness(
     sdata: SpatialData,
     genes: List[str],
     gene_indexes: Optional[Dict[str, int]] = None,

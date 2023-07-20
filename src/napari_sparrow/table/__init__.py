@@ -1,6 +1,6 @@
-from ._annotation import clustercleanliness, scoreGenes
-from ._enrichment import enrichment
-from ._clustering import clustering
-from ._allocation import allocation
-from ._preprocess import preprocessAdata
+from ._annotation import cluster_cleanliness, score_genes
+from ._enrichment import nhood_enrichment
+from ._clustering import cluster
+from ._allocation import allocate
+from ._preprocess import preprocess_anndata
 from ._table import filter_on_size, correct_marker_genes

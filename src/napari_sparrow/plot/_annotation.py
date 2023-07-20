@@ -10,7 +10,7 @@ from napari_sparrow.plot._plot import plot_shapes
 from napari_sparrow.image._image import _get_image_boundary
 
 
-def scoreGenesPlot(
+def score_genes(
     sdata: SpatialData,
     scoresper_cluster: pd.DataFrame,
     img_layer: Optional[str] = None,
