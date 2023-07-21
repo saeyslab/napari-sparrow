@@ -20,13 +20,11 @@ def transcript_density(blurred, sdata, layer: Optional[str] = None, crd=None):  
             vmax=5,
             extent=[crd[0], crd[1], crd[3], crd[2]],
         )
-        print(_get_translation(si))
         si.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
             cmap="gray", robust=True, ax=ax[1], add_colorbar=False
         )
     else:
         ax[0].imshow(blurred, cmap="magma", vmax=5)
-        print(_get_translation(si))
         si.squeeze().plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
 
     ax[1].axes.set_aspect("equal")
