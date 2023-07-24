@@ -16,7 +16,7 @@ from omegaconf.dictconfig import DictConfig
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow.pipeline_functions import annotate, visualize
+from napari_sparrow.pipeline import annotate, visualize
 
 log = utils.get_pylogger(__name__)
 

@@ -18,7 +18,7 @@ import spatialdata
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow.pipeline_functions import allocate
+from napari_sparrow.pipeline import allocate
 
 log = utils.get_pylogger(__name__)
 
