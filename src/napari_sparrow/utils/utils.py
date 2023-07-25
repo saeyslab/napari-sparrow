@@ -1,8 +1,16 @@
 from typing import List, Any
 
 import numpy as np
+import matplotlib
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+import squidpy as sq
+import scipy
 from shapely.geometry import MultiLineString, LineString
 from geopandas import GeoDataFrame
+from anndata import AnnData
+
 
 def parse_subset(subset):
     """
@@ -32,7 +40,8 @@ def ic_to_da(
         return ic[label].isel({"z": reduce_z, "c:0": 0}).data
     else:
         return ic[label].squeeze(dim=drop_dims).data
-    
+
+
 def linestring_to_arrays(geometries):   
     arrays=[]
     for geometry in geometries: 
@@ -76,6 +85,75 @@ def _get_polygons_in_napari_format(df: GeoDataFrame) -> List:
 
     return polygons
 
+
 def _swap_coordinates(data: list[Any]) -> list[Any]:
     return [[(y, x) for x, y in sublist] for sublist in data]
+
+
+##TODO:rewrite this function
+def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
+    """This function performs segmentation feature extraction and adds cell area and mean intensity to the annData object under obsm segmentation_features."""
+    sq.im.calculate_image_features(
+        adata,
+        ic,
+        layer="raw",
+        features="segmentation",
+        key_added="segmentation_features",
+        features_kwargs={
+            "segmentation": {
+                "label_layer": "segment_cellpose",
+                "props": ["label", "area", "mean_intensity"],
+                "channels": [0],
+            }
+        },
+    )
+
+    return adata
+
+
+def analyse_genes_left_out(sdata, df):
+    """This function"""
+    filtered = pd.DataFrame(
+        sdata.table.X.sum(axis=0)
+        / df.groupby("gene").count()["x"][sdata.table.var.index]
+    )
+    filtered = filtered.rename(columns={"x": "proportion_kept"})
+    filtered["raw_counts"] = df.groupby("gene").count()["x"][sdata.table.var.index]
+    filtered["log_raw_counts"] = np.log(filtered["raw_counts"])
+
+    sns.scatterplot(data=filtered, y="proportion_kept", x="log_raw_counts")
+
+    plt.axvline(filtered["log_raw_counts"].median(), color="green", linestyle="dashed")
+    plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
+    plt.xlim(
+        left=-0.5, right=filtered["log_raw_counts"].quantile(0.99)
+    )  # set y-axis limit from 0 to the 95th percentile of y
+    # show the plot
+    plt.show()
+    r, p = scipy.stats.pearsonr(filtered["log_raw_counts"], filtered["proportion_kept"])
+    sns.regplot(x="log_raw_counts", y="proportion_kept", data=filtered)
+    ax = plt.gca()
+    ax.text(0.7, 0.9, "r={:.2f}, p={:.2g}".format(r, p), transform=ax.transAxes)
+
+    plt.axvline(filtered["log_raw_counts"].median(), color="green", linestyle="dashed")
+    plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
+    plt.show()
+    print("The ten genes with the highest proportion of transcripts filtered out")
+    print(filtered.sort_values(by="proportion_kept")[0:10].iloc[:, 0:2])
+    return filtered
+
+
+def color(_) -> matplotlib.colors.Colormap:
+    """Select random color from set1 colors."""
+    return plt.get_cmap("Set1")(np.random.choice(np.arange(0, 18)))
+
+
+def border_color(r: bool) -> matplotlib.colors.Colormap:
+    """Select border color from tab10 colors or preset color (1, 1, 1, 1) otherwise."""
+    return plt.get_cmap("tab10")(3) if r else (1, 1, 1, 1)
+
+
+def linewidth(r: bool) -> float:
+    """Select linewidth 1 if true else 0.5."""
+    return 1 if r else 0.5
 

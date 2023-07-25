@@ -25,7 +25,7 @@ def check_config(cfg: DictConfig):
     ]
 
     # If cfg.dataset.image is a list of paths, extend the paths_to_check with this list
-    if isinstance(cfg.dataset.image,  ListConfig ):
+    if isinstance(cfg.dataset.image, ListConfig):
         paths_to_check.extend(cfg.dataset.image)
     # Otherwise, just add the single path to paths_to_check
     else:
@@ -39,7 +39,7 @@ def check_config(cfg: DictConfig):
 @hydra.main(version_base="1.2", config_path="configs", config_name="pipeline.yaml")
 def main(cfg: DictConfig) -> None:
     """Main function for the single pipeline which checks the supplied paths first and then calls all five steps from the pipeline functions."""
-    from napari_sparrow import pipeline_functions as pf
+    from napari_sparrow import pipeline as nasp
 
     # Checks the config paths, see the src/napari_sparrow/configs and local configs folder for settings
     check_config(cfg)
@@ -51,22 +51,22 @@ def main(cfg: DictConfig) -> None:
 
     # Load
     log.info("Converting to zarr and (lazy) loading of SpatialData object.")
-    sdata = pf.load(cfg)
+    sdata = nasp.load(cfg)
 
     # Clean
-    sdata = pf.clean(cfg, sdata)
+    sdata = nasp.clean(cfg, sdata)
 
     # Segment
-    sdata = pf.segment(cfg, sdata)
+    sdata = nasp.segment(cfg, sdata)
 
     # Allocate
-    sdata = pf.allocate(cfg, sdata)
+    sdata = nasp.allocate(cfg, sdata)
 
     # Annotate
-    sdata, mg_dict = pf.annotate(cfg, sdata)
+    sdata, mg_dict = nasp.annotate(cfg, sdata)
 
     # Visualize
-    sdata = pf.visualize(cfg, sdata, mg_dict)
+    sdata = nasp.visualize(cfg, sdata, mg_dict)
 
     return
 

@@ -20,11 +20,9 @@ from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
 import napari_sparrow.utils as utils
-from napari_sparrow.functions import (
-    create_sdata,
-    _get_translation,
-)
-from napari_sparrow.pipeline_functions import segment
+from napari_sparrow.io import create_sdata
+from napari_sparrow.image._image import _get_translation
+from napari_sparrow.pipeline import segment
 
 log = utils.get_pylogger(__name__)
 

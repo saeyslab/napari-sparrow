@@ -26,7 +26,8 @@ from pkg_resources import resource_filename
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow.functions import create_sdata, _get_translation
+from napari_sparrow.io import create_sdata
+from napari_sparrow.image._image import _get_translation
 
 log = utils.get_pylogger(__name__)
 
