@@ -1,13 +1,12 @@
-from typing import List, Optional, Union
-from pathlib import Path
 import warnings
-import numpy as np
+from pathlib import Path
+from typing import List, Optional, Union
+
 import dask.array as da
-from dask_image import imread
+import numpy as np
 import spatialdata
-from spatialdata import bounding_box_query
-from spatialdata import SpatialData
-from spatialdata.transformations import get_transformation
+from dask_image import imread
+from spatialdata import SpatialData, bounding_box_query
 
 
 def create_sdata(
@@ -17,30 +16,9 @@ def create_sdata(
     chunks: Optional[int] = None,
     dims: Optional[List[str]] = None,
     crd: Optional[List[int]] = None,
-):
+) -> SpatialData:
     dask_array = _load_image_to_dask(input=input, chunks=chunks, dims=dims)
 
-    # make sure we have ( c, z, y, x )
-    if len(dask_array.shape) == 4:
-        # put channel dimension first (dask image puts channel dim last)
-        dask_array = dask_array.transpose(3, 0, 1, 2)
-    elif len(dask_array.shape) == 3:
-        dask_array = dask_array[None, :, :, :]
-    else:
-        raise ValueError(
-            f"Image has dimension { dask_array.shape }, while (c, z, y, x) is required."
-        )
-
-    if chunks:
-        dask_array = dask_array.rechunk(chunks)
-
-    # perform z-projection
-    if dask_array.shape[1] > 1:
-        dask_array = da.max(dask_array, axis=1)
-
-    # if z-dimension is 1, then squeeze it.
-    else:
-        dask_array = dask_array.squeeze(1)
     sdata = spatialdata.SpatialData()
 
     spatial_image = spatialdata.models.Image2DModel.parse(
@@ -66,10 +44,6 @@ def create_sdata(
         )
         if chunks:
             spatial_image = spatial_image.chunk(chunks)
-
-        transform_matrix = get_transformation(spatial_image).to_affine_matrix(
-            input_axes=("x", "y"), output_axes=("x", "y")
-        )
 
     sdata.add_image(name=layer_name, image=spatial_image)
 
@@ -198,10 +172,10 @@ def _load_image_to_dask(
 
 
 def _fix_dimensions(
-    array: np.ndarray,
+    array: np.ndarray | da.Array,
     dims: List[str] = ["c", "z", "y", "x"],
     target_dims: List[str] = ["c", "z", "y", "x"],
-):
+) -> np.ndarray | da.Array:
     dims = list(dims)
     target_dims = list(target_dims)
 

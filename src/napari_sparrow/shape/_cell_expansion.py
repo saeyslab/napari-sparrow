@@ -1,7 +1,9 @@
-from shapely.geometry import Polygon
-from longsgis import voronoiDiagram4plg
 import geopandas
+from longsgis import voronoiDiagram4plg
+from shapely.geometry import Polygon
 from spatialdata import SpatialData
+
+from napari_sparrow.image._image import _get_translation
 
 
 def create_voronoi_boundaries(
@@ -20,18 +22,16 @@ def create_voronoi_boundaries(
     # sdata[shape_layer].index = list(map(str, sdata[shape_layer].index))
 
     si = sdata[[*sdata.images][0]]
+    # need to add translation in x and y direction to size of the image, 
+    # to account for use case where si is already cropped
+    tx, ty = _get_translation(si)
 
-    # CHECKME: below we specify a boundary rectangle the size of the uncropped raw input image that was segmented.
-    # Is that okay, or should we try to specify a "tight" boundary rectangle if the segmentation was only run on
-    # crop of the image?
-
-    margin = 200  # CHECKME: needed? why are margins not applied symmetrical along 4 sides of the boundary rectangle?
     boundary = Polygon(
         [
-            (0, 0),
-            (si.sizes["x"] + margin, 0),
-            (si.sizes["x"] + margin, si.sizes["y"] + margin),
-            (0, si.sizes["y"] + margin),
+            (tx, ty),
+            (tx+si.sizes["x"], ty),
+            (tx+si.sizes["x"], ty+si.sizes["y"]),
+            (tx, ty+si.sizes["y"]),
         ]
     )
 

@@ -9,8 +9,6 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-os.environ["USE_PYGEOS"] = "0"
-
 import napari
 import napari.layers
 import napari.types

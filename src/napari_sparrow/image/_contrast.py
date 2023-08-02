@@ -1,62 +1,51 @@
-from spatialdata import SpatialData
+import warnings
+
+import cv2
 import dask.array as da
 import spatialdata
-import squidpy as sq
-import cv2
-import warnings
-from spatialdata.transformations import set_transformation, get_transformation
+from spatialdata import SpatialData
+from spatialdata.transformations import get_transformation, set_transformation
 
 
 def enhance_contrast(
     sdata: SpatialData,
     output_layer: str = "clahe",
-    contrast_clip: int = 3.5,   # FIXME: is contrast_clip an integer or a float?
-    chunksize_clahe: int = 10000,
+    contrast_clip: float = 3.5,
+    chunks: int = 10000,
     depth: int = 3000,
 ) -> SpatialData:
-    # TODO take whole image as chunksize + overlap tuning
-
     layer = [*sdata.images][-1]
 
     # set depth
     min_size = min(sdata[layer].sizes["x"], sdata[layer].sizes["y"])
     _depth = depth
     if min_size < depth:
-        if min_size < chunksize_clahe // 4:
+        if min_size < chunks // 4:
             depth = min_size // 4
             warnings.warn(
                 f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'min_size//4 ({depth}')"
             )
 
         else:
-            depth = chunksize_clahe // 4
+            depth = chunks // 4
             warnings.warn(
                 f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'chunksize_clahe//4 ({depth}')"
             )
 
-    # convert to imagecontainer, because apply not yet implemented in sdata
-    ic = sq.im.ImageContainer(sdata[layer], layer=layer)
+    def _apply_clahe(image):
+        clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
+        return clahe.apply(image)
 
     result_list = []
 
     for channel in sdata[layer].c.data:
-        clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
-
-        ic_clahe = ic.apply(
-            {"0": clahe.apply},
-            layer=layer,
-            new_layer=output_layer,
-            drop=True,
-            channel=channel,
-            copy=True,
-            chunks=chunksize_clahe,
-            lazy=True,
-            depth=depth,
-            boundary="reflect",
+        arr = sdata[layer].isel(c=channel).data
+        arr = arr.rechunk(chunks)
+        result = arr.map_overlap(
+            _apply_clahe, dtype=sdata[layer].data.dtype, depth=depth, boundary="reflect"
         )
-
-        # squeeze channel dim and z-dimension
-        result_list.append(ic_clahe["clahe"].data.squeeze(axis=(2, 3)))
+        result = result.rechunk(chunks)
+        result_list.append(result)
 
     result = da.stack(result_list, axis=0)
 

@@ -3,11 +3,7 @@
 defaults:
 - default
 
-# Tiling correction currently requires the crop rectangle to be aligned with tile boundaries
-# (so we need a crop rectangle with coordinates that are a multiple of 2144),
-# and it requires at least 5 tiles for flatfield correction (we pick 2*3=6 tiles here).
-crop_param: [2144, 8576, 4288, 8576]
-
+#crop_param: [ 1000, 9000, 1000, 9000 ]
 size_tophat: 45
 chunksize_clahe: 20000
-small_size_vis: [2200, 8500, 4300, 8500]
+small_size_vis: [5000, 9000, 3000, 6000]

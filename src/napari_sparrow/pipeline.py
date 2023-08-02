@@ -4,8 +4,6 @@ Some steps consist of multiple substeps from the functions file. """
 import os
 from typing import Dict, List, Tuple
 
-os.environ["USE_PYGEOS"] = "0"
-
 from omegaconf import DictConfig, ListConfig
 from spatialdata import SpatialData
 
@@ -29,7 +27,7 @@ def load(cfg: DictConfig) -> SpatialData:
         input=filename_pattern,
         output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
         layer_name=layer_name,
-        crd=cfg.clean.crop_param,
+        crd=None,
         chunks=1024,  # TODO make chunks configurable
     )
     return sdata
@@ -92,11 +90,12 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     # contrast enhancement
 
-    if cfg.clean.claheProcessing: # TODO: perhaps remove clahe from parameters/options?
+    if cfg.clean.contrastEnhancing:
         sdata = nas.im.enhance_contrast(
             sdata=sdata,
             contrast_clip=cfg.clean.contrast_clip,
-            chunksize_clahe=cfg.clean.chunksize_clahe,
+            chunks=cfg.clean.chunksize_clahe,
+            depth=cfg.clean.depth,
         )
 
         nas.pl.plot_image(

@@ -70,7 +70,7 @@ def clean_widget(
     tile_size: int = 2144,
     tophat_filtering_step: bool = True,
     size_tophat: int = 85,
-    clahe_processing_step: bool = True,
+    contrast_enhancing_step: bool = True,
     contrast_clip: float = 3.5,
     chunksize_clahe: int = 20000,
 ):
@@ -87,7 +87,7 @@ def clean_widget(
     cfg.clean.tophatFiltering = tophat_filtering_step
     cfg.clean.size_tophat = size_tophat
 
-    cfg.clean.claheProcessing = clahe_processing_step
+    cfg.clean.contrastEnhancing = contrast_enhancing_step
     cfg.clean.contrast_clip = contrast_clip
     cfg.clean.chunksize_clahe = chunksize_clahe
 

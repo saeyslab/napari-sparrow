@@ -2,6 +2,9 @@
 __version__ = "0.0.1"
 # TODO is __version__ needed/used?
 
+import os
+os.environ["USE_PYGEOS"] = "0"
+
 from . import io
 from . import image as im
 from . import shape as sh
