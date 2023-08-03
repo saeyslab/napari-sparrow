@@ -29,8 +29,8 @@ hpc$ ln -s /path/to/data/folder ./
 
 ## HPC config
 
-Add the following file at `configs/default.yaml`. Make sure to overwrite using the correct paths.
-`paths.log_dir` should be a large storage location for saving all the logs and `paths.data_dir` should be your data folder.
+Follow the instructions as given in the [README.md](../README.md), in the section *(Hydra) CLI*. Please update the `configs/default.yaml` file in the configs folder downloaded locally `configs`:
+
 
 ```yaml
 # @package _global_
@@ -41,8 +41,8 @@ defaults:
 device: cpu
 
 paths:
-  log_dir: ${oc.env:VSC_DATA_VO_USER}/logs/
-  data_dir: ${oc.env:VSC_DATA_VO}/spatial/
+  log_dir: ${oc.env:HOME}/VIB/DATA/logs/
+  data_dir: ${oc.env:HOME}/VIB/DATA/
 
 hydra:
   launcher:
@@ -59,81 +59,88 @@ hydra:
 ## Run a test job locally
 
 Check the configuration has no errors:
-```
-HYDRA_FULL_ERROR=1 sparrow --cfg job
+```bash
+HYDRA_FULL_ERROR=1 sparrow +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow --cfg job
 ```
 
 Run on a dataset on the login node (only for testing, no big jobs!).
 If it fails on `pthread_create()` due to the CPU thread limit on login nodes, you should switch to an interactive cluster (e.g. slaking).
-```
-sparrow +dataset=resolve_liver
+
+```bash
+sparrow +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow  --multirun
 ```
 
 ## Submit batch jobs
 
 Tune the parameters in the local config for the right amount of computational resources.
 You have to pass the `--multirun` flag when submitting a job. For more info, see the documentation of the [Hydra Submitit Launcher plugin](https://hydra.cc/docs/plugins/submitit_launcher/).
-```
-sparrow +dataset=resolve_liver subset=\'0:2144,0:2144\' --multirun
-```
+
 
 ## Organize all experiment configs
 
 You can organize different experiments using the [Experiment pattern](https://hydra.cc/docs/patterns/configuring_experiments/).
 
-You can create new datasets by adding a config .yaml to your local `configs/dataset/` folder. Extend existing configs using the defaults keyword. Make sure that the name of the new dataset is unique.
+See `configs/experiment/resolve_liver.yaml` for an example:
 
 ```yaml
-# e.g. configs/dataset/resolve_liver2.yaml
+# @package _global_
+
+defaults:
+  - override /dataset: resolve_liver
+  - override /segmentation: cellpose_resolve_liver
+  - override /paths: output
+  - override /clean: resolve_liver
+  - override /allocate: resolve_liver
+  - override /annotate: resolve_liver
+  - override /visualize: resolve_liver
+```
+
+You can now run this experiment from the command line:
+
+```bash
+sparrow +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow  --multirun
+```
+
+
+You can create new datasets by adding a config *.yaml* to your local `configs/dataset/` folder. Extend existing configs using the defaults keyword. Make sure that the name of the new dataset is unique:
+
+```yaml
+# e.g. configs/dataset/resolve_liver_2.yaml
 
 defaults:
   - dataset/resolve_liver
 
-data_dir: ${paths.data_dir}/resolve_liver2
-dtype: tiff
-image: ${dataset.data_dir}/33075-974_A2-1_DAPI.tiff
-coords: ${dataset.data_dir}/33075-974_A2-1_results.txt
-brightfield: ${dataset.data_dir}/33075-974_A2-1_brightfield.tiff
-raw: ${dataset.data_dir}/33075-974_A2-1_raw.tiff
-markers: null
+image: ${dataset.data_dir}/20272_slide1_A1-2_DAPI.tiff
+coords: ${dataset.data_dir}/20272_slide1_A1-2_results.txt
 ```
 
-Use this newly defined dataset in a new experiment configuration at `config/experiment/liver_small.yaml`.
+Use this newly defined dataset in a new experiment configuration at `config/experiment/resolve_liver_2.yaml`.
 
 ```yaml
 # @package _global
 
 defaults:
-  - override /dataset: resolve_liver2
-
-subset: '0:2144,0:2144'
+  - override /dataset: resolve_liver_2
+  - override /segmentation: cellpose_resolve_liver
+  - override /paths: output
+  - override /clean: resolve_liver
+  - override /allocate: resolve_liver
+  - override /annotate: resolve_liver
+  - override /visualize: resolve_liver
 ```
 
 Now running the experiment can be done using only the name of the experiment:
-```
-sparrow +experiment=liver_small
+
+```bash
+sparrow +experiment=resolve_liver_2 hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow  --multirun
 ```
 
 By creating multiple experiment configs, experiments can be cleanly defined by composing existing configs and overwriting only a few new parameters.
 
 ## Submit multiple experiments
 
-Multiple experiment can be run using a comma or the [glob syntax]().
-```bash
-sparrow +experiment=liver_small,brain_small -m
-```
+Multiple experiment can be run using a comma:
 
-For large batches, create the an extra folder of configs programmatically using `scripts/create_dataset.py` based on the folder structure in the dataset.
 ```bash
-python scripts/create_dataset.py -f /srv/scratch/data/spatial/resolve_melanoma -c configs/ms_melanoma/dataset
-```
-
-You can then run all are part of the datasets by pointing to this additional config folder.
-```bash
-sparrow -cd configs/ms_melanoma dataset='glob(*A1*)' -m
-```
-
-Alternatively, you can supply argmuments in the commandline using bash functions like find, sed and paste:
-```bash
-sparrow dataset=$(find src/napari_sparrow/configs/dataset/multisample_resolve_melanoma  -name '*.yaml' | sed -E 's@.*/(.*/.*)$@\1@g' | paste -sd ',' -) paths=output -m
+sparrow +experiment=resolve_liver,resolve_liver_2 hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow  --multirun
 ```
