@@ -73,7 +73,7 @@ pip install -e .
 
 ## Input data
 
-Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.irc.ugent.be/public/index.php/s/HrXG9WKqjqHBEzS). The dataet used in the examples is mouse liver A1-1. Please download the DAPI-stained image and the txt file.
+Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.irc.ugent.be/public/index.php/s/HrXG9WKqjqHBEzS). The dataset used in the examples is mouse liver A1-1. Please download the DAPI-stained image and the txt file.
 
 ## Usage
 
