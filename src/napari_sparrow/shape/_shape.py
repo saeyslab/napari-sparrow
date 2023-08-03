@@ -84,8 +84,8 @@ def intersect_rectangles(
     A: List[int | float], B: List[int | float]
 ) -> Optional[List[int | float]]:
     
-    overlap_x = not (A[1] < B[0] or B[1] < A[0])
-    overlap_y = not (A[3] < B[2] or B[3] < A[2])
+    overlap_x = not (A[1] <= B[0] or B[1] <= A[0])
+    overlap_y = not (A[3] <= B[2] or B[3] <= A[2])
 
     if overlap_x and overlap_y:
         # Calculate overlapping region
