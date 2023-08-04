@@ -23,7 +23,7 @@ logs
 !configs/dataset/vizgen_example.yaml
 !configs/experiment/resolve_liver.yaml
 !configs/experiment/vizgen_example.yaml
-!configs/local/default.yaml
+!configs/local/default.example.yaml
 !configs/segmentation/cellpose_resolve_liver.yaml
 !configs/segmentation/cellpose_vizgen_example.yaml
 !configs/visualize/resolve_liver.yaml
