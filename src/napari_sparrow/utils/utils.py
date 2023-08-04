@@ -1,15 +1,19 @@
-from typing import List, Any
+import os
+from pathlib import Path
+from typing import Any, List
 
-import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import scipy
 import seaborn as sns
 import squidpy as sq
-import scipy
-from shapely.geometry import MultiLineString, LineString
-from geopandas import GeoDataFrame
 from anndata import AnnData
+from geopandas import GeoDataFrame
+from omegaconf import OmegaConf
+from omegaconf.dictconfig import DictConfig
+from shapely.geometry import LineString, MultiLineString
 
 
 def parse_subset(subset):
@@ -42,14 +46,14 @@ def ic_to_da(
         return ic[label].squeeze(dim=drop_dims).data
 
 
-def linestring_to_arrays(geometries):   
-    arrays=[]
-    for geometry in geometries: 
+def linestring_to_arrays(geometries):
+    arrays = []
+    for geometry in geometries:
         if isinstance(geometry, LineString):
-            arrays.extend( list( geometry.coords) )
+            arrays.extend(list(geometry.coords))
         elif isinstance(geometry, MultiLineString):
             for item in geometry.geoms:
-                arrays.extend( list(item.coords) ) 
+                arrays.extend(list(item.coords))
     return np.array(arrays)
 
 
@@ -66,8 +70,8 @@ def _get_polygons_in_napari_format(df: GeoDataFrame) -> List:
         df = df.sort_values(by="area", ascending=False)  # sort by area
         df = df[~df.index.duplicated(keep="first")]  # only keep the largest area
         df.index = df.index.astype(int)  # convert index to integer
-        df = df.sort_index() 
-        df.index=df.index.astype( str )
+        df = df.sort_index()
+        df.index = df.index.astype(str)
 
     if len(df) < 100:
         for i in range(0, len(df)):
@@ -157,3 +161,10 @@ def linewidth(r: bool) -> float:
     """Select linewidth 1 if true else 0.5."""
     return 1 if r else 0.5
 
+
+def _export_config( cfg: DictConfig, output_yaml: str | Path):
+    yaml_config = OmegaConf.to_yaml(cfg)
+    output_dir = os.path.dirname(output_yaml)
+    os.makedirs(output_dir, exist_ok=True)
+    with open(output_yaml, "w") as f:
+        f.write(yaml_config)

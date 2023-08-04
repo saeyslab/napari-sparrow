@@ -109,6 +109,8 @@ def annotate_widget(
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
 
+        utils._export_config( cfg.annotate, os.path.join( cfg.paths.output_dir, 'configs', 'annotate', 'plugin.yaml' ) )
+
         show_info("Annotation finished")
 
     worker.returned.connect(lambda data: add_metadata(data, cfg, utils.ALLOCATION))

@@ -6,6 +6,7 @@ will be more accurate.
 """
 
 from typing import Any, Callable, Dict, Optional
+import os
 
 import napari
 import napari.layers
@@ -157,7 +158,6 @@ def clean_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        # TODO check if fix with setting coordinates correct, sets these offsets correct
         offset_x, offset_y = _get_translation(sdata[layer_name])
 
         # Translate image to appear on selected region
@@ -172,6 +172,8 @@ def clean_widget(
 
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
+
+        utils._export_config( cfg.clean, os.path.join( cfg.paths.output_dir, 'configs', 'clean', 'plugin.yaml' ) )
 
         show_info("Cleaning finished")
 

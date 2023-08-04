@@ -77,7 +77,7 @@ def load_widget(
     with initialize_config_dir(version_base=None, config_dir=abs_config_dir):
         cfg = compose(config_name="pipeline")
 
-    cfg.paths.output_dir=output_dir
+    cfg.paths.output_dir=str(output_dir)
 
     crd = [x_min, x_max, y_min, y_max]
     crd = [None if val == "" else int(val) for val in crd]

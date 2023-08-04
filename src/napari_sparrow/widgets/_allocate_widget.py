@@ -178,6 +178,8 @@ def allocate_widget(
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
 
+        utils._export_config( cfg.allocate, os.path.join( cfg.paths.output_dir, 'configs', 'allocate', 'plugin.yaml' ) )
+
         show_info("Allocation finished")
 
         # Options for napari-spatialData plugin

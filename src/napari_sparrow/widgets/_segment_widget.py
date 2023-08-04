@@ -7,6 +7,7 @@ Segmentation is performed with Squidpy ImageContainer and segment.
 
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
+import os
 
 import napari
 import napari.layers
@@ -18,6 +19,7 @@ from napari.utils.notifications import show_info
 from omegaconf.dictconfig import DictConfig
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
+from omegaconf import OmegaConf
 
 import napari_sparrow.utils as utils
 from napari_sparrow.io import create_sdata
@@ -211,6 +213,8 @@ def segment_widget(
         # we need the original shapes, in order for next step (allocation) to be able to run multiple times
         viewer.layers[layer_name].metadata["shapes"] = sdata.shapes.copy()
         viewer.layers[layer_name].metadata["cfg"] = cfg
+
+        utils._export_config( cfg.segmentation, os.path.join( cfg.paths.output_dir, 'configs', 'segmentation', 'plugin.yaml' ) )
 
         show_info("Segmentation finished")
 
