@@ -135,7 +135,7 @@ For more info on configuring experiments, we refer to the [hpc](docs/hpc.md) doc
 ### napari
 You can run the plugin by first starting napari, and starting the plugin from napari's menu bar: `napari > Plugins > napari-sparrow`.
 
-Use the plugin to tune the parameters of sparrow for the different steps of the pipeline. Tuning can be done on small crops of the image. After every step, a corresponding configuration *.yaml* file will be saved in the output directory chosen by the user. We refer to the [hpc](docs/hpc.md) documentation for information on how to use these generated configuration files.
+Use the plugin to tune the parameters of sparrow for the different steps of the pipeline. Tuning can be done on small crops of the image. After every step, a corresponding configuration *.yaml* file will be saved in the output directory chosen by the user. We refer to the [hpc](docs/hpc.md) documentation for information on how to use these generated configuration files via the CLI.
 
 ### Jupyter notebooks
 
