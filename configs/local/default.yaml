@@ -19,20 +19,3 @@ hydra:
     mem_gb: 32
     nodes: 1
     name: ${hydra.job.name}
-    #account: starting_2023_001
-
-
-# you can also overwrite configs in e.g. dataset section from here (but you can not point to other config yaml, 
-#this should be done when running script e.g. python single.py dataset=resolve..):
-#dataset:
-#  data_dir: ${paths.data_dir}/resolve/resolve_melanoma/takis_B_1_1
-#  dtype: tiff
-#  image: ${dataset.data_dir}/H22-095_ChMa_2022-07-19_B1-1_DAPI.tiff
-#  coords: ${dataset.data_dir}/H22-095_ChMa_2022-07-19_B1-1_results.txt
-#  markers: ${dataset.data_dir}/for_Ranks.csv
-#  url: False
-#  sample: resolve
-#  offset: False
-
-#clean:
-#  crop_param: [ 1000, 2000, 1000, 2000 ]
