@@ -81,7 +81,7 @@ Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.
 
 Run experiments from the CLI using [Hydra](https://hydra.cc). Experiments can be run locally, or on a SLURM cluster.
 
-First copy the `configs` folder (in the root of this repository) locally, and set the paths to the input data and log directory via the *.yaml* provided at `configs/default.yaml`, e.g. update following fields:
+First copy the `configs` folder (in the root of this repository) locally, and set the paths to the input data and log directory via the *.yaml* provided at `configs/default.example.yaml`. I.e., first rename `configs/default.example.yaml` to `configs/default.yaml` and update following fields:
 
 ```yaml
 paths:
