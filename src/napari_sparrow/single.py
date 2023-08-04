@@ -2,9 +2,8 @@
 It can be run from any place with the command: 'sparrow'. """
 
 import logging
-import os
+import glob
 import warnings
-from typing import Any
 
 import hydra
 from omegaconf import DictConfig, ListConfig
@@ -33,7 +32,13 @@ def check_config(cfg: DictConfig):
 
     # Check if all mandatory paths exist
     for p in paths_to_check:
-        assert Path(p).exists(), f"Path {p} does not exist."
+        # Check if the path contains a wildcard
+        if '*' in p:
+            matches = glob.glob(p)
+            # Assert that at least one file matching the glob pattern exists
+            assert matches, f"No file matches the path pattern {p}"
+        else:
+            assert Path(p).exists(), f"Path {p} does not exist."
 
 
 @hydra.main(version_base="1.2", config_path="configs", config_name="pipeline.yaml")
