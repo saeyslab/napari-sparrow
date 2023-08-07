@@ -14,6 +14,39 @@ def enhance_contrast(
     chunks: int = 10000,
     depth: int = 3000,
 ) -> SpatialData:
+    """
+    Enhance the contrast of an image in a SpatialData object using 
+    Contrast Limited Adaptive Histogram Equalization (CLAHE).
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object containing the image to enhance.
+    output_layer : str, optional
+        The name of the layer where the enhanced image will be stored.
+        The default value is "clahe".
+    contrast_clip : float, optional
+        The clip limit for the CLAHE algorithm. Higher values result in stronger contrast enhancement
+        but also stronger noise amplification.
+        The default value is 3.5.
+    chunks : int, optional
+        The size of the chunks used during dask image processing.
+        Larger chunks may lead to increased memory usage but faster processing.
+        The default value is 10000.
+    depth : int, optional
+        The overlapping depth used in dask array map_overlap operation.
+        The default value is 3000.
+
+    Returns
+    -------
+    SpatialData
+        A new SpatialData object with the contrast enhanced image added as a new layer.
+
+    Notes
+    -----
+    CLAHE is applied to each channel of the image separately.
+    """    
+
     layer = [*sdata.images][-1]
 
     # set depth
@@ -29,7 +62,7 @@ def enhance_contrast(
         else:
             depth = chunks // 4
             warnings.warn(
-                f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'chunksize_clahe//4 ({depth}')"
+                f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'chunks//4 ({depth}')"
             )
 
     def _apply_clahe(image):
