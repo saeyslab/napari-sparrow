@@ -5,19 +5,31 @@ from spatialdata import SpatialData
 
 
 def cluster(sdata: SpatialData, output: Optional[str] = None) -> None:
-    """This function plots the clusters and genes ranking"""
+    """
+    Plot the Leiden clusters on a UMAP, and show the most differentially expressed genes for each cluster on a second plot.
 
-    # Leiden clustering
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object containing the analyzed data.
+    output : str or None, optional
+        The file path prefix for the plots. 
+        If provided, the plots will be saved to the specified output file path with "_umap.png" and "_rank_genes_groups.png" as suffixes.
+        If None, the plots will be displayed directly without saving.
+
+    Returns
+    -------
+    None
+    """
+
+    # Plot Leiden clusters on a UMAP
     sc.pl.umap(sdata.table, color=["leiden"], show=not output)
-
-    # Save the plot to ouput
     if output:
         plt.savefig(output + "_umap.png", bbox_inches="tight")
         plt.close()
-        sc.pl.rank_genes_groups(sdata.table, n_genes=8, sharey=False, show=False)
+
+    # Plot the highly differential genes for each cluster
+    sc.pl.rank_genes_groups(sdata.table, n_genes=8, sharey=False, show=False)
+    if output:
         plt.savefig(output + "_rank_genes_groups.png", bbox_inches="tight")
         plt.close()
-
-    # Display plot
-    else:
-        sc.pl.rank_genes_groups(sdata.table, n_genes=8, sharey=False)
