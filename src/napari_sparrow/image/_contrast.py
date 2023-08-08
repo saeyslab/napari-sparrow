@@ -1,4 +1,5 @@
 import warnings
+from typing import List
 
 import cv2
 import dask.array as da
@@ -10,12 +11,12 @@ from spatialdata.transformations import get_transformation, set_transformation
 def enhance_contrast(
     sdata: SpatialData,
     output_layer: str = "clahe",
-    contrast_clip: float = 3.5,
+    contrast_clip: float | List[float] = 3.5,
     chunks: int = 10000,
     depth: int = 3000,
 ) -> SpatialData:
     """
-    Enhance the contrast of an image in a SpatialData object using 
+    Enhance the contrast of an image in a SpatialData object using
     Contrast Limited Adaptive Histogram Equalization (CLAHE).
 
     Parameters
@@ -25,9 +26,10 @@ def enhance_contrast(
     output_layer : str, optional
         The name of the layer where the enhanced image will be stored.
         The default value is "clahe".
-    contrast_clip : float, optional
+    contrast_clip : Union[float, List[float]], optional
         The clip limit for the CLAHE algorithm. Higher values result in stronger contrast enhancement
         but also stronger noise amplification.
+        If provided as a list, the length must match the number of channels
         The default value is 3.5.
     chunks : int, optional
         The size of the chunks used during dask image processing.
@@ -45,9 +47,17 @@ def enhance_contrast(
     Notes
     -----
     CLAHE is applied to each channel of the image separately.
-    """    
+    """
 
     layer = [*sdata.images][-1]
+
+    # Check if contrast_clip is a list and if its size is the same as the number of channels
+    if isinstance(contrast_clip, list) and len(contrast_clip) != len(
+        sdata[layer].c.data
+    ):
+        raise ValueError(
+            "Size of contrast_clip list must be the same as the number of channels."
+        )
 
     # set depth
     min_size = min(sdata[layer].sizes["x"], sdata[layer].sizes["y"])
@@ -65,17 +75,26 @@ def enhance_contrast(
                 f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'chunks//4 ({depth}')"
             )
 
-    def _apply_clahe(image):
+    def _apply_clahe(image, contrast_clip):
         clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
         return clahe.apply(image)
 
     result_list = []
 
-    for channel in sdata[layer].c.data:
+    for channel_idx, channel in enumerate(sdata[layer].c.data):
         arr = sdata[layer].isel(c=channel).data
         arr = arr.rechunk(chunks)
+        current_contrast_clip = (
+            contrast_clip[channel_idx]
+            if isinstance(contrast_clip, list)
+            else contrast_clip
+        )
         result = arr.map_overlap(
-            _apply_clahe, dtype=sdata[layer].data.dtype, depth=depth, boundary="reflect"
+            _apply_clahe,
+            dtype=sdata[layer].data.dtype,
+            depth=depth,
+            boundary="reflect",
+            contrast_clip=current_contrast_clip,
         )
         result = result.rechunk(chunks)
         result_list.append(result)
