@@ -13,7 +13,7 @@ def cluster(sdata: SpatialData, output: Optional[str] = None) -> None:
     sdata : SpatialData
         The SpatialData object containing the analyzed data.
     output : str or None, optional
-        The file path prefix for the plots. 
+        The file path prefix for the plots (default is None).
         If provided, the plots will be saved to the specified output file path with "_umap.png" and "_rank_genes_groups.png" as suffixes.
         If None, the plots will be displayed directly without saving.
 

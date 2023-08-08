@@ -14,9 +14,38 @@ def cluster_cleanliness(
     celltype_column: str = "annotation",
     output: Optional[str] = None,
 ) -> None:
-    """This function plots the clustercleanliness as barplots, the images with colored celltypes and the clusters."""
+    """
+    Generate plots that allow assessing the "cleanliness" or accuracy of the cell clustering:
+    - a barplot with a bar for each cluster, showing the composition by cell type of that cluster;
+    - a UMAP with cells colored by cell type;
+    - an image of the tissue with cells colored by cell type.
 
-    # Create the barplot
+    Parameters
+    ----------
+    sdata : SpatialData
+        SpatialData object containing the spatial data and annotations.
+    shapes_layer : str, optional
+        Name of the shapes layer in the SpatialData object (default is "segmentation_mask_boundaries").
+    crd : List[int], optional
+        An optional rectangle [xmin, xmax, ymin, ymax] (default is None).
+        If specified, the tissue image will be cropped to this rectangle,
+        otherwise the full image will be displayed.
+    color_dict : dict, optional
+        Custom colormap dictionary for coloring cell types in the barplot.
+    celltype_column : str, optional
+        Name of the column in sdata.table containing cell type annotations (default is "annotation").
+    output : str, optional
+        The file path prefix for the plots (default is None).
+        If provided, the plots will be saved to the specified output file path with "_barplot.png",
+        "_{celltype_column}.png", "_{celltype_column}_crop.png" and "_{celltype_column}_umap.png" as suffixes.
+        If None, the plots will be displayed directly without saving.
+
+    Returns
+    -------
+    None
+    """
+
+    # Barplot with cell type composition of the clusters.
     stacked = (
         sdata.table.obs.groupby(["leiden", celltype_column], as_index=False)
         .size()
@@ -27,7 +56,6 @@ def cluster_cleanliness(
     stacked_norm.columns = list(sdata.table.obs.annotation.cat.categories)
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
-    # Use custom colormap
     if color_dict:
         stacked_norm.plot(kind="bar", stacked=True, ax=fig.gca(), color=color_dict)
     else:
@@ -40,14 +68,13 @@ def cluster_cleanliness(
     plt.xlabel("Clusters")
     plt.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize="large")
 
-    # Save the barplot to ouput
     if output:
         fig.savefig(output + "_barplot.png", bbox_inches="tight")
     else:
         plt.show()
     plt.close(fig)
 
-    # Plot images with colored celltypes
+    # Tissue image with cells colored by cell type.
     plot_shapes(
         sdata=sdata,
         column=celltype_column,
@@ -65,7 +92,7 @@ def cluster_cleanliness(
         output=output + f"_{celltype_column}_crop" if output else None,
     )
 
-    # Plot clusters
+    # UMAP plot with cells colored by cell type.
     fig, ax = plt.subplots(1, 1, figsize=(15, 10))
     sc.pl.umap(
         sdata.table,
