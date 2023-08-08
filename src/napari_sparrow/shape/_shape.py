@@ -73,7 +73,7 @@ def _extract_boundaries_from_geometry_collection(geometry):
         return [polygon.boundary for polygon in geometry.geoms]
     elif isinstance(geometry, GeometryCollection):
         boundaries = []
-        for geom in geometry:
+        for geom in geometry.geoms:
             boundaries.extend(_extract_boundaries_from_geometry_collection(geom))
         return boundaries
     else:
