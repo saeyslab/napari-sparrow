@@ -81,20 +81,33 @@ def _extract_boundaries_from_geometry_collection(geometry):
 
 
 def intersect_rectangles(
-    A: List[int | float], B: List[int | float]
+    rect1: List[int | float],
+    rect2: List[int | float]
 ) -> Optional[List[int | float]]:
-    
-    overlap_x = not (A[1] <= B[0] or B[1] <= A[0])
-    overlap_y = not (A[3] <= B[2] or B[3] <= A[2])
+    """
+    Calculate the intersection of two (axis aligned) rectangles.
+
+    Parameters
+    ----------
+    rect1 : List[int | float]
+        List representing the first rectangle [x_min, x_max, y_min, y_max].
+    rect2 : List[int | float]
+        List representing the second rectangle [x_min, x_max, y_min, y_max].
+
+    Returns
+    -------
+    Optional[List[int | float]]
+        List representing the intersection rectangle [x_min, x_max, y_min, y_max],
+        or None if the rectangles do not overlap.
+    """
+    overlap_x = not (rect1[1] <= rect2[0] or rect2[1] <= rect1[0])
+    overlap_y = not (rect1[3] <= rect2[2] or rect2[3] <= rect1[2])
 
     if overlap_x and overlap_y:
-        # Calculate overlapping region
-        x_min = max(A[0], B[0])
-        x_max = min(A[1], B[1])
-        y_min = max(A[2], B[2])
-        y_max = min(A[3], B[3])
-
-        # Return as a list: [x_min, x_max, y_min, y_max]
+        x_min = max(rect1[0], rect2[0])
+        x_max = min(rect1[1], rect2[1])
+        y_min = max(rect1[2], rect2[2])
+        y_max = min(rect1[3], rect2[3])
         return [x_min, x_max, y_min, y_max]
     else:
         return None
