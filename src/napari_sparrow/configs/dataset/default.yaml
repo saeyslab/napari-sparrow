@@ -1,6 +1,6 @@
-data_dir: null #${paths.data_dir}/resolve/resolve_liver
+data_dir: null
 dtype: tiff
-image: null #${dataset.data_dir}/20272_slide1_A1-1_DAPI.tiff
-coords: null #${dataset.data_dir}/20272_slide1_A1-1_results.txt
-markers: null #${dataset.data_dir}/markerGeneListMartinNoLow.csv
+image: null
+coords: null
+markers: null
 transform_matrix: null

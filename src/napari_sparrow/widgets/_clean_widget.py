@@ -5,7 +5,7 @@ is to improve the image quality so that subsequent image segmentation
 will be more accurate.
 """
 
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, List
 import os
 
 import napari
@@ -70,10 +70,9 @@ def clean_widget(
     tiling_correction_step: bool = True,
     tile_size: int = 2144,
     tophat_filtering_step: bool = True,
-    size_tophat: int = 85,
+    size_tophat: List[int] = [85],
     contrast_enhancing_step: bool = True,
-    contrast_clip: float = 3.5,
-    chunksize_clahe: int = 20000,
+    contrast_clip: List[float] = [3.5],
 ):
     """This function represents the clean widget and is called by the wizard to create the widget."""
 
@@ -90,7 +89,6 @@ def clean_widget(
 
     cfg.clean.contrastEnhancing = contrast_enhancing_step
     cfg.clean.contrast_clip = contrast_clip
-    cfg.clean.chunksize_clahe = chunksize_clahe
 
     # update this
     if len(image.data_raw.shape) == 3:

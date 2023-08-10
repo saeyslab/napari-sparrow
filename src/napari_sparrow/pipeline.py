@@ -19,9 +19,9 @@ def load(cfg: DictConfig) -> SpatialData:
 
     # cast to list if cfg.dataset.image is a ListConfig object (i.e. for multiple channels)
     if isinstance(cfg.dataset.image, ListConfig):
-        filename_pattern=list(cfg.dataset.image)
+        filename_pattern = list(cfg.dataset.image)
     else:
-        filename_pattern=cfg.dataset.image
+        filename_pattern = cfg.dataset.image
 
     sdata = nas.io.create_sdata(
         input=filename_pattern,
@@ -47,9 +47,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     if cfg.clean.tilingCorrection:
         sdata, flatfields = nas.im.tiling_correction(
             sdata=sdata,
-            crd=cfg.clean.crop_param
-            if cfg.clean.crop_param is not None
-            else None,
+            crd=cfg.clean.crop_param if cfg.clean.crop_param is not None else None,
             tile_size=cfg.clean.tile_size,
             output_layer="tiling_correction",
         )
@@ -57,12 +55,11 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         # Write plot to given path if output is enabled
         if "tiling_correction" in cfg.paths:
             log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
-            for i,channel in enumerate(sdata[ "tiling_correction" ].c.data):
-
+            for i, channel in enumerate(sdata["tiling_correction"].c.data):
                 nas.pl.tiling_correction(
-                    img=sdata[ "tiling_correction" ].isel(c=channel).to_numpy(),
+                    img=sdata["tiling_correction"].isel(c=channel).to_numpy(),
                     flatfield=flatfields[i],
-                    img_orig=sdata[ "raw_image" ].isel(c=channel).to_numpy(),
+                    img_orig=sdata["raw_image"].isel(c=channel).to_numpy(),
                     output=f"{cfg.paths.tiling_correction}_{channel}_",
                 )
 
@@ -78,7 +75,9 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     if cfg.clean.tophatFiltering:
         sdata = nas.im.tophat_filtering(
             sdata=sdata,
-            size_tophat=cfg.clean.size_tophat,
+            size_tophat=list(cfg.clean.size_tophat)
+            if isinstance(cfg.clean.size_tophat, ListConfig)
+            else cfg.clean.size_tophat,
         )
 
         nas.pl.plot_image(
@@ -93,7 +92,9 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     if cfg.clean.contrastEnhancing:
         sdata = nas.im.enhance_contrast(
             sdata=sdata,
-            contrast_clip=cfg.clean.contrast_clip,
+            contrast_clip=list(cfg.clean.contrast_clip)
+            if isinstance(cfg.clean.contrast_clip, ListConfig)
+            else cfg.clean.contrast_clip,
             chunks=cfg.clean.chunksize_clahe,
             depth=cfg.clean.depth,
         )

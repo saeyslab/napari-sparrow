@@ -65,7 +65,7 @@ def _segmentation_worker(
 )
 def segment_widget(
     viewer: napari.Viewer,
-    image: napari.layers.Image,
+    image: Optional[napari.layers.Image]=None,
     subset: Optional[napari.layers.Shapes] = None,
     device: str = "cpu",
     min_size: int = 80,
