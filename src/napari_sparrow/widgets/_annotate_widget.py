@@ -56,7 +56,6 @@ def annotate_widget(
     viewer: napari.Viewer,
     markers_file: pathlib.Path = pathlib.Path(""),
     delimiter: str = ",",
-    row_norm: bool = False,
     del_celltypes: List[str] = [],
 ):
     """This function represents the annotation widget and is called by the wizard to create the widget."""
@@ -80,7 +79,6 @@ def annotate_widget(
         raise RuntimeError(f"Please run allocation step before running annotation step.")
 
     cfg.dataset.markers = markers_file
-    cfg.annotate.row_norm = row_norm
     cfg.annotate.del_celltypes = del_celltypes
     cfg.annotate.delimiter = delimiter
 

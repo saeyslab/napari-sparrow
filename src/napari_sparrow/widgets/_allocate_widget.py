@@ -63,7 +63,7 @@ def allocate_widget(
     midcount: bool = False,
     column_midcount: Optional[int] = None,
     transform_matrix: Optional[pathlib.Path] = None,
-    nuc_size_norm: bool = True,
+    size_normalization: bool = True,
     n_comps: int = 50,
     min_size: int = 500,
     max_size: int = 100000,
@@ -118,7 +118,7 @@ def allocate_widget(
     if transform_matrix:
         cfg.dataset.transform_matrix = transform_matrix
 
-    cfg.allocate.nuc_size_norm = nuc_size_norm
+    cfg.allocate.nuc_size_norm = size_normalization
     cfg.allocate.n_comps = n_comps
     cfg.allocate.min_size = min_size
     cfg.allocate.max_size = max_size
