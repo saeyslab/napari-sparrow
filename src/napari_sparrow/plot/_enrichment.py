@@ -34,6 +34,10 @@ def nhood_enrichment(
     -----
     See https://www.nature.com/articles/s41592-021-01358-2 for details on the permutation-based
     neighborhood enrichment score.
+
+    See Also
+    --------
+    - tb.enrichment : Calculate neighborhood enrichment.
     """
 
     # remove 'nan' values from "adata.uns['annotation_nhood_enrichment']['zscore']"
