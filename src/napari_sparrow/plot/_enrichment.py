@@ -37,7 +37,7 @@ def nhood_enrichment(
 
     See Also
     --------
-    - tb.enrichment : Calculate neighborhood enrichment.
+    - tb.nhood_enrichment : Calculate neighborhood enrichment.
     """
 
     # remove 'nan' values from "adata.uns['annotation_nhood_enrichment']['zscore']"
