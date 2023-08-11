@@ -3,15 +3,45 @@ import scanpy as sc
 
 from napari_sparrow.table._table import _back_sdata_table_to_zarr
 
-# TODO: add type hints
 
 def cluster(
-    sdata: SpatialData, pcs: int, neighbors: int, cluster_resolution: float = 0.8
+    sdata: SpatialData,
+    pcs: int,
+    neighbors: int,
+    cluster_resolution: float = 0.8
 ) -> SpatialData:
-    """Returns the AnnData object.
+    """
+    Compute a neighborhood graph of the observations in a given SpatialData object,
+    and a UMAP embedding, and perform Leiden clustering and differential
+    gene analysis on the resulting clusters.
 
-    Performs neighborhood analysis, Leiden clustering and UMAP.
-    Provides option to save the plots to output.
+    Parameters
+    ----------
+    sdata : SpatialData
+        Input SpatialData object containing spatial data and annotations.
+    pcs : int
+        Number of principal components for neighborhood graph construction.
+    neighbors : int
+        Number of neighbors for neighborhood graph construction.
+    cluster_resolution : float, optional
+        Resolution parameter for Leiden clustering (default is 0.8).
+
+    Returns
+    -------
+    SpatialData
+        The modified SpatialData object containing clustering results and embeddings.
+
+    Notes
+    -----
+    - Computes neighborhood graph using `pcs` and `neighbors` parameters.
+    - Calculates UMAP embedding based on the computed neighborhood graph.
+    - Performs Leiden clustering with specified `cluster_resolution`.
+    - Perform differential gene analysis on the Leiden clusters.
+    - Saves the results back to the input SpatialData object.
+
+    See also
+    --------
+    - pl.cluster : Visualize the clustering and differential gene expression.
     """
 
     # Neighborhood analysis

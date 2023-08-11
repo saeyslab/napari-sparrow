@@ -6,7 +6,8 @@ from spatialdata import SpatialData
 
 def cluster(sdata: SpatialData, output: Optional[str] = None) -> None:
     """
-    Plot the Leiden clusters on a UMAP, and show the most differentially expressed genes for each cluster on a second plot.
+    Plot the Leiden clusters on a UMAP, and show the most differentially
+    expressed genes for each cluster on a second plot.
 
     Parameters
     ----------
@@ -14,12 +15,17 @@ def cluster(sdata: SpatialData, output: Optional[str] = None) -> None:
         The SpatialData object containing the analyzed data.
     output : str or None, optional
         The file path prefix for the plots (default is None).
-        If provided, the plots will be saved to the specified output file path with "_umap.png" and "_rank_genes_groups.png" as suffixes.
+        If provided, the plots will be saved to the specified output file path with "_umap.png"
+        and "_rank_genes_groups.png" as suffixes.
         If None, the plots will be displayed directly without saving.
 
     Returns
     -------
     None
+
+    See Also
+    --------
+    - tl.cluster : Calculate clustering and differential gene expression.
     """
 
     # Plot Leiden clusters on a UMAP
