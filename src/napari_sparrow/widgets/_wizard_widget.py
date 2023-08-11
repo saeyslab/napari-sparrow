@@ -137,6 +137,8 @@ def get_choices():
                     "- midcount: select whether a count column is present in the transcripts file.\n"
                     "- column midcount: select the column index for the count value in the transcripts file. Ignored when midcount option is not selected.\n"
                     "- transform matrix: select the transform matrix (tab separated file). This file should contain a 3x3 transformation matrix for the affine transformation. The matrix defines the linear transformation to be applied to the coordinates of the transcripts. If no transform matrix is specified, the identity matrix will be used.\n"
+                    "- min_counts: select the minimum number of transcripts a cell should contain to be kept.\n"
+                    "- min_cells: select the minimum number of cells a transcript should be in to be be kept.\n"
                     "- size normalization: select whether to normalize based on the size of the cells/nuclei.\n"
                     "- n comps: select the number of components to compute in principal component analysis.\n"
                     "- min size: select the minimum size of the cells in pixels. Smaller cells will be filtered out.\n"

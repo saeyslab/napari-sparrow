@@ -83,7 +83,7 @@ def _load_image_to_dask(
         Examples
         [ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
         [ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
-    -A single numpy or dask array. The dims parameter should specify its dimension, e.g. ['y','x']
+    - A single numpy or dask array. The dims parameter should specify its dimension, e.g. ['y','x']
     for a 2D array or [ 'c', 'y', 'x', 'z' ] for a 4D array with channels.
     If a z-dimension >1 is present, a z-projection is performed.
 

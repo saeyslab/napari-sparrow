@@ -3,7 +3,6 @@
 defaults:
 - default
 
-library_id: "liver"
 delimiter: ","
 header: 0 
 column_x: 2 

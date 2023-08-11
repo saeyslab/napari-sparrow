@@ -1,5 +1,5 @@
-""" This file contains the five pipeline steps that are used by the single pipeline.
-Some steps consist of multiple substeps from the functions file. """
+""" This file contains the six pipeline steps that are used by the single pipeline.
+Some steps consist of multiple substeps"""
 
 import os
 from typing import Dict, List, Tuple
@@ -202,7 +202,10 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
     sdata = nas.tb.preprocess_anndata(
         sdata,
-        nuc_size_norm=cfg.allocate.nuc_size_norm,
+        min_counts=cfg.allocate.min_counts,
+        min_cells=cfg.allocate.min_cells,
+        size_norm=cfg.allocate.size_norm,
+        n_comps=cfg.allocate.n_comps,
         shapes_layer=shapes_layer,
     )
 
