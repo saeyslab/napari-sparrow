@@ -8,6 +8,7 @@ from napari_sparrow.plot._plot import plot_shapes
 
 def cluster_cleanliness(
     sdata: SpatialData,
+    img_layer: Optional[str] = None,
     shapes_layer: str = "segmentation_mask_boundaries",
     crd: Optional[List[int]] = None,
     color_dict: Optional[dict] = None,
@@ -24,6 +25,8 @@ def cluster_cleanliness(
     ----------
     sdata : SpatialData
         SpatialData object containing the spatial data and annotations.
+    img_layer: str, optional
+        Name of the imgage layer in the SpatialData object (default is None).
     shapes_layer : str, optional
         Name of the shapes layer in the SpatialData object (default is "segmentation_mask_boundaries").
     crd : List[int], optional
@@ -77,6 +80,7 @@ def cluster_cleanliness(
     # Tissue image with cells colored by cell type.
     plot_shapes(
         sdata=sdata,
+        img_layer=img_layer,
         column=celltype_column,
         alpha=0.8,
         shapes_layer=shapes_layer,
@@ -85,6 +89,7 @@ def cluster_cleanliness(
 
     plot_shapes(
         sdata=sdata,
+        img_layer=img_layer,
         column=celltype_column,
         crd=crd,
         alpha=0.8,

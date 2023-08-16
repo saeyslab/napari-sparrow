@@ -1,5 +1,5 @@
-""" This file contains the five pipeline steps that are used by the single pipeline.
-Some steps consist of multiple substeps from the functions file. """
+""" This file contains the six pipeline steps that are used by the single pipeline.
+Some steps consist of multiple substeps"""
 
 import os
 from typing import Dict, List, Tuple
@@ -38,9 +38,9 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     nas.pl.plot_image(
         sdata=sdata,
-        output_path=os.path.join(cfg.paths.output_dir, "original"),
+        output=os.path.join(cfg.paths.output_dir, "original"),
         crd=cfg.clean.small_size_vis,
-        layer="raw_image",
+        img_layer="raw_image",
     )
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
@@ -65,9 +65,9 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
         nas.pl.plot_image(
             sdata=sdata,
-            output_path=os.path.join(cfg.paths.output_dir, "tiling_correction"),
+            output=os.path.join(cfg.paths.output_dir, "tiling_correction"),
             crd=cfg.clean.small_size_vis,
-            layer="tiling_correction",
+            img_layer="tiling_correction",
         )
 
     # tophat filtering
@@ -82,9 +82,9 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
         nas.pl.plot_image(
             sdata=sdata,
-            output_path=os.path.join(cfg.paths.output_dir, "tophat_filtered"),
+            output=os.path.join(cfg.paths.output_dir, "tophat_filtered"),
             crd=cfg.clean.small_size_vis,
-            layer="tophat_filtered",
+            img_layer="tophat_filtered",
         )
 
     # contrast enhancement
@@ -101,9 +101,9 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
         nas.pl.plot_image(
             sdata=sdata,
-            output_path=os.path.join(cfg.paths.output_dir, "clahe"),
+            output=os.path.join(cfg.paths.output_dir, "clahe"),
             crd=cfg.clean.small_size_vis,
-            layer="clahe",
+            img_layer="clahe",
         )
 
     return sdata
@@ -134,11 +134,15 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             shapes_layer = key
             break
 
+    # plot the image in SpatialData object in last position, will typically be 'clahe'
+    img_layer = [*sdata.images][-1]
+
     nas.pl.segment(
         sdata=sdata,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
         else cfg.clean.small_size_vis,
+        img_layer=img_layer,
         shapes_layer=shapes_layer,
         output=cfg.paths.segmentation,
     )
@@ -154,6 +158,7 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             crd=cfg.segmentation.small_size_vis
             if cfg.segmentation.small_size_vis is not None
             else cfg.clean.small_size_vis,
+            img_layer=img_layer,
             shapes_layer="expanded_cells" + str(cfg.segmentation.voronoi_radius),
             output=f"{cfg.paths.segmentation}_expanded_cells_{cfg.segmentation.voronoi_radius}",
         )
@@ -190,8 +195,12 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         shapes_layer=shapes_layer,
     )
 
+    # plot the image in SpatialData object in last position, will typically be 'clahe'
+    img_layer = [*sdata.images][-1]
+
     nas.pl.plot_shapes(
         sdata,
+        img_layer=img_layer,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
@@ -202,7 +211,10 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
     sdata = nas.tb.preprocess_anndata(
         sdata,
-        nuc_size_norm=cfg.allocate.nuc_size_norm,
+        min_counts=cfg.allocate.min_counts,
+        min_cells=cfg.allocate.min_cells,
+        size_norm=cfg.allocate.size_norm,
+        n_comps=cfg.allocate.n_comps,
         shapes_layer=shapes_layer,
     )
 
@@ -213,6 +225,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     nas.pl.plot_shapes(
         sdata,
+        img_layer=img_layer,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
@@ -232,6 +245,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     nas.pl.plot_shapes(
         sdata,
+        img_layer=img_layer,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
@@ -258,6 +272,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     nas.pl.plot_shapes(
         sdata,
+        img_layer=img_layer,
         shapes_layer=shapes_layer,
         column=cfg.allocate.leiden_column,
         cmap=cfg.allocate.leiden_cmap,
@@ -302,10 +317,14 @@ def annotate(
                 shapes_layer = key
                 break
 
+    # plot the image in SpatialData object in last position, will typically be 'clahe'
+    img_layer = [*sdata.images][-1]
+
     nas.pl.score_genes(
         sdata=sdata,
         scoresper_cluster=scoresper_cluster,
         shapes_layer=shapes_layer,
+        img_layer=img_layer,
         output=cfg.paths.score_genes,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None
@@ -349,8 +368,12 @@ def visualize(
                 shapes_layer = key
                 break
 
+    # plot the image in SpatialData object in last position, will typically be 'clahe'
+    img_layer = [*sdata.images][-1]
+
     nas.pl.cluster_cleanliness(
         sdata=sdata,
+        img_layer=img_layer,
         shapes_layer=shapes_layer,
         crd=cfg.segmentation.small_size_vis
         if cfg.segmentation.small_size_vis is not None

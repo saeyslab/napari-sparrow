@@ -1,29 +1,56 @@
+import warnings
+
 import scanpy as sc
+from spatialdata import SpatialData
 
 from napari_sparrow.table._table import _back_sdata_table_to_zarr, _filter_shapes
 
-# TODO: add type hinting
 
 def preprocess_anndata(
-    sdata,
-    nuc_size_norm: bool = True,
+    sdata: SpatialData,
+    shapes_layer: str = None,
+    min_counts: int = 10,
+    min_cells: int = 5,
+    size_norm: bool = True,
     n_comps: int = 50,
-    min_counts=10,
-    min_cells=5,
-    shapes_layer=None,
-):
-    """Returns the new and original AnnData objects
+) -> SpatialData:
+    """
+    Preprocess the table (AnnData) attribute of a SpatialData object. Filters cells and genes,
+    normalizes based on nucleus/cell size, calculates QC metrics and principal components.
 
-    This function calculates the QC metrics.
-    All cells with less than 10 genes and all genes with less than 5 cells are removed.
-    Normalization is performed based on the size of the nucleus in nuc_size_norm."""
-    # calculate the max amount of pc's possible
-    if min(sdata.table.shape) < n_comps:
-        n_comps = min(sdata.table.shape)
-        print(
-            "amount of pc's was set to " + str(min(sdata.table.shape)),
-            " because of the dimensionality of the data.",
-        )
+    Parameters
+    ----------
+    sdata : SpatialData
+        The input SpatialData object.
+    shapes_layer : str, optional
+        The shapes_layer of the SpatialData object that will be used to calculate nucleus size for normalization
+        (or cell size if shapes_layer holds cell shapes).
+        If not specified, the last shapes layer is chosen.
+    min_counts : int, default=10
+        Minimum number of genes a cell should contain to be kept.
+    min_cells : int, default=5
+        Minimum number of cells a gene should be in to be kept.
+    size_norm : bool, default=True
+        If True, normalization is based on the size of the nucleus/cell. Else the normalize_total function of scanpy is used.
+    n_comps : int, default=50
+        Number of principal components to calculate.
+
+    Returns
+    -------
+    SpatialData
+        The preprocessed SpatialData object containg the preprocessed AnnData object as an attribute (sdata.table).
+
+    Notes
+    -----
+    - All cells with less than `min_counts` genes and all genes with less than `min_cells` cells are removed.
+    - The QC metrics are calculated using scanpy's `calculate_qc_metrics` function.
+
+    Warnings
+    --------
+    - If the dimensionality of the table attribute is smaller than the desired number of principal components,
+      `n_comps` is set to the minimum dimensionality and a message is printed.
+    """
+
     # Calculate QC Metrics
 
     sc.pp.calculate_qc_metrics(sdata.table, inplace=True, percent_top=[2, 5])
@@ -39,7 +66,7 @@ def preprocess_anndata(
 
     sdata.table.layers["raw_counts"] = sdata.table.X
 
-    if nuc_size_norm:
+    if size_norm:
         sdata.table.X = (sdata.table.X.T * 100 / sdata.table.obs.shapeSize.values).T
         sc.pp.log1p(sdata.table)
         # need to do .copy() here to set .raw value, because .scale still overwrites this .raw, which is unexpected behaviour
@@ -51,9 +78,17 @@ def preprocess_anndata(
         sc.pp.log1p(sdata.table)
         sdata.table.raw = sdata.table.copy()
 
+    # calculate the max amount of pc's possible
+    if min(sdata.table.shape) < n_comps:
+        n_comps = min(sdata.table.shape)
+        warnings.warn(
+            (
+                f"amount of pc's was set to {min( sdata.table.shape)} because of the dimensionality of the AnnData object."
+            )
+        )
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
-    # Is this the best way o doing it? Every time you subset your data, the polygons should be subsetted too!
 
+    # Is this the best way of doing it? Every time you subset your data, the polygons should be subsetted too!
     sdata = _filter_shapes(sdata, filtered_name="low_counts")
 
     # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
