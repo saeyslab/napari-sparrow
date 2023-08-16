@@ -1,38 +1,24 @@
-from typing import Optional
-import matplotlib.pyplot as plt
+from typing import Optional, Tuple
+from pathlib import Path
 
-from napari_sparrow.image._image import (_get_translation, _apply_transform, _unapply_transform)
+from spatialdata import SpatialData
 
+from napari_sparrow.plot import plot_shapes
 
-def transcript_density(blurred, sdata, layer: Optional[str] = None, crd=None):  # TODO: add type hints
-    if layer is None:
-        layer = [*sdata.images][-1]  # typically layer will be the "clahe" layer
-
-    # TODO: find intersection of the translation + size of 'layer' with the (optional) 'crd' crop rectangle
-
-    si, x_coords_orig, y_coord_orig = _apply_transform(sdata[layer])
-
-    fig, ax = plt.subplots(1, 2, figsize=(20, 20))
-    if crd:
-        ax[0].imshow(
-            blurred[crd[2] : crd[3], crd[0] : crd[1]],
-            cmap="magma",
-            vmax=5,
-            extent=[crd[0], crd[1], crd[3], crd[2]],
-        )
-        si.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-            cmap="gray", robust=True, ax=ax[1], add_colorbar=False
-        )
-    else:
-        ax[0].imshow(blurred, cmap="magma", vmax=5)
-        si.squeeze().plot.imshow(cmap="gray", robust=True, ax=ax[1], add_colorbar=False)
-
-    ax[1].axes.set_aspect("equal")
-    ax[1].invert_yaxis()
-
-    ax[0].set_title("Transcript density")
-    ax[1].set_title("Corrected image")
-
-    si = _unapply_transform(si, x_coords_orig, y_coord_orig)
-
-
+def transcript_density(
+    sdata: SpatialData,
+    img_layer: Tuple[ str, str ] =[ "raw_image", "transcript_density" ],
+    channel: int = 0,
+    crd:Optional[Tuple[int,int,int,int]]=None,
+    figsize: Optional[ Tuple[int,int ] ]=None,
+    output:Optional[ str | Path ]=None,
+):
+    plot_shapes(
+        sdata,
+        img_layer=img_layer,
+        shapes_layer=None,
+        channel=channel,
+        crd=crd,
+        figsize=figsize,
+        output=output,
+    )

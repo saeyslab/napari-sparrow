@@ -17,7 +17,7 @@ from napari_sparrow.shape._shape import _extract_boundaries_from_geometry_collec
 
 def sanity_plot_transcripts_matrix(
     sdata: SpatialData,
-    layer: Optional[str] = None,
+    img_layer: Optional[str] = None,
     points_layer: str = "transcripts",
     shapes_layer: Optional[str] = None,
     plot_cell_number: bool = False,
@@ -41,7 +41,7 @@ def sanity_plot_transcripts_matrix(
     ----------
     sdata : SpatialData
         The SpatialData object containing the spatial image and transcripts data.
-    layer : Optional[str], default=None
+    img_layer : Optional[str], default=None
         The layer of the SpatialData object to be plotted. Defaults to the last layer if not provided.
     points_layer : str, default="transcripts"
         The points layer in the SpatialData object representing transcripts.
@@ -86,10 +86,10 @@ def sanity_plot_transcripts_matrix(
     - If `plot_cell_number` is set to True, cells are annotated with their numbers.
     - If the `output` parameter is provided, the plot is saved to the specified location, otherwise, it's displayed.
     """
-    if layer is None:
-        layer = [*sdata.images][-1]
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
 
-    xarray = sdata[layer]
+    xarray = sdata[img_layer]
 
     # plot for registration sanity check
 
@@ -128,7 +128,7 @@ def sanity_plot_transcripts_matrix(
 
     # query first and then slicing gene is faster than vice versa
     in_df = in_df.query(
-        f"{crd[0]} <= {name_x} <= {crd[1]} and {crd[2]} <= {name_y} <= {crd[3]}"
+        f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}"
     )
 
     if gene:
