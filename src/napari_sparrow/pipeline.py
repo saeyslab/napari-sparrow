@@ -54,14 +54,15 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
         # Write plot to given path if output is enabled
         if "tiling_correction" in cfg.paths:
-            log.info(f"Writing flatfield plot to {cfg.paths.tiling_correction}")
-            for i, channel in enumerate(sdata["tiling_correction"].c.data):
-                nas.pl.tiling_correction(
-                    img=sdata["tiling_correction"].isel(c=channel).to_numpy(),
-                    flatfield=flatfields[i],
-                    img_orig=sdata["raw_image"].isel(c=channel).to_numpy(),
-                    output=f"{cfg.paths.tiling_correction}_{channel}_",
-                )
+            log.info(f"Writing tiling correction plot to {cfg.paths.tiling_correction}")
+            nas.pl.tiling_correction(
+                sdata=sdata,
+                img_layer=[ "raw_image", "tiling_correction" ],
+                crd=cfg.clean.small_size_vis if cfg.clean.small_size_vis is not None else None,
+                output=cfg.paths.tiling_correction,
+             )
+            for i,flatfield in enumerate(flatfields):
+                nas.pl.flatfield( flatfield, output=f"{cfg.paths.tiling_correction}_flatfield_{i}")
 
         nas.pl.plot_image(
             sdata=sdata,

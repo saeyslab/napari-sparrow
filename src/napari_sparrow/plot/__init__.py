@@ -1,6 +1,6 @@
 from ._plot import plot_image, plot_shapes
 from ._segmentation import segment
-from ._tiling_correction import tiling_correction
+from ._tiling_correction import tiling_correction, flatfield
 from ._clustering import cluster
 from ._sanity import sanity_plot_transcripts_matrix
 from ._transcripts import transcript_density

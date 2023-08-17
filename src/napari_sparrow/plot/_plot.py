@@ -17,11 +17,11 @@ from napari_sparrow.image._image import (
 def plot_image(
     sdata: SpatialData,
     img_layer: str = "raw_image",
-    channel: Optional[int | Iterable[int] ] = None,
+    channel: Optional[int | Iterable[int]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
-)->None:
+) -> None:
     """
     Plot an image based on given parameters.
 
@@ -55,7 +55,7 @@ def plot_shapes(
     sdata: SpatialData,
     img_layer: str | Iterable[str] = None,
     shapes_layer: str | Iterable[str] = None,
-    channel: Optional[ int | Iterable[int] ] = None,
+    channel: Optional[int | Iterable[int]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     figsize: Optional[Tuple[int, int]] = None,
     output: Optional[str | Path] = None,
@@ -67,7 +67,7 @@ def plot_shapes(
 
     Examples:
     1. For `img_layer=['raw_image', 'clahe']` and `shapes_layer=['segmentation_mask_boundaries', 'expanded_cells20']`:
-    Subplots: 
+    Subplots:
     - Column 1: 'raw_image' with 'segmentation_mask_boundaries'
     - Column 2: 'clahe' with 'expanded_cells20'
 
@@ -98,7 +98,7 @@ def plot_shapes(
     sdata : SpatialData
         Data containing spatial information for plotting.
     img_layer : str or Iterable[str], optional
-        Image layer(s) to be plotted. If not provided, the last added image layer is plotted. 
+        Image layer(s) to be plotted. If not provided, the last added image layer is plotted.
         Displayed as columns in the plot, if multiple are provided.
     shapes_layer : str or Iterable[str], optional
         Specifies which shapes to plot. If set to None, no shapes_layer is plotted.
@@ -124,10 +124,22 @@ def plot_shapes(
         img_layer = [*sdata.images][-1]
 
     # Make code also work if user would provide another iterable than List
-    img_layer = list(img_layer) if isinstance(img_layer, Iterable) and not isinstance(img_layer, str) else [img_layer]
-    shapes_layer = list(shapes_layer) if isinstance(shapes_layer, Iterable) and not isinstance(shapes_layer, str) else [shapes_layer]
+    img_layer = (
+        list(img_layer)
+        if isinstance(img_layer, Iterable) and not isinstance(img_layer, str)
+        else [img_layer]
+    )
+    shapes_layer = (
+        list(shapes_layer)
+        if isinstance(shapes_layer, Iterable) and not isinstance(shapes_layer, str)
+        else [shapes_layer]
+    )
     if channel is not None:
-        channel = list(channel) if isinstance(channel, Iterable) and not isinstance(channel, str) else [channel]
+        channel = (
+            list(channel)
+            if isinstance(channel, Iterable) and not isinstance(channel, str)
+            else [channel]
+        )
 
     # if multiple shapes are provided, and one img_layer, then len(shapes_layer) subfigures with same img_layer beneath are plotted.
     if len(img_layer) == 1 and shapes_layer != 1:
@@ -149,9 +161,9 @@ def plot_shapes(
 
     # if channel is None, get the number of channels from the first img_layer given, maybe print a message about this.
     if channel is None:
-        channels=sdata[img_layer[0]].c.data
+        channels = sdata[img_layer[0]].c.data
     else:
-        channels=channel
+        channels = channel
 
     nr_of_rows = len(channels)
 
@@ -205,7 +217,10 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     crd: Tuple[int, int, int, int] = None,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
-    plot_filtered: bool =False,
+    plot_filtered: bool = False,
+    img_title: bool = False,
+    shapes_title: bool = False,
+    channel_title: bool = True,
     aspect: str = "equal",
 ) -> plt.Axes:
     """
@@ -222,7 +237,7 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     cmap : str, default='magma'
         Colormap for the plot.
     img_layer : str or None, optional
-        Image layer to be plotted. By default, the last added image layer is plotted. One can provide multiple image layers.
+        Image layer to be plotted. By default, the last added image layer is plotted.
     shapes_layer : str or None, optional
         Specifies which shapes to plot. Default is 'segmentation_mask_boundaries'. If set to None, no shapes_layer is plot.
     channel : int or None, optional
@@ -237,8 +252,14 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
         Upper bound for color scale for continuous data. Given as a percentile.
     plot_filtered : bool, default=False
         Whether to plot the cells that were filtered out in previous steps.
+    img_title: bool, default=False
+        A flag indicating whether the image layer's name should be added to the title of the plot.
+    shapes_title: bool, default=False
+        A flag indicating whether the shapes layer's name should be added to the title of the plot.
+    channel_title: bool, default=True
+        A flag indicating whether the channel's name should be added to the title of the plot.
     aspect : str, default='equal'
-        Aspect ratio for the plot. 
+        Aspect ratio for the plot.
 
     Returns
     -------
@@ -305,11 +326,11 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
 
     if channel is None:
         # if channel is None, plot the first channel
-        channel=si.c.data[0]
+        channel = si.c.data[0]
         # if channel not in spatialimage object, plot the first channel
     elif channel not in si.c.data:
-        _channel=channel
-        channel=si.c.data[0]
+        _channel = channel
+        channel = si.c.data[0]
         warnings.warn(
             (
                 f"Provided channel '{_channel}' not in list of available channels '{si.c.data}'"
@@ -317,10 +338,8 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
             )
         )
 
-    #channel = channel if channel is not None else si.c.data[-1]
     channel_name = si.c.name
 
-    #for ch in channels:
     si.isel(c=channel).squeeze().sel(
         x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
     ).plot.imshow(cmap="gray", robust=True, ax=ax, add_colorbar=False)
@@ -354,7 +373,15 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     ax.set_xlim(crd[0], crd[1])
     ax.set_ylim(crd[2], crd[3])
     ax.invert_yaxis()
-    ax.set_title(f"{channel_name}={channel}")
+    titles = []
+    if channel_title:
+        titles.append(f"{channel_name}={channel}")
+    if img_title:
+        titles.append(img_layer)
+    if shapes_title and shapes_layer:
+        titles.append(shapes_layer)
+    title = ", ".join(titles)
+    ax.set_title(title)
     # ax.axes.xaxis.set_visible(False)
     # ax.axes.yaxis.set_visible(False)
     ax.spines["top"].set_visible(False)
