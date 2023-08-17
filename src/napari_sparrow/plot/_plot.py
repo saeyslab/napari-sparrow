@@ -14,14 +14,32 @@ from napari_sparrow.image._image import (
 )
 
 
-def plot_image(  # TODO: perhaps plot_image and plot_shapes can be merged into 1 function? Of if we keep this function, see if we need to rename it a bit or change its API.
+def plot_image(
     sdata: SpatialData,
     img_layer: str = "raw_image",
     channel: Optional[int | Iterable[int] ] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
-):
+)->None:
+    """
+    Plot an image based on given parameters.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Data containing spatial information for plotting.
+    img_layer : str, optional
+        Image layer to be plotted. Default is "raw_image".
+    channel : int or Iterable[int], optional
+        Channel(s) to be displayed from the image.
+    crd : tuple of int, optional
+        The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+    output : str or Path, optional
+        Path to save the plot. If not provided, plot will be displayed.
+    **kwargs : dict
+        Additional arguments to be passed to the plot_shapes function.
+    """
     plot_shapes(
         sdata,
         img_layer=img_layer,
@@ -43,6 +61,64 @@ def plot_shapes(
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
 ) -> None:
+    """
+    Plot shapes and/or images from a SpatialData object.
+    The number of provided 'img_layer' and 'shapes_layer' should be equal if both are iterables and if their length is greater than 1.
+
+    Examples:
+    1. For `img_layer=['raw_image', 'clahe']` and `shapes_layer=['segmentation_mask_boundaries', 'expanded_cells20']`:
+    Subplots: 
+    - Column 1: 'raw_image' with 'segmentation_mask_boundaries'
+    - Column 2: 'clahe' with 'expanded_cells20'
+
+    2. For `img_layer=['raw_image', 'clahe']` and `shapes_layer='segmentation_mask_boundaries'`:
+    Subplots:
+    - Column 1: 'raw_image' with 'segmentation_mask_boundaries'
+    - Column 2: 'clahe' with 'segmentation_mask_boundaries'
+
+    3. For `img_layer=['raw_image', 'clahe']` and `shapes_layer=['segmentation_mask_boundaries']` (which behaves the same as the previous example):
+    Subplots:
+    - Column 1: 'raw_image' with 'segmentation_mask_boundaries'
+    - Column 2: 'clahe' with 'segmentation_mask_boundaries'
+
+    4. For `img_layer=['raw_image']` and `shapes_layer=['segmentation_mask_boundaries', 'expanded_cells20' ]`:
+    Subplots:
+    - Column 1: 'raw_image' with 'segmentation_mask_boundaries'
+    - Column 2: 'raw_image' with 'expanded_cells20'
+
+    5. For `img_layer=['raw_image', 'clahe']` and `shapes_layer=None`:
+    Subplots:
+    - Column 1: 'raw_image'
+    - Column 2: 'clahe'
+
+    When multiple channels are supplied as an Iterable, they will be displayed as rows in the image
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Data containing spatial information for plotting.
+    img_layer : str or Iterable[str], optional
+        Image layer(s) to be plotted. If not provided, the last added image layer is plotted. 
+        Displayed as columns in the plot, if multiple are provided.
+    shapes_layer : str or Iterable[str], optional
+        Specifies which shapes to plot. If set to None, no shapes_layer is plotted.
+        Displayed as columns in the plot, if multiple are provided.
+    channel : int or Iterable[int], optional
+        Channel(s) to be displayed from the image. Displayed as rows in the plot.
+        If channel is None, get the number of channels from the first img_layer given as input.
+    crd : tuple of int, optional
+        The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+    figsize : Tuple[int, int], optional
+        Size of the figure for plotting. If not provided, a default size is used based on the number of columns and rows.
+    output : str or Path, optional
+        Path to save the plot. If not provided, plot will be displayed.
+    **kwargs : dict
+        Additional arguments to be passed to the internal _plot_shapes function.
+
+    Notes
+    -----
+    - This function offers advanced visualization options for spatial data with support for multiple image layers, shape layers, and channels.
+    """
     # need this to be able to determine the number of channels if channels would be None
     if img_layer is None:
         img_layer = [*sdata.images][-1]
@@ -119,7 +195,7 @@ def plot_shapes(
 
 def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer anymore
     sdata: SpatialData,
-    ax: plt.Axes = None,
+    ax: plt.Axes,
     column: Optional[str] = None,
     cmap: str = "magma",
     img_layer: Optional[str] = None,
@@ -127,23 +203,51 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     channel: Optional[int] = None,
     alpha: float = 0.5,
     crd: Tuple[int, int, int, int] = None,
-    vmin=None,
-    vmax=None,
-    plot_filtered=False,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    plot_filtered: bool =False,
     aspect: str = "equal",
 ) -> plt.Axes:
     """
-    This function plots an sdata object, with the cells on top. On default it plots the image layer that was added last.
-    The default color is blue if no color is given as input.
-    Column: determines based on which column the cells need to be colored. Can be an obs column or a var column.
-    img_layer: the image layer that needs to be plotted, the last on on default
-    shapes_layer: which shapes to plot, the default is nucleus_boundaries, but when performing an expansion it can be another layer.
-    alpha: the alpha-parameter of matplotlib: transperancy of the cells
-    crd: the crop that needs to be plotted, if none is given, the whole region is plotted, list of four coordinates
-    output: whether you want to save it as an output or not, default is none and then plot is shown.
-    vmin/vmax: adapting the color scale for continous data: give the percentile for which to color min and max.
-    ax: whne wanting to add the plot to another plot
-    plot_filtered: whether or not to plot the cells that were filtered out during previous steps, this is a control function.
+    Plots a SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Data containing spatial information for plotting.
+    ax : plt.Axes, optional
+        Axes object to plot on.
+    column : str or None, optional
+        Column to base cell colors on. Can be an observation or variable column. If none provided, default color is used.
+    cmap : str, default='magma'
+        Colormap for the plot.
+    img_layer : str or None, optional
+        Image layer to be plotted. By default, the last added image layer is plotted. One can provide multiple image layers.
+    shapes_layer : str or None, optional
+        Specifies which shapes to plot. Default is 'segmentation_mask_boundaries'. If set to None, no shapes_layer is plot.
+    channel : int or None, optional
+        Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
+    alpha : float, default=0.5
+        Transparency level for the cells, given by the alpha parameter of matplotlib.
+    crd : tuple of int, optional
+        The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+    vmin : float or None, optional
+        Lower bound for color scale for continuous data. Given as a percentile.
+    vmax : float or None, optional
+        Upper bound for color scale for continuous data. Given as a percentile.
+    plot_filtered : bool, default=False
+        Whether to plot the cells that were filtered out in previous steps.
+    aspect : str, default='equal'
+        Aspect ratio for the plot. 
+
+    Returns
+    -------
+    plt.Axes
+        The axes with the plotted SpatialData.
+
+    Notes
+    -----
+    - The function supports various visualization options such as image layers, shape layers, channels, color mapping, and custom regions.
     """
     if img_layer is None:
         img_layer = [*sdata.images][-1]
@@ -202,7 +306,7 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     if channel is None:
         # if channel is None, plot the first channel
         channel=si.c.data[0]
-        # if channel not in spatialimage object, plot the last channel
+        # if channel not in spatialimage object, plot the first channel
     elif channel not in si.c.data:
         _channel=channel
         channel=si.c.data[0]

@@ -1,18 +1,57 @@
+from typing import Optional, Tuple
+
 import numpy as np
 import spatialdata
 from scipy.ndimage import gaussian_filter
+from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
 
 def transcript_density(
-    sdata,
-    points_layer="transcripts",
-    name_x="x",
-    name_y="y",
-    scaling_factor=100,
-    crd=None,
+    sdata: SpatialData,
+    points_layer: str = "transcripts",
+    name_x: str = "x",
+    name_y: str = "y",
+    scaling_factor: float = 100,
+    crd: Optional[Tuple[int, int, int, int]] = None,
     output_layer: str = "transcript_density",
-):
+)->SpatialData:
+    """
+    Calculate the transcript density and add it to the provided spatial data.
+
+    This function computes the density of transcripts in the spatial data, scales and smooths it, 
+    and then adds the resulting density image to the spatial data object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Data containing spatial information.
+    points_layer : str, optional
+        The layer name that contains the transcript data points, by default "transcripts".
+    name_x : str, optional
+        Column name for x-coordinates of the transcripts in the points layer, by default "x".
+    name_y : str, optional
+        Column name for y-coordinates of the transcripts in the points layer, by default "y".
+    scaling_factor : float, optional
+        Factor to scale the transcript density image, by default 100.
+    crd : tuple of int, optional
+        The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax). 
+        If provided, the density is computed only for this region, by default None.
+    output_layer : str, optional
+        The name of the output image layer in the SpatialData where the transcript density will be added, 
+        by default "transcript_density".
+
+    Returns
+    -------
+    SpatialData
+        Updated spatial data object with the added transcript density layer as an image layer.
+
+    Examples
+    --------
+    >>> sdata = SpatialData(...)
+    >>> sdata = transcript_density(sdata, points_layer="transcripts", crd=(2000, 4000, 2000, 4000))
+
+    """
     ddf = sdata.points[points_layer]
 
     ddf[name_x] = ddf[name_x].round().astype(int)
@@ -23,7 +62,7 @@ def transcript_density(
             f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }"
         )
 
-    counts_location_transcript = ddf.groupby([ name_x, name_y ]).count().compute()["gene"]
+    counts_location_transcript = ddf.groupby([name_x, name_y]).count().compute()["gene"]
     counts_location_transcript
 
     counts_location_transcript = counts_location_transcript.reset_index()
@@ -52,15 +91,3 @@ def transcript_density(
     sdata.add_image(name=output_layer, image=spatial_image)
 
     return sdata
-
-
-def transcript_density_deprecated(df, scaling_factor=100):  # TODO: add type hints
-    """This function plots the transcript density of the tissue. You can use it to compare different regions in your tissue on transcript density."""
-    Try = df.groupby(["x", "y"]).count()["gene"]  # TODO: rename Try + lower case
-    print("grouping finished")
-    image = np.array(Try.unstack(fill_value=0))
-    print("unstack finished")
-    image = image / np.max(image)
-    print("starting gaussian filter")
-    blurred = gaussian_filter(scaling_factor * image, sigma=7)
-    return blurred.T

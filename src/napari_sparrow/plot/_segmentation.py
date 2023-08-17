@@ -15,6 +15,37 @@ def segment(
     output:Optional[ str | Path ]=None,
     **kwargs: Dict[str, Any],
 ):
+    """
+    Segment and visualize boundaries in a given spatial data.
+
+    This function utilizes the `plot_shapes` method to display the segmentation results on the provided spatial data.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Data containing spatial information for plotting.
+    img_layer : str, optional
+        Name of the image layer to be visualized, by default "raw_image".
+    shapes_layer : str, optional
+        Name of the layer containing segmentation mask boundaries, by default "segmentation_mask_boundaries".
+    channel : int or list of int, optional
+        The channel(s) of the image to be visualized. If None, all channels are considered, by default None.
+    crd : tuple of int, optional
+        The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+    output : str or Path, optional
+        Path to save the output image. If None, the image will not be saved and will be displayed instead, by default None.
+    **kwargs : dict
+        Additional keyword arguments to be passed to the `plot_shapes` function.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> sdata = SpatialData(...)
+    >>> segment(sdata, img_layer="raw_img", crd=(10,10,100,100))
+    """
     plot_shapes(
         sdata,
         img_layer=img_layer,
