@@ -209,6 +209,12 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         output=cfg.paths.polygons,
     )
 
+    nas.pl.analyse_genes_left_out(
+        sdata,
+        labels_layer=cfg.segmentation.output_layer,
+        output=cfg.paths.analyse_genes_left_out,
+     )
+
     # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
     sdata = nas.tb.preprocess_anndata(
         sdata,

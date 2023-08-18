@@ -5,9 +5,6 @@ from typing import Any, List
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import scipy
-import seaborn as sns
 import squidpy as sq
 from anndata import AnnData
 from geopandas import GeoDataFrame
@@ -115,38 +112,6 @@ def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
     return adata
 
 
-def analyse_genes_left_out(sdata, df):
-    """This function"""
-    filtered = pd.DataFrame(
-        sdata.table.X.sum(axis=0)
-        / df.groupby("gene").count()["x"][sdata.table.var.index]
-    )
-    filtered = filtered.rename(columns={"x": "proportion_kept"})
-    filtered["raw_counts"] = df.groupby("gene").count()["x"][sdata.table.var.index]
-    filtered["log_raw_counts"] = np.log(filtered["raw_counts"])
-
-    sns.scatterplot(data=filtered, y="proportion_kept", x="log_raw_counts")
-
-    plt.axvline(filtered["log_raw_counts"].median(), color="green", linestyle="dashed")
-    plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
-    plt.xlim(
-        left=-0.5, right=filtered["log_raw_counts"].quantile(0.99)
-    )  # set y-axis limit from 0 to the 95th percentile of y
-    # show the plot
-    plt.show()
-    r, p = scipy.stats.pearsonr(filtered["log_raw_counts"], filtered["proportion_kept"])
-    sns.regplot(x="log_raw_counts", y="proportion_kept", data=filtered)
-    ax = plt.gca()
-    ax.text(0.7, 0.9, "r={:.2f}, p={:.2g}".format(r, p), transform=ax.transAxes)
-
-    plt.axvline(filtered["log_raw_counts"].median(), color="green", linestyle="dashed")
-    plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
-    plt.show()
-    print("The ten genes with the highest proportion of transcripts filtered out")
-    print(filtered.sort_values(by="proportion_kept")[0:10].iloc[:, 0:2])
-    return filtered
-
-
 def color(_) -> matplotlib.colors.Colormap:
     """Select random color from set1 colors."""
     return plt.get_cmap("Set1")(np.random.choice(np.arange(0, 18)))
@@ -162,7 +127,7 @@ def linewidth(r: bool) -> float:
     return 1 if r else 0.5
 
 
-def _export_config( cfg: DictConfig, output_yaml: str | Path):
+def _export_config(cfg: DictConfig, output_yaml: str | Path):
     yaml_config = OmegaConf.to_yaml(cfg)
     output_dir = os.path.dirname(output_yaml)
     os.makedirs(output_dir, exist_ok=True)

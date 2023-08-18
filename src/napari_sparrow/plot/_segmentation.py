@@ -16,9 +16,11 @@ def segment(
     **kwargs: Dict[str, Any],
 ):
     """
-    Segment and visualize boundaries in a given spatial data.
+    Visualize obtained shapes layer (i.e. segmentation mask boundaries) from a SpatialData object.
 
-    This function utilizes the `plot_shapes` method to display the segmentation results on the provided spatial data.
+    This function utilizes the `plot_shapes` method to display the segmentation results from the provided SpatialData object.
+    Final plot will contain tow subplots, left the image without provided shapes layer overlay, and the right subplot with
+    shapes layer overlay.
 
     Parameters
     ----------
@@ -44,7 +46,7 @@ def segment(
     Examples
     --------
     >>> sdata = SpatialData(...)
-    >>> segment(sdata, img_layer="raw_img", crd=(10,10,100,100))
+    >>> segment(sdata, img_layer="raw_img", crd=(2000,4000,2000,4000))
     """
     plot_shapes(
         sdata,
