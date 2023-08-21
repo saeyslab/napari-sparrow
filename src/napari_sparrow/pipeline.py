@@ -57,12 +57,16 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             log.info(f"Writing tiling correction plot to {cfg.paths.tiling_correction}")
             nas.pl.tiling_correction(
                 sdata=sdata,
-                img_layer=[ "raw_image", "tiling_correction" ],
-                crd=cfg.clean.small_size_vis if cfg.clean.small_size_vis is not None else None,
+                img_layer=["raw_image", "tiling_correction"],
+                crd=cfg.clean.small_size_vis
+                if cfg.clean.small_size_vis is not None
+                else None,
                 output=cfg.paths.tiling_correction,
-             )
-            for i,flatfield in enumerate(flatfields):
-                nas.pl.flatfield( flatfield, output=f"{cfg.paths.tiling_correction}_flatfield_{i}")
+            )
+            for i, flatfield in enumerate(flatfields):
+                nas.pl.flatfield(
+                    flatfield, output=f"{cfg.paths.tiling_correction}_flatfield_{i}"
+                )
 
         nas.pl.plot_image(
             sdata=sdata,
@@ -199,6 +203,24 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # plot the image in SpatialData object in last position, will typically be 'clahe'
     img_layer = [*sdata.images][-1]
 
+    if cfg.allocate.calculate_transcript_density:
+        # calculate transcript density
+        sdata = nas.im.transcript_density(
+            sdata,
+            img_layer=img_layer,
+            crd=cfg.segmentation.crop_param,
+            output_layer="transcript_density",
+        )
+
+        nas.pl.transcript_density(
+            sdata,
+            img_layer=[img_layer, "transcript_density"],
+            crd=cfg.segmentation.small_size_vis
+            if cfg.segmentation.small_size_vis is not None
+            else cfg.clean.small_size_vis,
+            output=cfg.paths.transcript_density,
+        )
+
     nas.pl.plot_shapes(
         sdata,
         img_layer=img_layer,
@@ -213,7 +235,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         sdata,
         labels_layer=cfg.segmentation.output_layer,
         output=cfg.paths.analyse_genes_left_out,
-     )
+    )
 
     # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
     sdata = nas.tb.preprocess_anndata(

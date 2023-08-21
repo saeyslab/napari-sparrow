@@ -128,7 +128,7 @@ def get_choices():
                 (
                     "## Step 3: Allocation and clustering\n"
                     "### Allocates transcripts to cells and performs leiden clustering.\n"
-                    "- transcripts file: choose the file that contains the transcripts, with each row listing the x and y coordinates, along with the gene name..\n"
+                    "- transcripts file: choose the file that contains the transcripts, with each row listing the x and y coordinates, along with the gene name.\n"
                     "- delimiter: choose the delimiter, by default the tab character is used.\n"
                     "- header: select whether the transcripts file contains a header.\n"
                     "- column x: select the column index of the x coordinate in the transcripts file.\n"

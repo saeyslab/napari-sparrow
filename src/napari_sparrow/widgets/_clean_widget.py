@@ -138,6 +138,8 @@ def clean_widget(
     else:
         cfg.clean.crop_param = None
 
+    cfg.clean.small_size_vis=cfg.clean.crop_param
+
     fn_kwargs: Dict[str, Any] = {
         "cfg": cfg,
     }

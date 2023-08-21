@@ -1,7 +1,7 @@
 from typing import Optional, Tuple
 
 import dask.array as da
-import numpy as np
+import warnings
 import spatialdata
 from scipy.ndimage import gaussian_filter
 from spatialdata import SpatialData
@@ -34,7 +34,7 @@ def transcript_density(
     sdata : SpatialData
         Data containing spatial information.
     img_layer : Optional[str], default=None
-        The layer of the SpatialData object used for determining crd, if crd is not provided. Ignored if crd is specified.
+        The layer of the SpatialData object used for determining image boundary. Ignored if crd is specified.
         Defaults to the last layer if not provided.
     points_layer : str, optional
         The layer name that contains the transcript data points, by default "transcripts".
@@ -73,13 +73,30 @@ def transcript_density(
     ddf[name_x] = ddf[name_x].round().astype(int)
     ddf[name_y] = ddf[name_y].round().astype(int)
 
-    if crd is None:
-        # if crd is None, get boundary from image at img_layer if given,
-        # else take the last image
-        if img_layer is None:
-            img_layer = [*sdata.images][-1]
-        crd = _get_image_boundary(sdata[img_layer])
+    # get image boundary from last image layer if img_layer is None
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
+    img_boundary = _get_image_boundary(sdata[img_layer])
 
+    # if crd is None, get boundary from image at img_layer if given,
+    if crd is None:
+        crd = img_boundary
+    else:
+        # fix crd so it falls in boundaries of img_layer, otherwise possible issues with registration transcripts, and size of the generated image.
+        _crd = [
+            max(img_boundary[0], crd[0]),
+            min(img_boundary[1], crd[1]),
+            max(img_boundary[2], crd[2]),
+            min(img_boundary[3], crd[3]),
+        ]
+        if _crd != crd:
+            warnings.warn(
+                (
+                    f"Provided crd didn't fully fit within the image layer '{img_layer}' with image boundary '{img_boundary}'. "
+                    f"The crd was updated from '{crd}' to '{_crd}'."
+                )
+            )
+        crd = _crd
     ddf = ddf.query(
         f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }"
     )

@@ -6,6 +6,8 @@ column_gene: 2
 column_midcount: null
 debug: False
 
+calculate_transcript_density: True
+
 size_norm: True
 min_counts: 10
 min_cells: 5

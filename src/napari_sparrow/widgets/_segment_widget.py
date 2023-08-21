@@ -149,6 +149,7 @@ def segment_widget(
 
     # update config
     cfg.device = device
+    cfg.segmentation.small_size_vis=cfg.segmentation.crop_param
     cfg.segmentation.min_size = min_size
     cfg.segmentation.flow_threshold = flow_threshold
     cfg.segmentation.diameter = diameter
