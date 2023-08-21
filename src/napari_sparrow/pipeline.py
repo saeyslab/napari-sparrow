@@ -203,24 +203,6 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # plot the image in SpatialData object in last position, will typically be 'clahe'
     img_layer = [*sdata.images][-1]
 
-    if cfg.allocate.calculate_transcript_density:
-        # calculate transcript density
-        sdata = nas.im.transcript_density(
-            sdata,
-            img_layer=img_layer,
-            crd=cfg.segmentation.crop_param,
-            output_layer="transcript_density",
-        )
-
-        nas.pl.transcript_density(
-            sdata,
-            img_layer=[img_layer, "transcript_density"],
-            crd=cfg.segmentation.small_size_vis
-            if cfg.segmentation.small_size_vis is not None
-            else cfg.clean.small_size_vis,
-            output=cfg.paths.transcript_density,
-        )
-
     nas.pl.plot_shapes(
         sdata,
         img_layer=img_layer,
@@ -410,6 +392,24 @@ def visualize(
         color_dict=color_dict,
         output=cfg.paths.cluster_cleanliness,
     )
+
+    if cfg.visualize.calculate_transcript_density:
+        # calculate transcript density
+        sdata = nas.im.transcript_density(
+            sdata,
+            img_layer=img_layer,
+            crd=cfg.segmentation.crop_param,
+            output_layer="transcript_density",
+        )
+
+        nas.pl.transcript_density(
+            sdata,
+            img_layer=[img_layer, "transcript_density"],
+            crd=cfg.segmentation.small_size_vis
+            if cfg.segmentation.small_size_vis is not None
+            else cfg.clean.small_size_vis,
+            output=cfg.paths.transcript_density,
+        )
 
     # calculate nhood enrichment
     sdata = nas.tb.nhood_enrichment(sdata)
