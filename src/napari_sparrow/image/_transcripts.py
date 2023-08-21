@@ -1,44 +1,60 @@
 from typing import Optional, Tuple
 
+import dask.array as da
 import numpy as np
 import spatialdata
 from scipy.ndimage import gaussian_filter
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
+from napari_sparrow.image._image import _get_image_boundary
+
 
 def transcript_density(
     sdata: SpatialData,
+    img_layer: Optional[str] = "raw_image",
     points_layer: str = "transcripts",
+    n_sample: Optional[int] = 15000000,
     name_x: str = "x",
     name_y: str = "y",
+    name_gene_column: str = "gene",
     scaling_factor: float = 100,
+    chunks: int = 1024,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output_layer: str = "transcript_density",
-)->SpatialData:
+) -> SpatialData:
     """
-    Calculate the transcript density and add it to the provided spatial data.
+    Calculate the transcript density using gaussian filter and add it to the provided spatial data.
 
-    This function computes the density of transcripts in the spatial data, scales and smooths it, 
+    This function computes the density of transcripts in the spatial data, scales and smooths it,
     and then adds the resulting density image to the spatial data object.
 
     Parameters
     ----------
     sdata : SpatialData
         Data containing spatial information.
+    img_layer : Optional[str], default=None
+        The layer of the SpatialData object used for determining crd, if crd is not provided. Ignored if crd is specified.
+        Defaults to the last layer if not provided.
     points_layer : str, optional
         The layer name that contains the transcript data points, by default "transcripts".
+    n_sample : Optional[int], default=15000000
+        The number of transcripts to sample for calculation of transcript density.
     name_x : str, optional
         Column name for x-coordinates of the transcripts in the points layer, by default "x".
     name_y : str, optional
         Column name for y-coordinates of the transcripts in the points layer, by default "y".
+    name_gene_column : str, optional
+        Column name in the points_layer representing gene information, by default "gene".
     scaling_factor : float, optional
         Factor to scale the transcript density image, by default 100.
+    chunks: int.
+        Chunksize for calculation of density using gaussian filter.
     crd : tuple of int, optional
-        The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax). 
+        The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
         If provided, the density is computed only for this region, by default None.
     output_layer : str, optional
-        The name of the output image layer in the SpatialData where the transcript density will be added, 
+        The name of the output image layer in the SpatialData where the transcript density will be added,
         by default "transcript_density".
 
     Returns
@@ -57,13 +73,29 @@ def transcript_density(
     ddf[name_x] = ddf[name_x].round().astype(int)
     ddf[name_y] = ddf[name_y].round().astype(int)
 
-    if crd:
-        ddf = ddf.query(
-            f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }"
-        )
+    if crd is None:
+        # if crd is None, get boundary from image at img_layer if given,
+        # else take the last image
+        if img_layer is None:
+            img_layer = [*sdata.images][-1]
+        crd = _get_image_boundary(sdata[img_layer])
 
-    counts_location_transcript = ddf.groupby([name_x, name_y]).count().compute()["gene"]
-    counts_location_transcript
+    ddf = ddf.query(
+        f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }"
+    )
+
+    # subsampling:
+    if n_sample is not None:
+        size = len(ddf)
+        if size > n_sample:
+            print(
+                f"The number of transcripts ( {size} ) is larger than n_sample, sampling {n_sample} transcripts."
+            )
+            fraction = n_sample / size
+            ddf = ddf.sample(frac=fraction)
+            print("sampling finished")
+
+    counts_location_transcript = ddf.groupby([name_x, name_y]).count()[name_gene_column]
 
     counts_location_transcript = counts_location_transcript.reset_index()
 
@@ -71,12 +103,48 @@ def transcript_density(
         counts_location_transcript[name_x] = counts_location_transcript[name_x] - crd[0]
         counts_location_transcript[name_y] = counts_location_transcript[name_y] - crd[2]
 
-    counts_location_transcript = counts_location_transcript.set_index([name_x, name_y])
+    chunks = (chunks, chunks)
+    image = da.zeros((crd[1] - crd[0], crd[3] - crd[2]), chunks=chunks, dtype=int)
 
-    image = np.array(counts_location_transcript.unstack(fill_value=0))
+    def populate_chunk(block, block_info=None, x=None, y=None, values=None):
+        # Extract the indices of the current block
+        x_start, x_stop = block_info[0]["array-location"][0]
+        y_start, y_stop = block_info[0]["array-location"][1]
 
-    image = image / np.max(image)
-    blurred_transcripts = gaussian_filter(scaling_factor * image, sigma=7)
+        # Find the overlapping indices
+        mask = (x >= x_start) & (x < x_stop) & (y >= y_start) & (y < y_stop)
+        relevant_x = x[mask] - x_start
+        relevant_y = y[mask] - y_start
+        relevant_values = values[mask]
+
+        # Populate the block + create copy of the block, so we can modify it.
+        block_copy = block.copy()
+
+        block_copy[relevant_x, relevant_y] = relevant_values
+        return block_copy
+
+    x_values = counts_location_transcript[name_x].values
+    y_values = counts_location_transcript[name_y].values
+    gene_values = counts_location_transcript[name_gene_column].values
+
+    image = image.map_blocks(
+        populate_chunk, x=x_values, y=y_values, values=gene_values, dtype=int
+    )
+
+    image = scaling_factor * (image / da.max(image))
+
+    sigma = 7
+
+    def chunked_gaussian_filter(chunk):
+        return gaussian_filter(chunk, sigma=sigma)
+
+    # take overlap to be 3 times sigma
+    overlap = sigma * 3
+
+    blurred_transcripts = image.map_overlap(
+        chunked_gaussian_filter, depth=overlap, boundary="reflect"
+    )
+
     blurred_transcripts = blurred_transcripts.T
 
     spatial_image = spatialdata.models.Image2DModel.parse(

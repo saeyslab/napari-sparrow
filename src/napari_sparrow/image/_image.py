@@ -1,15 +1,16 @@
+import warnings
+from typing import Optional, Tuple
+
+import numpy as np
 import xarray as xr
 from spatial_image import SpatialImage
-from typing import Tuple, Optional
-import numpy as np
-import warnings
 from spatialdata.transformations import get_transformation
-
 
 # TODO: check if we want to keep the functions here in this generally named ïmage.py, there are mostly related to the translation/transformation, should the filename reflect this?
 # TODO: rename _get_translation to _get_image_translation for consistency with _get_image_boundary? or use _get_translation() and _get_boundary() because we're in the image package anyway, so the image is understood already?
 
 # FIXME: we're type hinting crd as Tuple but often use a list for bounding box rectangles
+
 
 def _substract_translation_crd(
     spatialimage: SpatialImage, crd=Tuple[int, int, int, int]
@@ -39,7 +40,7 @@ def _get_image_boundary(spatial_image):
     tx, ty = _get_translation(spatial_image)
     width = spatial_image.sizes["x"]
     height = spatial_image.sizes["y"]
-    return [tx, tx + width, ty, ty + height]
+    return [int(tx), int(tx + width), int(ty), int(ty + height)]
 
 
 def _get_translation(spatial_image):
@@ -48,7 +49,9 @@ def _get_translation(spatial_image):
     )
 
     # Extract translation components from transformation matrix
-    tx = transform_matrix[:, -1][0]   # FIXME: why not directly access the correct element in the matrix?
+    tx = transform_matrix[:, -1][
+        0
+    ]  # FIXME: why not directly access the correct element in the matrix?
     ty = transform_matrix[:, -1][1]
     return tx, ty
 
@@ -78,9 +81,7 @@ def _apply_transform(si: SpatialImage) -> Tuple[SpatialImage, np.ndarray, np.nda
 
 
 def _unapply_transform(
-    si: SpatialImage,
-    x_coords: np.ndarray,
-    y_coords: np.ndarray
+    si: SpatialImage, x_coords: np.ndarray, y_coords: np.ndarray
 ) -> SpatialImage:
     """
     Restore the coordinates which were temporarily modified via _apply_transform().
