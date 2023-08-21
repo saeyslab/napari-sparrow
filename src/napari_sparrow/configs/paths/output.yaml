@@ -8,8 +8,9 @@ sdata: ${paths.output_dir}/sdata.zarr
 tiling_correction: ${paths.output_dir}/plot_tiling_correction
 preprocess: ${paths.output_dir}/plot_preprocess
 segmentation: ${paths.output_dir}/plot_segmentation
-analyse_genes_left_out: ${paths.output_dir}/plot_analyse_genes_left_out
+transcript_density: ${paths.output_dir}/plot_transcript_density
 polygons: ${paths.output_dir}/plot_polygons
+analyse_genes_left_out: ${paths.output_dir}/plot_analyse_genes_left_out
 preprocess_adata: ${paths.output_dir}/plot_preprocess_adata
 total_counts: ${paths.output_dir}/plot_shapes_total_counts
 shape_size: ${paths.output_dir}/plot_shapes_size
