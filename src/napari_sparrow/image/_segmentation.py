@@ -26,6 +26,11 @@ def segmentation_cellpose(
     chunks="auto",
     lazy=False,
 ) -> SpatialData:
+    
+    if "filtered" in output_layer:
+        raise ValueError( "Please choose an output_layer name that does not have 'filtered' in its name, "
+                        " as these are reserved for filtered out masks and shapes." )
+
     if layer is None:
         layer = [*sdata.images][-1]
 

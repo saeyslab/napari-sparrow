@@ -12,6 +12,9 @@ from spatialdata import SpatialData
 
 from napari_sparrow.image._image import _get_image_boundary
 from napari_sparrow.plot import plot_shapes
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def analyse_genes_left_out(
@@ -135,10 +138,11 @@ def analyse_genes_left_out(
         plt.show()
     plt.close()
 
-    print(
-        f"The ten genes with the highest proportion of transcripts filtered out (in region of interest: ([x_min,x_max,y_min,y_max]={crd})"
+    log.info(
+        f"The ten genes with the highest proportion of transcripts filtered out in the "
+        f"region of interest ([x_min,x_max,y_min,y_max]={crd}):\n"
+        f"{filtered.sort_values(by='proportion_kept').iloc[0:10, 0:2]}"
     )
-    print(filtered.sort_values(by="proportion_kept")[0:10].iloc[:, 0:2])
 
     return filtered
 

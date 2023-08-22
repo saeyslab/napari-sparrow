@@ -14,6 +14,9 @@ from napari_sparrow.image._image import (
 from napari_sparrow.shape import intersect_rectangles
 from napari_sparrow.shape._shape import _extract_boundaries_from_geometry_collection
 
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 def sanity_plot_transcripts_matrix(
     sdata: SpatialData,
@@ -138,7 +141,7 @@ def sanity_plot_transcripts_matrix(
     else:
         size = len(in_df)
 
-        print(f"size before sampling is {size}")
+        log.info(f"size before sampling is {size}")
 
         if n_sample is not None and size > n_sample:
             fraction = n_sample / size
@@ -147,7 +150,7 @@ def sanity_plot_transcripts_matrix(
     if isinstance(in_df, DaskDataFrame):
         in_df = in_df.compute()
 
-    print(f"Plotting {in_df.shape[0]} transcripts.")
+    log.info(f"Plotting {in_df.shape[0]} transcripts.")
 
     if gene:
         alpha = 0.5
@@ -176,7 +179,7 @@ def sanity_plot_transcripts_matrix(
         polygons = None
 
     if polygons is not None:
-        print("Selecting boundaries")
+        log.info("Selecting boundaries")
 
         polygons_selected = polygons.cx[crd[0] : crd[1], crd[2] : crd[3]]
 
@@ -187,7 +190,7 @@ def sanity_plot_transcripts_matrix(
         exploded_boundaries["geometry"] = exploded_boundaries["boundaries"]
         exploded_boundaries = exploded_boundaries.drop(columns=["boundaries"])
 
-        print("Plotting boundaries")
+        log.info("Plotting boundaries")
 
         # Plot the polygon boundaries
         exploded_boundaries.plot(
@@ -195,7 +198,7 @@ def sanity_plot_transcripts_matrix(
             aspect=1,
         )
 
-        print("End plotting boundaries")
+        log.info("End plotting boundaries")
 
         # Plot the values inside the polygons
         if plot_cell_number:

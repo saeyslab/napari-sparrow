@@ -10,13 +10,80 @@ from spatialdata import SpatialData, bounding_box_query
 
 
 def create_sdata(
-    input: Union[str, Path, np.ndarray, List[Union[str, Path, np.ndarray]]],
+    input: str
+    | Path
+    | np.ndarray
+    | da.Array
+    | List[str]
+    | List[Path]
+    | List[np.ndarray]
+    | List[da.Array],
     output_path: Optional[str | Path] = None,
     layer_name: str = "raw_image",
     chunks: Optional[int] = None,
     dims: Optional[List[str]] = None,
     crd: Optional[List[int]] = None,
 ) -> SpatialData:
+    """
+    Convert input images or arrays into a SpatialData object.
+
+    This function allows you to ingest various input formats of images or data arrays,
+    convert them into a unified SpatialData format and write them out to a specified
+    path (zarr store) if needed. It provides flexibility in how you define the source data as well
+    as certain processing options like chunking.
+
+    The input parameter can be formatted in four ways:
+
+    - A path to a single image, either grayscale or multiple channels.
+        Examples:
+        input=DAPI_z3.tif -> single channel
+        input=DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
+    - A pattern representing a collection of z-stacks (if this is the case, a z-projection
+    is performed which selects the maximum intensity value across the z-dimension).
+        Examples:
+        input=DAPI_z*.tif -> z-projection performed
+        input=DAPI_Poly_z*.tif -> z-projection performed
+    - A list of filename patterns (where each list item corresponds to a different channel)
+        Examples
+        input=[ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
+        input[ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
+    - A single numpy or dask array. The dims parameter should specify its dimension, e.g. ['y','x']
+    for a 2D array or [ 'c', 'y', 'x', 'z' ] for a 4D array with channels.
+    If a z-dimension >1 is present, a z-projection is performed.
+
+    Parameters
+    ----------
+    input : Union[str, Path, List[Union[str, Path]]]
+        The filename pattern, path or list of filename patterns to the images that
+        should be loaded. In case of a list, each list item should represent a different
+        channel, and each image corresponding to a filename pattern should represent.
+        a different z-stack.
+        Input can also be a numpy array. In that case the dims parameter should be specified.
+    output_path : Optional[str | Path], default=None
+        If specified, the resulting SpatialData object will be written to this path as a zarr.
+    layer_name : str, default="raw_image"
+        The name of the image layer to be created in the SpatialData object.
+    chunks : Optional[int], default=None
+        If specified, the underlying dask array will be rechunked to this size.
+    dims : Optional[List[str]], default=None
+        The dimensions of the input data if it's a numpy array. E.g., ['y','x'] or ['c','y','x','z'].
+        If input is a str, Path or List[str], List[Path], this parameter is ignored.
+    crd : tuple of int, optional
+        The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax). 
+        If specified, this region is cropped from the image, and added as image layer to the 
+        SpatialData object.
+
+    Returns
+    -------
+    SpatialData
+        The constructed SpatialData object containing image layer with name 'layer_name' with dimension (c,y,x)
+
+    Notes
+    -----
+    If 'crd' is specified and some of its values are None, the function infers the missing
+    values based on the input image's shape.
+    """
+
     dask_array = _load_image_to_dask(input=input, chunks=chunks, dims=dims)
 
     sdata = spatialdata.SpatialData()
@@ -54,9 +121,14 @@ def create_sdata(
 
 
 def _load_image_to_dask(
-    input: Union[
-        str, Path, np.ndarray, da.Array, List[Union[str, Path, np.ndarray, da.Array]]
-    ],
+    input: str
+    | Path
+    | np.ndarray
+    | da.Array
+    | List[str]
+    | List[Path]
+    | List[np.ndarray]
+    | List[da.Array],
     chunks: Optional[int] = None,
     dims: Optional[List[str]] = None,
     crd: Optional[List[int]] = None,
@@ -68,37 +140,21 @@ def _load_image_to_dask(
     These images are designated by a provided filename pattern or numpy array. The resulting dask
     array will have three dimensions structured as follows: channel (c), y, and x.
 
-    The input parameter can be formatted in four ways:
-
-    - A path to a single image, either grayscale or multiple channels.
-        Examples:
-        DAPI_z3.tif -> single channel
-        DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
-    - A pattern representing a collection of z-stacks (if this is the case, a z-projection
-    is performed which selects the maximum intensity value across the z-dimension).
-        Examples:
-        DAPI_z*.tif -> z-projection performed
-        DAPI_Poly_z*.tif -> z-projection performed
-    - A list of filename patterns (where each list item corresponds to a different channel)
-        Examples
-        [ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
-        [ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
-    - A single numpy or dask array. The dims parameter should specify its dimension, e.g. ['y','x']
-    for a 2D array or [ 'c', 'y', 'x', 'z' ] for a 4D array with channels.
-    If a z-dimension >1 is present, a z-projection is performed.
-
     Parameters
     ----------
-    filename_pattern : Union[str, Path, List[Union[str, Path]]]
+    input : Union[str, Path, List[Union[str, Path]]]
         The filename pattern, path or list of filename patterns to the images that
         should be loaded. In case of a list, each list item should represent a different
-        channel, and each image corresponding to a filename pattern should represent
+        channel, and each image corresponding to a filename pattern should represent.
         a different z-stack.
-    chunks : int, optional
-        Chunk size for rechunking the resulting dask array. If not provided (None),
-        the array will not be rechunked.
-    dims : int, optional
-        Dimension of the provided array. If input is a str of Path, this parameter is ignored.
+    chunks : Optional[int], default=None
+        If specified, the underlying dask array will be rechunked to this size.
+    dims : Optional[List[str]], default=None
+        The dimensions of the input data if it's a numpy array. E.g., ['y','x'] or ['c','y','x','z'].
+        If input is a str of Path, this parameter is ignored.
+    crd : tuple of int, optional
+        The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
+
 
     Returns
     -------
@@ -108,7 +164,7 @@ def _load_image_to_dask(
     Raises
     ------
     ValueError
-        If an image is not 3D (z,y,x), a ValueError is raised. z-dimension can be 1.
+        If an image is not 3D (z,y,x) after loading by dask_image, a ValueError is raised. z-dimension can be 1.
     """
 
     if isinstance(input, list):

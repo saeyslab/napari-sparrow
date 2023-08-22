@@ -1,8 +1,8 @@
 """" This file acts as a starting point for running the pipeline for single sample analysis.
 It can be run from any place with the command: 'sparrow'. """
 
-import logging
 import glob
+import logging
 import warnings
 
 import hydra
@@ -33,7 +33,7 @@ def check_config(cfg: DictConfig):
     # Check if all mandatory paths exist
     for p in paths_to_check:
         # Check if the path contains a wildcard
-        if '*' in p:
+        if "*" in p:
             matches = glob.glob(p)
             # Assert that at least one file matching the glob pattern exists
             assert matches, f"No file matches the path pattern {p}"
@@ -57,21 +57,33 @@ def main(cfg: DictConfig) -> None:
     # Load
     log.info("Converting to zarr and (lazy) loading of SpatialData object.")
     sdata = nasp.load(cfg)
+    log.info("Conversion to zarr finished.")
 
     # Clean
+    log.info("Cleaning step started.")
     sdata = nasp.clean(cfg, sdata)
+    log.info("Cleaning step finished.")
 
     # Segment
+    log.info("Segmentation step started.")
     sdata = nasp.segment(cfg, sdata)
+    log.info("Segmentation step finished.")
 
     # Allocate
+    log.info("Allocation step started.")
     sdata = nasp.allocate(cfg, sdata)
+    log.info("Allocation step finished.")
 
-    # Annotate
-    sdata, mg_dict = nasp.annotate(cfg, sdata)
+    if cfg.dataset.markers is not None:
+        # Annotate
+        log.info("Annotation step started.")
+        sdata, mg_dict = nasp.annotate(cfg, sdata)
+        log.info("Annotation step finished.")
 
-    # Visualize
-    sdata = nasp.visualize(cfg, sdata, mg_dict)
+        # Visualize
+        log.info("Visualization step started.")
+        sdata = nasp.visualize(cfg, sdata, mg_dict)
+        log.info("Visualization step finished.")
 
     return
 

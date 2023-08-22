@@ -3,6 +3,10 @@ import numpy as np
 import spatialdata
 from spatialdata import SpatialData
 
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
+
 
 def correct_marker_genes(
     sdata: SpatialData,
@@ -17,7 +21,7 @@ def correct_marker_genes(
     # Correct for all the genes
     for celltype, values in celltype_correction_dict.items():
         if celltype not in sdata.table.obs.columns:
-            print(
+            log.info(
                 f"Cell type '{celltype}' not in obs of AnnData object. Skipping. Please first calculate gene expression for this cell type."
             )
             continue
@@ -51,7 +55,7 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
     sdata = _filter_shapes(sdata, filtered_name="size")
 
     filtered = start - table.shape[0]
-    print(str(filtered) + " cells were filtered out based on size.")
+    log.info( f"{filtered} cells were filtered out based on size." )
 
     return sdata
 
@@ -59,7 +63,7 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
 def _filter_shapes(sdata: SpatialData, filtered_name: str):
     for _shapes_layer in [*sdata.shapes]:
         if "filtered" not in _shapes_layer:
-            print(_shapes_layer)
+            #log.info(_shapes_layer)
             sdata[_shapes_layer].index = list(map(str, sdata[_shapes_layer].index))
             filtered_indexes = ~np.isin(
                 sdata[_shapes_layer].index.values.astype(int),
@@ -68,7 +72,7 @@ def _filter_shapes(sdata: SpatialData, filtered_name: str):
 
             if sum(filtered_indexes) != 0:
                 sdata.add_shapes(
-                    name=f"filtered_{filtered_name}_{_shapes_layer}",
+                    name=f"filtered_{_shapes_layer}_{filtered_name}",
                     shapes=spatialdata.models.ShapesModel.parse(
                         sdata[_shapes_layer][filtered_indexes]
                     ),

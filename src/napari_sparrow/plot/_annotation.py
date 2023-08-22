@@ -19,7 +19,44 @@ def score_genes(
     filter_index: Optional[int] = None,
     output: Optional[str] = None,
 ) -> None:
-    """This function plots the cleanliness and the leiden score next to the annotation."""
+    """
+    Function generates following plots: 
+    - umap of assigned celltype next to umap of calculated cleanliness.
+    - umap of assigned celltype next to umap of assigned leiden cluster.
+    - assigned celltype for all cells in region of interest (crd).
+    - a heatmap of the assigned leiden cluster for each cell type.
+    - a heatmap of the assigned leiden cluster for each cell type, with leiden cluster >= filter_index.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Data containing spatial information for plotting.
+    scoresper_cluster : pd.DataFrame
+        Index:
+            cells: The index corresponds to indivdual cells ID's.
+        Columns:
+            celltypes (as provided via the markers file).
+        Values:
+            Score obtained using the scanpy's score_genes function for each celltype and for each cell.
+    img_layer : str, optional
+        Image layer to be plotted. If not provided, the last image layer in `sdata` will be used.
+    shapes_layer : str, optional
+        Name of the layer containing segmentation mask boundaries, by default "segmentation_mask_boundaries".
+    crd : tuple of int, optional
+        The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax). Only used for plotting purposes.
+    filter_index : int or None, optional
+        Index used to filter leiden clusters when plotting the heatmap. Only leiden clusters >= filter index will be plotted.
+    output : str or None, optional
+        Filepath to save the plots. If not provided, plots will be displayed without being saved.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    This function uses `scanpy` for plotting and may save multiple plots based on the output parameter.
+    """
     if img_layer is None:
         img_layer = [*sdata.images][-1]
     si = sdata.images[img_layer]

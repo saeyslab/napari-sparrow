@@ -1,17 +1,21 @@
-from typing import Tuple
 from collections import namedtuple
-import spatialdata
-from spatialdata import SpatialData
-from affine import Affine
-from anndata import AnnData
-from dask.dataframe.core import DataFrame as DaskDataFrame
+from typing import Tuple
+
 import dask
 import dask.dataframe as dd
 import rasterio
 import rasterio.features
+import spatialdata
+from affine import Affine
+from anndata import AnnData
+from dask.dataframe.core import DataFrame as DaskDataFrame
+from spatialdata import SpatialData
 
 from napari_sparrow.image._image import _get_translation
 from napari_sparrow.table._table import _filter_shapes
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def allocate(
@@ -34,7 +38,7 @@ def allocate(
     # This is computationaly not heavy, but could take some ram,
     # because it creates image-size array of masks in memory
     # I guess not if no voronoi was created.
-    print("creating masks from polygons")
+    log.info("Creating masks from polygons.")
     masks = rasterio.features.rasterize(
         zip(
             sdata[shapes_layer].geometry, sdata[shapes_layer].index.values.astype(float)
@@ -45,10 +49,10 @@ def allocate(
         transform=transform,
     )
 
-    print(f"Created masks with shape {masks.shape}")
+    log.info(f"Created masks with shape {masks.shape}.")
     ddf = sdata["transcripts"]
 
-    print("Calculate cell counts")
+    log.info("Calculating cell counts.")
 
     # Define a function to process each partition using its index
     def process_partition(index, masks, coords):
@@ -82,15 +86,19 @@ def allocate(
     coordinates = combined_partitions.groupby("cells").mean().iloc[:, [0, 1]]
     cell_counts = combined_partitions.groupby(["cells", "gene"]).size()
 
-    coordinates, cell_counts = dask.compute(coordinates, cell_counts, scheduler="threads")
+    coordinates, cell_counts = dask.compute(
+        coordinates, cell_counts, scheduler="threads"
+    )
 
     cell_counts = cell_counts.unstack(fill_value=0)
+
+    log.info("Finished calculating cell counts.")
 
     # make sure coordinates are sorted in same order as cell_counts
     index_order = cell_counts.index.argsort()
     coordinates = coordinates.loc[cell_counts.index[index_order]]
 
-    print("Create anndata object")
+    log.info("Creating AnnData object.")
 
     # Create the anndata object
     adata = AnnData(cell_counts[cell_counts.index != 0])

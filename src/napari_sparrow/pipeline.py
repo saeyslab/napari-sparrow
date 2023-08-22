@@ -45,12 +45,16 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
+        log.info("Start tilig correction.")
+
         sdata, flatfields = nas.im.tiling_correction(
             sdata=sdata,
             crd=cfg.clean.crop_param if cfg.clean.crop_param is not None else None,
             tile_size=cfg.clean.tile_size,
             output_layer="tiling_correction",
         )
+
+        log.info("Tilig correction finished.")
 
         # Write plot to given path if output is enabled
         if "tiling_correction" in cfg.paths:
@@ -78,12 +82,16 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # tophat filtering
 
     if cfg.clean.tophatFiltering:
+        log.info("Start tophat filtering.")
+
         sdata = nas.im.tophat_filtering(
             sdata=sdata,
             size_tophat=list(cfg.clean.size_tophat)
             if isinstance(cfg.clean.size_tophat, ListConfig)
             else cfg.clean.size_tophat,
         )
+
+        log.info("Tophat filtering finished.")
 
         nas.pl.plot_image(
             sdata=sdata,
@@ -95,6 +103,8 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     # contrast enhancement
 
     if cfg.clean.contrastEnhancing:
+        log.info("Start contrast enhancing.")
+
         sdata = nas.im.enhance_contrast(
             sdata=sdata,
             contrast_clip=list(cfg.clean.contrast_clip)
@@ -103,6 +113,8 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             chunks=cfg.clean.chunksize_clahe,
             depth=cfg.clean.depth,
         )
+
+        log.info("Contrast enhancing finished.")
 
         nas.pl.plot_image(
             sdata=sdata,
@@ -116,6 +128,8 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
 def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     """Segmentation step, the third step of the pipeline, performs cellpose segmentation and creates masks."""
+
+    log.info("Start segmentation.")
 
     # Perform segmentation
     sdata = nas.im.segmentation_cellpose(
@@ -132,6 +146,8 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         chunks=cfg.segmentation.chunks,
         lazy=cfg.segmentation.lazy,
     )
+
+    log.info("Segmentation finished.")
 
     shapes_layer = None
     for key in sdata.shapes.keys():
@@ -195,10 +211,14 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
                 shapes_layer = key
                 break
 
+    log.info("Start allocation.")
+
     sdata = nas.tb.allocate(
         sdata=sdata,
         shapes_layer=shapes_layer,
     )
+
+    log.info("Allocation finished.")
 
     # plot the image in SpatialData object in last position, will typically be 'clahe'
     img_layer = [*sdata.images][-1]
@@ -219,6 +239,8 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         output=cfg.paths.analyse_genes_left_out,
     )
 
+    log.info("Preprocess AnnData.")
+
     # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
     sdata = nas.tb.preprocess_anndata(
         sdata,
@@ -228,6 +250,8 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         n_comps=cfg.allocate.n_comps,
         shapes_layer=shapes_layer,
     )
+
+    log.info("Preprocessing AnnData finished.")
 
     nas.pl.preprocess_anndata(
         sdata,
@@ -267,7 +291,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         output=cfg.paths.shape_size,
     )
 
-    print("Start clustering")
+    log.info("Start clustering")
 
     sdata = nas.tb.cluster(
         sdata,
@@ -275,6 +299,8 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
         neighbors=cfg.allocate.neighbors,
         cluster_resolution=cfg.allocate.cluster_resolution,
     )
+
+    log.info("Clustering finished")
 
     nas.pl.cluster(
         sdata,
@@ -366,8 +392,8 @@ def visualize(
     # Check cluster cleanliness
     sdata, color_dict = nas.tb.cluster_cleanliness(
         sdata,
-        genes=list(mg_dict.keys()),
-        gene_indexes=celltype_indexes,
+        celltypes=list(mg_dict.keys()),
+        celltype_indexes=celltype_indexes,
         colors=colors,
     )
 

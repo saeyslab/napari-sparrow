@@ -1,15 +1,22 @@
 import logging
 import os
 
-# from pytorch_lightning.utilities import rank_zero_only
-
-
 def get_pylogger(name=__name__) -> logging.Logger:
     """Initializes multi-GPU-friendly python command line logger."""
 
     logger = logging.getLogger(name)
     LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
     logger.setLevel(LOGLEVEL)
+
+    # Create a stream handler to output to console
+    ch = logging.StreamHandler()
+    ch.setLevel(LOGLEVEL)
+    #formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    #ch.setFormatter(formatter)
+
+    # Add the stream handler to the logger
+    if not logger.hasHandlers():
+        logger.addHandler(ch)
 
     # this ensures all logging levels get marked with the rank zero decorator
     # otherwise logs would get multiplied for each GPU process in multi-GPU setup

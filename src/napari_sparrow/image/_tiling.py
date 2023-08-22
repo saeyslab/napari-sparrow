@@ -1,15 +1,18 @@
 from typing import List, Optional, Tuple
 
-from spatialdata import SpatialData
-from basicpy import BaSiC
-import numpy as np
-import dask.array as da
-import squidpy as sq
 import cv2
+import dask.array as da
+import numpy as np
 import spatialdata
-from spatialdata.transformations import set_transformation, Translation
+import squidpy as sq
+from basicpy import BaSiC
+from spatialdata import SpatialData
+from spatialdata.transformations import Translation, set_transformation
 
-from napari_sparrow.image._image import _substract_translation_crd, _get_translation  
+from napari_sparrow.image._image import _get_translation, _substract_translation_crd
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def tiling_correction(
@@ -64,7 +67,7 @@ def tiling_correction(
             == 0
         )
         if tiles.shape[0] < 5:
-            print(
+            log.info(
                 "There aren't enough tiles to perform tiling correction (less than 5). This step will be skipped."
             )
             tiles_corrected = tiles

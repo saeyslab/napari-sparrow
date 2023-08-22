@@ -1,12 +1,13 @@
-from typing import Tuple, Optional, List, Dict
-from itertools import chain
 import warnings
-import matplotlib.pyplot as plt
+from itertools import chain
+from typing import Dict, List, Optional, Tuple
+
 import matplotlib as mpl
-from spatialdata import SpatialData
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scanpy as sc
+from spatialdata import SpatialData
 
 from napari_sparrow.table._table import _back_sdata_table_to_zarr
 
@@ -20,14 +21,49 @@ def score_genes(
     del_celltypes: Optional[List[str]] = None,
     input_dict=False,
 ) -> Tuple[dict, pd.DataFrame]:
-    """Returns genes dict and the scores per cluster
+    """
+    The function loads marker genes from a CSV file and scores cells for each cell type using those markers
+    using scanpy's score_genes function.
+    Marker genes can be provided as a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column;
+    or in dictionary format. The function further allows replacements of column names and deletions of specific marker genes.
 
-    Load the marker genes from csv file in path_marker_genes.
-    If the marker gene list is a one hot endoded matrix, leave the input as is.
-    If the marker gene list is a Dictionary, with the first column the name of the celltype and the other columns the marker genes beloning to this celltype,
-    input
-    repl_columns holds the column names that should be replaced the in the marker genes.
-    del_genes holds the marker genes that should be deleted from the marker genes and genes dict.
+    Parameters
+    ----------
+    sdata : SpatialData
+        Data containing spatial information.
+    path_marker_genes : str
+        Path to the CSV file containing the marker genes.
+        CSV file should be a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column.
+    delimiter : str, optional
+        Delimiter used in the CSV file, default is ','.
+    row_norm : bool, optional
+        Flag to determine if row normalization is applied, default is False.
+    repl_columns : dict, optional
+        Dictionary containing cell types to be replaced. The keys are the original cell type names and
+        the values are their replacements.
+    del_celltypes : list, optional
+        List of cell types to be deleted from the list of possible cell type candidates.
+        Cells are scored for these cell types, but will not be assigned a cell type from this list.
+    input_dict : bool, optional
+        If True, the marker gene list from the CSV file is treated as a dictionary with the first column being
+        the cell type names and the subsequent columns being the marker genes for those cell types. Default is False.
+
+    Returns
+    -------
+    dict
+        Dictionary with cell types as keys and their respective marker genes as values.
+    pd.DataFrame
+        Index:
+            cells: The index corresponds to indivdual cells ID's.
+        Columns:
+            celltypes (as provided via the markers file).
+        Values:
+            Score obtained using scanpy's score_genes function for each celltype and for each cell.
+
+    Notes
+    -----
+    The cell type 'unknown_celltype' is reserved for cells that could not be assigned a specific cell type.
+
     """
 
     # Load marker genes from csv
@@ -94,16 +130,46 @@ def score_genes(
 
 def cluster_cleanliness(
     sdata: SpatialData,
-    genes: List[str],
-    gene_indexes: Optional[Dict[str, int]] = None,
+    celltypes: List[str],
+    celltype_indexes: Optional[Dict[str, int]] = None,
     colors: Optional[List[str]] = None,
 ) -> Tuple[SpatialData, Optional[dict]]:
-    """Returns a tuple with the AnnData object and the color dict."""
+    """
+    Re-calculates annotations, potentially following corrections to the list of celltypes,
+    or after a manual update of the assigned scores per cell type via e.g. `correct_marker_genes`. 
+    Celltypes can also be grouped together via the celltype_indexes parameter.
+    Returns a `SpatialData` object alongside a dictionary mapping cell types to colors.
 
-    celltypes = np.array(sorted(genes), dtype=str)
+    Parameters
+    ----------
+    sdata : SpatialData
+        Data containing spatial information.
+    celltypes : List[str]
+        List of celltypes used for annotation.
+    celltype_indexes : dict, optional
+        Dictionary with cell type as keys and indexes as values.
+        Cell types with provided indexes will be grouped together under new cell type provided as key.
+        E.g.:
+        celltype_indexes = {"fibroblast": [4,5,23,25], "stellate": [28,29,30]} ->
+        celltypes at index 4,5,23 and 25 in provided list of celltypes (after an alphabetic sort) will be grouped together as "fibroblast".
+    colors : list, optional
+        List of colors to be used for visualizing different cell types. If not provided,
+        a default colormap will be generated.
+
+    Returns
+    -------
+    SpatialData
+        Updated spatial data after the cleanliness analysis.
+    dict
+        Dictionary with cell types as keys and their corresponding colors as values.
+
+    """
+
+    celltypes = np.array(sorted(celltypes), dtype=str)
     color_dict = None
 
-    # recalculate annotation, because we possibly did correction on celltype score for certain cells via correct_marker_genes function
+    # recalculate annotation, because we possibly did correction on celltype score for certain cells via correct_marker_genes function,
+    # or updated the list of celltypes.
     sdata, _ = _annotate_celltype(
         sdata=sdata,
         celltypes=celltypes,
@@ -125,21 +191,21 @@ def cluster_cleanliness(
 
     sdata.table.uns["annotation_colors"] = colors
 
-    if gene_indexes:
+    if celltype_indexes:
         sdata.table.obs["annotationSave"] = sdata.table.obs.annotation
         gene_celltypes = {}
 
-        for key, value in gene_indexes.items():
+        for key, value in celltype_indexes.items():
             gene_celltypes[key] = celltypes[value]
 
-        for gene, indexes in gene_indexes.items():
+        for gene, indexes in celltype_indexes.items():
             sdata = _annotate_maxscore(gene, gene_celltypes, sdata)
 
-        for gene, indexes in gene_indexes.items():
+        for gene, indexes in celltype_indexes.items():
             sdata = _remove_celltypes(gene, gene_celltypes, sdata)
 
-        celltypes_f = np.delete(celltypes, list(chain(*gene_indexes.values())))  # type: ignore
-        celltypes_f = np.append(celltypes_f, list(gene_indexes.keys()))
+        celltypes_f = np.delete(celltypes, list(chain(*celltype_indexes.values())))  # type: ignore
+        celltypes_f = np.append(celltypes_f, list(celltype_indexes.keys()))
         color_dict = dict(zip(celltypes_f, sdata.table.uns["annotation_colors"]))
 
     else:

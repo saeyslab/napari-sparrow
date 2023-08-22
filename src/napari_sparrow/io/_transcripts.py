@@ -1,10 +1,15 @@
 from pathlib import Path
 from typing import Optional, Union
-import numpy as np
+
 import dask.dataframe as dd
-from dask.dataframe.core import DataFrame as DaskDataFrame
+import numpy as np
 import spatialdata
+from dask.dataframe.core import DataFrame as DaskDataFrame
 from spatialdata import SpatialData
+
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def read_resolve_transcripts(
@@ -19,7 +24,7 @@ def read_resolve_transcripts(
     sdata : SpatialData
         The SpatialData object to which the transcripts will be added.
     path_count_matrix : str | Path
-        Path to the file containing the transcripts information specific to Resolve. 
+        Path to the file containing the transcripts information specific to Resolve.
         Expected to contain x, y coordinates and a gene name.
 
     Returns
@@ -131,11 +136,11 @@ def read_transcripts(
     sdata : SpatialData
         The SpatialData object to which the transcripts will be added.
     path_count_matrix : Union[str, Path]
-        Path to the .txt file containing the transcripts information. Each row should contain an x, y coordinate and a gene name. 
+        Path to the .txt file containing the transcripts information. Each row should contain an x, y coordinate and a gene name.
         Optional a midcount column is provided. If a midcount column is provided, rows are repeated.
     path_transform_matrix : Optional[Union[str, Path]], default=None
-        This file should contain a 3x3 transformation matrix for the affine transformation. 
-        The matrix defines the linear transformation to be applied to the coordinates of the transcripts. 
+        This file should contain a 3x3 transformation matrix for the affine transformation.
+        The matrix defines the linear transformation to be applied to the coordinates of the transcripts.
         If no transform matrix is specified, the identity matrix will be used.
     debug : bool, default=False
         If True, a sample of the data is processed for debugging purposes.
@@ -167,12 +172,12 @@ def read_transcripts(
 
     # Read the transformation matrix
     if path_transform_matrix is None:
-        print("No transform matrix given, will use identity matrix.")
+        log.info("No transform matrix given, will use identity matrix.")
         transform_matrix = np.identity(3)
     else:
         transform_matrix = np.loadtxt(path_transform_matrix)
 
-    print(transform_matrix)
+    log.info(f"Transform matrix used:\n {transform_matrix}")
 
     if debug:
         n = 100000

@@ -1,17 +1,21 @@
-from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any, Iterable
 import warnings
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from spatialdata import SpatialData
 
-from napari_sparrow.shape import intersect_rectangles
 from napari_sparrow.image._image import (
     _apply_transform,
-    _unapply_transform,
     _get_image_boundary,
+    _unapply_transform,
 )
+from napari_sparrow.shape import intersect_rectangles
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def plot_image(
@@ -312,8 +316,9 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
                 sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].index, :
             ].X[:, np.where(sdata.table.var.index == column)[0][0]]
         else:
-            print(
-                "The column defined in the function isnt a column in obs, nor is it a gene name, the plot is made without taking into account this value."
+            log.info(
+                f"The column '{column}' is not a column in the dataframe sdata.table.obs, "
+                "nor is it a gene name (sdata.table.var.index). The plot is made without taking into account this value."
             )
             column = None
             cmap = None
@@ -359,7 +364,7 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
         )
         if plot_filtered:
             for i in [*sdata.shapes]:
-                if "filtered" in i:
+                if f"filtered_{shapes_layer}" in i:
                     sdata[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
                         ax=ax,
                         edgecolor="red",

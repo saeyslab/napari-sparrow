@@ -1,13 +1,16 @@
+import warnings
 from typing import Optional, Tuple
 
 import dask.array as da
-import warnings
 import spatialdata
 from scipy.ndimage import gaussian_filter
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
 from napari_sparrow.image._image import _get_image_boundary
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def transcript_density(
@@ -105,12 +108,12 @@ def transcript_density(
     if n_sample is not None:
         size = len(ddf)
         if size > n_sample:
-            print(
+            log.info(
                 f"The number of transcripts ( {size} ) is larger than n_sample, sampling {n_sample} transcripts."
             )
             fraction = n_sample / size
             ddf = ddf.sample(frac=fraction)
-            print("sampling finished")
+            log.info("sampling finished")
 
     counts_location_transcript = ddf.groupby([name_x, name_y]).count()[name_gene_column]
 
