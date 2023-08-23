@@ -1,4 +1,3 @@
-import warnings
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -104,7 +103,7 @@ def sanity_plot_transcripts_matrix(
         _crd = crd
         crd = intersect_rectangles(crd, image_boundary)
         if crd is None:
-            warnings.warn(
+            log.warning(
                 (
                     f"Provided crd '{_crd}' and image_boundary '{image_boundary}' do not have any overlap. "
                     f"Please provide a crd that has some overlap with the image. "
@@ -169,7 +168,7 @@ def sanity_plot_transcripts_matrix(
         else:
             _shapes_layer = shapes_layer
             shapes_layer = [*sdata.shapes][-1]
-            warnings.warn(
+            log.warning(
                 (
                     f"Provided shapes_layer '{_shapes_layer}' not in SpatialData object, plotting last shapes_layer '{shapes_layer}'."
                 )

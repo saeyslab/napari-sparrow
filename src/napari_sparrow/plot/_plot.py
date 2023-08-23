@@ -1,6 +1,5 @@
-import warnings
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -288,7 +287,7 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
         _crd = crd
         crd = intersect_rectangles(crd, image_boundary)
         if crd is None:
-            warnings.warn(
+            log.warning(
                 (
                     f"Provided crd '{_crd}' and image_boundary '{image_boundary}' do not have any overlap. "
                     f"Please provide a crd that has some overlap with the image. "
@@ -336,9 +335,9 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     elif channel not in si.c.data:
         _channel = channel
         channel = si.c.data[0]
-        warnings.warn(
+        log.warning(
             (
-                f"Provided channel '{_channel}' not in list of available channels '{si.c.data}'"
+                f"Provided channel '{_channel}' not in list of available channels '{si.c.data}' "
                 f"for provided img_layer '{img_layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
             )
         )

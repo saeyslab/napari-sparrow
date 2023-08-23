@@ -12,10 +12,10 @@ def correct_marker_genes(
     sdata: SpatialData,
     celltype_correction_dict: Dict[str, Tuple[float, float]],
 ):
-    """Returns the new AnnData object.
+    """Returns the updated SpatialData object.
 
-    Corrects marker genes that are higher expessed by dividing them.
-    The genes has as keys the genes that should be corrected and as values the threshold and the divider.
+    Corrects celltypes that are higher expessed by dividing them by a value if they exceed a certain threshold.
+    The celltype_correction_dict has as keys the celltypes that should be corrected and as values the threshold and the divider.
     """
 
     # Correct for all the genes
@@ -37,10 +37,9 @@ def correct_marker_genes(
 
 
 def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 100000):
-    """Returns a tuple with the AnnData object and the number of filtered cells.
+    """Returns the updated SpatialData object.
 
-    All cells outside of the min and max size range are removed.
-    If the distance between the location of the transcript and the center of the polygon is large, the cell is deleted.
+    All cells with a size outside of the min and max size range are removed.
     """
 
     start = sdata.table.shape[0]

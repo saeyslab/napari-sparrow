@@ -119,6 +119,7 @@ def read_transcripts(
     sdata: SpatialData,
     path_count_matrix: Union[str, Path],
     path_transform_matrix: Optional[Union[str, Path]] = None,
+    points_layer: str = 'transcripts',
     debug: bool = False,
     column_x: int = 0,
     column_y: int = 1,
@@ -130,6 +131,7 @@ def read_transcripts(
     """
     Reads transcript information from a file with each row listing the x and y coordinates, along with the gene name.
     If a transform matrix is provided a linear transformation is applied to the coordinates of the transcripts.
+    The SpatialData object is augmented with a points layer named 'transcripts' that contains the transcripts.
 
     Parameters
     ----------
@@ -142,6 +144,8 @@ def read_transcripts(
         This file should contain a 3x3 transformation matrix for the affine transformation.
         The matrix defines the linear transformation to be applied to the coordinates of the transcripts.
         If no transform matrix is specified, the identity matrix will be used.
+    points_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
     debug : bool, default=False
         If True, a sample of the data is processed for debugging purposes.
     column_x : int, default=0
@@ -215,19 +219,19 @@ def read_transcripts(
     # Reorder
     transformed_ddf = transformed_ddf[["pixel_x", "pixel_y", "gene"]]
 
-    sdata = _add_transcripts_to_sdata(sdata, transformed_ddf)
+    sdata = _add_transcripts_to_sdata(sdata, transformed_ddf, points_layer )
 
     return sdata
 
 
-def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame):
+def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame, points_layer: str):
     # TODO below fix to remove transcripts does not work when backed by zarr store, points not allowed to be deleted on disk.
     if sdata.points:
         for points_layer in [*sdata.points]:
             del sdata.points[points_layer]
 
     sdata.add_points(
-        name="transcripts",
+        name=points_layer,
         points=spatialdata.models.PointsModel.parse(
             transformed_ddf, coordinates={"x": "pixel_x", "y": "pixel_y"}
         ),

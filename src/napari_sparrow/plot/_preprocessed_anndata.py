@@ -6,7 +6,7 @@ import seaborn as sns
 
 
 def preprocess_anndata(sdata: SpatialData, output: Optional[str] = None) -> None:
-    """This function plots the size of the nucleus related to the counts."""
+    """This function plots the size of the nucleus/cell related to the counts."""
 
     sc.pl.pca(
         sdata.table,

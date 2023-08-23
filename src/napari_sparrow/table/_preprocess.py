@@ -1,9 +1,10 @@
-import warnings
-
 import scanpy as sc
 from spatialdata import SpatialData
 
 from napari_sparrow.table._table import _back_sdata_table_to_zarr, _filter_shapes
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def preprocess_anndata(
@@ -81,7 +82,7 @@ def preprocess_anndata(
     # calculate the max amount of pc's possible
     if min(sdata.table.shape) < n_comps:
         n_comps = min(sdata.table.shape)
-        warnings.warn(
+        log.warning(
             (
                 f"amount of pc's was set to {min( sdata.table.shape)} because of the dimensionality of the AnnData object."
             )

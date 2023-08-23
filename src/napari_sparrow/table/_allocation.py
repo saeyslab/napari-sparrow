@@ -1,5 +1,4 @@
 from collections import namedtuple
-from typing import Tuple
 
 import dask
 import dask.dataframe as dd
@@ -8,7 +7,6 @@ import rasterio.features
 import spatialdata
 from affine import Affine
 from anndata import AnnData
-from dask.dataframe.core import DataFrame as DaskDataFrame
 from spatialdata import SpatialData
 
 from napari_sparrow.image._image import _get_translation
@@ -21,8 +19,25 @@ log = get_pylogger(__name__)
 def allocate(
     sdata: SpatialData,
     shapes_layer: str = "segmentation_mask_boundaries",
-) -> Tuple[SpatialData, DaskDataFrame]:
-    """Returns the AnnData object with transcript and polygon data."""
+    points_layer: str = "transcripts",
+) -> SpatialData:
+    """
+    Allocates transcripts to cells via provided shapes_layer and points_layer and returns updated SpatialData
+    augmented with a table attribute holding the AnnData object with cell counts.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object.
+    shapes_layer : str, optional
+        The layer in `sdata` that contains the boundaries of the segmentation mask, by default "segmentation_mask_boundaries".
+    points_layer: str, optional
+        The layer in `sdata` that contains the transcripts.
+
+    Returns
+    -------
+        An updated SpatialData object with the added table attribute (AnnData object).
+    """
 
     sdata[shapes_layer].index = sdata[shapes_layer].index.astype("str")
 
@@ -50,7 +65,7 @@ def allocate(
     )
 
     log.info(f"Created masks with shape {masks.shape}.")
-    ddf = sdata["transcripts"]
+    ddf = sdata[points_layer]
 
     log.info("Calculating cell counts.")
 

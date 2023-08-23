@@ -21,10 +21,36 @@ def tiling_correction(
     crd: Optional[Tuple[int, int, int, int]] = None,
     output_layer: str = "tiling_correction",
 ) -> Tuple[SpatialData, List[np.ndarray]]:
-    """Returns the corrected image and the flatfield array
-
+    """
     This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
     The illumination within the tiles is adjusted, afterwards the tiles are connected as a whole image by inpainting the lines between the tiles.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object containing the image data to correct.
+    tile_size : int, default=2144
+        The size of the tiles in the image.
+    crd : Optional[Tuple[int, int, int, int]], default=None
+        Coordinates defining the region of the image to correct. It defines the bounds (x_min, x_max, y_min, y_max).
+    output_layer : str, default="tiling_correction"
+        Name of the layer where the corrected image will be stored in the `sdata` object.
+
+    Returns
+    -------
+    Tuple[SpatialData, List[np.ndarray]]
+        Updated SpatialData object containing the corrected image and a list of flatfield arrays with length equal to the number of channels.
+
+    Raises
+    ------
+    ValueError
+        If the dimensions of the image layer are not multiples of the given tile size.
+
+    Notes
+    -----
+    The function integrates the BaSiC algorithm for illumination correction and uses OpenCV's inpainting
+    to stitch tiles together. It manages the pre- and post-processing of data, translation of coordinates,
+    and addition of corrected image results back to the SpatialData object.
     """
 
     layer = [*sdata.images][-1]

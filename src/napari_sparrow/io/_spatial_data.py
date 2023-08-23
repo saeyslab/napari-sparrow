@@ -1,12 +1,15 @@
-import warnings
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 
 import dask.array as da
 import numpy as np
 import spatialdata
 from dask_image import imread
 from spatialdata import SpatialData, bounding_box_query
+
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def create_sdata(
@@ -69,8 +72,8 @@ def create_sdata(
         The dimensions of the input data if it's a numpy array. E.g., ['y','x'] or ['c','y','x','z'].
         If input is a str, Path or List[str], List[Path], this parameter is ignored.
     crd : tuple of int, optional
-        The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax). 
-        If specified, this region is cropped from the image, and added as image layer to the 
+        The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
+        If specified, this region is cropped from the image, and added as image layer to the
         SpatialData object.
 
     Returns
@@ -184,7 +187,7 @@ def _load_image_to_dask(
 
     elif isinstance(input, (str, Path)):
         if dims is not None:
-            warnings.warn(
+            log.warning(
                 (
                     f"dims parameter is equal to {dims}, but will be ignored when reading in images from a file"
                 )

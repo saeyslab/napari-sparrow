@@ -1,4 +1,3 @@
-import warnings
 from itertools import chain
 from typing import Dict, List, Optional, Tuple
 
@@ -10,6 +9,9 @@ import scanpy as sc
 from spatialdata import SpatialData
 
 from napari_sparrow.table._table import _back_sdata_table_to_zarr
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def score_genes(
@@ -100,7 +102,7 @@ def score_genes(
         try:
             sc.tl.score_genes(sdata.table, value, score_name=key)
         except ValueError:
-            warnings.warn(
+            log.warning(
                 f"Markergenes {value} not present in region, celltype {key} not found"
             )
 
@@ -136,7 +138,7 @@ def cluster_cleanliness(
 ) -> Tuple[SpatialData, Optional[dict]]:
     """
     Re-calculates annotations, potentially following corrections to the list of celltypes,
-    or after a manual update of the assigned scores per cell type via e.g. `correct_marker_genes`. 
+    or after a manual update of the assigned scores per cell type via e.g. `correct_marker_genes`.
     Celltypes can also be grouped together via the celltype_indexes parameter.
     Returns a `SpatialData` object alongside a dictionary mapping cell types to colors.
 

@@ -21,7 +21,7 @@ def tiling_correction(
     """
     Visualizes the effect of tiling correction.
 
-    This function plots the raw image layer of a SpatialData object alongside the tiling corrected version, allowing for a visual
+    This function plots the uncorrected image layer of a SpatialData object alongside the tiling corrected version, allowing for a visual
     comparison between the two. This can be useful for assessing the effectiveness of tiling correction methods
     applied to an image layer of a SpatialData object.
 
@@ -30,7 +30,7 @@ def tiling_correction(
     sdata : SpatialData
         Data containing spatial information for plotting.
     img_layer : Tuple[str, str], optional
-        Tuple where the first string represents the layer name for the raw image and the second string
+        Tuple where the first string represents the layer name for the uncorrected image and the second string
         represents the layer name for the tiling corrected image. Default is ["raw_image", "tiling_correction"].
         Images will be plotted next to each other.
     channel : int or Iterable[int], optional

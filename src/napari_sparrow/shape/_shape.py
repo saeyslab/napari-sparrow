@@ -1,13 +1,14 @@
+import itertools
 from typing import List, Optional
-from shapely.geometry import Polygon, MultiPolygon, GeometryCollection
+
+import dask
+import dask.array as da
 import geopandas
 import numpy as np
-import shapely
-import itertools
 import rasterio
 import rasterio.features
-import dask.array as da
-import dask
+import shapely
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 
 def _mask_image_to_polygons(mask: da.Array) -> geopandas.GeoDataFrame:
@@ -81,8 +82,7 @@ def _extract_boundaries_from_geometry_collection(geometry):
 
 
 def intersect_rectangles(
-    rect1: List[int | float],
-    rect2: List[int | float]
+    rect1: List[int | float], rect2: List[int | float]
 ) -> Optional[List[int | float]]:
     """
     Calculate the intersection of two (axis aligned) rectangles.

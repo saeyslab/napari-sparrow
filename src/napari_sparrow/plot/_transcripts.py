@@ -1,4 +1,3 @@
-import warnings
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -84,7 +83,7 @@ def analyse_genes_left_out(
         )
 
     if sdata.table.raw is not None:
-        warnings.warn(
+        log.warning(
             (
                 f"It seems that analysis is being run on AnnData object (sdata.table) containing normalized counts, "
                 f"please consider running this analysis before the counts in the AnnData object "

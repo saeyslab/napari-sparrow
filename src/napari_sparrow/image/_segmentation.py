@@ -26,6 +26,60 @@ def segmentation_cellpose(
     chunks="auto",
     lazy=False,
 ) -> SpatialData:
+    """
+    Segment images using the Cellpose algorithm and add segmentation results to the SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object.
+    layer : Optional[str], default=None
+        The image layer in `sdata` to be segmented. If not provided, the last image layer in `sdata` is used.
+    output_layer : str, default="segmentation_mask"
+        The name of the label layer in which segmentation results will be stored in `sdata`.
+    crd : Optional[Tuple[int, int, int, int]], default=None
+        The coordinates specifying the region of the image to be segmented. It defines the bounds (x_min, x_max, y_min, y_max).
+    device : str, default="cpu"
+        Device to run Cellpose on, either "cpu" or "cuda" for GPU.
+    min_size : int, default=80
+        Minimum size of detected objects.
+    flow_threshold : float, default=0.6
+        Cellpose flow threshold.
+    diameter : int, default=55
+        Approximate diameter of objects to be detected.
+    cellprob_threshold : int, default=0
+        Cellpose cell probability threshold.
+    model_type : str, default="nuclei"
+        Type of model to be used in Cellpose, options include "nuclei" or "cyto".
+    channels : list, default=[0, 0]
+        Channels to use in Cellpose. 
+        For single channel images, the default value ([0,0]) should not be adapted. 
+        For multi channel images, the first element of the list is the channel to segment (count from 1), 
+        and the second element is the optional nuclear channel. 
+        E.g. for an image with PolyT in second channel, and DAPI in first channel use [2,1] if you want to segment PolyT + nuclei on DAPI; 
+        [2,0] if you only want to use PolyT and [1,0] if you only want to use DAPI."
+    chunks : str, default="auto"
+        The size of the chunks used by cellpose.
+    lazy : bool, default=False
+        If True, compute segmentation lazily.
+
+    Returns
+    -------
+    SpatialData
+        Updated SpatialData object containing the segmentation mask and boundaries obtained from Cellpose. 
+        Segmentation masks will be added as a labels layer to the SpatialData object with name output_layer, 
+        and masks boundaries as a shapes layer with name f'{output_layer}_boundaries.'
+
+    Raises
+    ------
+    ValueError
+        If the chosen output_layer name contains the word 'filtered'.
+
+    Notes
+    -----
+    The function integrates Cellpose segmentation into the SpatialData framework. It manages the pre and post-processing 
+    of data, translation of coordinates, and addition of segmentation results back to the SpatialData object.
+    """
     
     if "filtered" in output_layer:
         raise ValueError( "Please choose an output_layer name that does not have 'filtered' in its name, "
