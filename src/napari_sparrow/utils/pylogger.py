@@ -11,8 +11,8 @@ def get_pylogger(name=__name__) -> logging.Logger:
     # Create a stream handler to output to console
     ch = logging.StreamHandler()
     ch.setLevel(LOGLEVEL)
-    #formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    #ch.setFormatter(formatter)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
 
     # Add the stream handler to the logger
     if not logger.hasHandlers():
