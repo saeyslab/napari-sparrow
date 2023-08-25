@@ -1,8 +1,0 @@
-name: some_test
-channels:
-  - pytorch
-  - conda-forge
-  - defaults
-dependencies:
-  - python=3.10
-  - pandas==1.4.2

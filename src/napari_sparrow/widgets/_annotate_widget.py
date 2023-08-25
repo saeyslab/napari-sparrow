@@ -109,8 +109,11 @@ def annotate_widget(
 
         utils._export_config( cfg.annotate, os.path.join( cfg.paths.output_dir, 'configs', 'annotate', 'plugin.yaml' ) )
 
+        log.info( "Annotation metadata added" )
         show_info("Annotation finished")
 
     worker.returned.connect(lambda data: add_metadata(data, cfg, utils.ALLOCATION))
     show_info("Annotation started")
     worker.start()
+
+    return worker

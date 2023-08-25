@@ -1,5 +1,5 @@
 """
-Visualisation widget for saving the geojson and adata objects.
+Export widget for saving the sdata object.
 """
 import os
 
@@ -10,6 +10,8 @@ from magicgui import magic_factory
 from napari.utils.notifications import show_info
 
 import napari_sparrow.utils as utils
+
+log = utils.get_pylogger(__name__)
 
 @magic_factory(
     call_button="Export",
@@ -36,4 +38,5 @@ def export_widget(
 
     sdata.write(os.path.join(cfg.paths.output_dir, "sdata_export.zarr"))
 
+    log.info( "Exporting finished" )
     show_info("Exporting finished")

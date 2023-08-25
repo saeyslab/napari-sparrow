@@ -23,6 +23,7 @@ def load(cfg: DictConfig) -> SpatialData:
     else:
         filename_pattern = cfg.dataset.image
 
+    log.info( "Creating sdata." )
     sdata = nas.io.create_sdata(
         input=filename_pattern,
         output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
@@ -30,6 +31,8 @@ def load(cfg: DictConfig) -> SpatialData:
         crd=None,
         chunks=1024,  # TODO make chunks configurable
     )
+    log.info( "Finished creating sdata." )
+
     return sdata
 
 
@@ -45,7 +48,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     # Perform tilingCorrection on the whole image, corrects illumination and performs inpainting
     if cfg.clean.tilingCorrection:
-        log.info("Start tilig correction.")
+        log.info("Start tiling correction.")
 
         sdata, flatfields = nas.im.tiling_correction(
             sdata=sdata,
@@ -54,7 +57,7 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             output_layer="tiling_correction",
         )
 
-        log.info("Tilig correction finished.")
+        log.info("Tiling correction finished.")
 
         # Write plot to given path if output is enabled
         if "tiling_correction" in cfg.paths:
@@ -68,9 +71,11 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
                 output=cfg.paths.tiling_correction,
             )
             for i, flatfield in enumerate(flatfields):
-                nas.pl.flatfield(
-                    flatfield, output=f"{cfg.paths.tiling_correction}_flatfield_{i}"
-                )
+                # flatfield can be None is tiling correction failed.
+                if flatfield is not None:
+                    nas.pl.flatfield(
+                        flatfield, output=f"{cfg.paths.tiling_correction}_flatfield_{i}"
+                    )
 
         nas.pl.plot_image(
             sdata=sdata,
@@ -337,6 +342,9 @@ def annotate(
     )
 
     # Load marker genes, replace columns with different name, delete genes from list
+
+    log.info( "Start scoring genes" )
+
     mg_dict, scoresper_cluster = nas.tb.score_genes(
         sdata=sdata,
         path_marker_genes=cfg.dataset.markers,
@@ -345,6 +353,8 @@ def annotate(
         repl_columns=repl_columns,
         del_celltypes=del_celltypes,
     )
+
+    log.info( "Scoring genes finished" )
 
     if cfg.segmentation.voronoi_radius:
         shapes_layer = "expanded_cells" + str(cfg.segmentation.voronoi_radius)

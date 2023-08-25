@@ -33,7 +33,7 @@ log = utils.get_pylogger(__name__)
 def loadImage(
     sdata: SpatialData,
 ) -> SpatialData:
-    """Function representing the cleaning step, this calls all the needed functions to improve the image quality."""
+    """Function representing the loading step."""
 
     return sdata
 
@@ -47,7 +47,7 @@ def _load_worker(
     fn_kwargs: Dict[str, Any],
 ) -> list[np.ndarray]:
     """
-    clean image in a thread worker
+    load image in a thread worker
     """
 
     res = method(sdata, **fn_kwargs)
@@ -69,7 +69,7 @@ def load_widget(
     y_min: Optional[str] = "",
     y_max: Optional[str] = "",
 ):
-    """This function represents the clean widget and is called by the wizard to create the widget."""
+    """This function represents the load widget and is called by the wizard to create the widget."""
 
     # get the default values for the configs
     abs_config_dir = resource_filename("napari_sparrow", "configs")
@@ -82,7 +82,7 @@ def load_widget(
     crd = [x_min, x_max, y_min, y_max]
     crd = [None if val == "" else int(val) for val in crd]
 
-    show_info("Creating SpatialData object")
+    log.info("Creating sdata")
     if path_image:
         sdata = create_sdata(
             input=path_image,
@@ -91,6 +91,7 @@ def load_widget(
             chunks=1024,
             crd=crd if crd else None,
         )
+        log.info( "Finished creating sdata" )
 
     # elif image:
     # need to pass this as arguments
@@ -132,8 +133,14 @@ def load_widget(
 
         viewer.layers[utils.LOAD].metadata["sdata"] = sdata
         viewer.layers[utils.LOAD].metadata["cfg"] = cfg
+
+        log.info( f"Added {utils.LOAD} layer" )
+
         show_info("Loading finished")
 
     worker.returned.connect(lambda data: add_image(data, cfg, utils.LOAD))
     show_info("Loading started")
     worker.start()
+
+    # return worker, so status can be checked for unit testing
+    return worker

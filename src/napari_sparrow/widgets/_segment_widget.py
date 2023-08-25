@@ -19,7 +19,6 @@ from napari.utils.notifications import show_info
 from omegaconf.dictconfig import DictConfig
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
-from omegaconf import OmegaConf
 
 import napari_sparrow.utils as utils
 from napari_sparrow.io import create_sdata
@@ -215,6 +214,8 @@ def segment_widget(
         viewer.layers[layer_name].metadata["shapes"] = sdata.shapes.copy()
         viewer.layers[layer_name].metadata["cfg"] = cfg
 
+        log.info( f"Added {utils.SEGMENT} layer" )
+
         utils._export_config( cfg.segmentation, os.path.join( cfg.paths.output_dir, 'configs', 'segmentation', 'plugin.yaml' ) )
 
         show_info("Segmentation finished")
@@ -226,3 +227,5 @@ def segment_widget(
         else ""
     )
     worker.start()
+
+    return worker

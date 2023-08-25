@@ -104,14 +104,15 @@ def clean_widget(
             input=image.data_raw, layer_name="raw_image", chunks=1024, dims=dims
         )
 
-        # get offset of previous layer, and set it to newly created sdata object:
-        offset_x, offset_y = _get_translation(
-            viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD]
-        )
-        translation = Translation([offset_x, offset_y], axes=("x", "y"))
-        set_transformation(
-            sdata.images["raw_image"], translation, to_coordinate_system="global"
-        )
+        if 'sdata' in viewer.layers[utils.LOAD].metadata:
+            # get offset of previous layer, and set it to newly created sdata object:
+            offset_x, offset_y = _get_translation(
+                viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD]
+            )
+            translation = Translation([offset_x, offset_y], axes=("x", "y"))
+            set_transformation(
+                sdata.images["raw_image"], translation, to_coordinate_system="global"
+            )
 
     else:
         raise ValueError(
@@ -173,10 +174,16 @@ def clean_widget(
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
 
-        utils._export_config( cfg.clean, os.path.join( cfg.paths.output_dir, 'configs', 'clean', 'plugin.yaml' ) )
+        log.info( f"Added {utils.CLEAN} layer" )
 
+        utils._export_config( cfg.clean, os.path.join( cfg.paths.output_dir, 'configs', 'clean', 'plugin.yaml' ) )
+        log.info( "Cleaning finished" )
         show_info("Cleaning finished")
 
     worker.returned.connect(lambda data: add_image(data, cfg, utils.CLEAN))
+    log.info( "Cleaning started" )
     show_info("Cleaning started")
     worker.start()
+
+    # return worker, so status can be checked for unit testing
+    return worker

@@ -1,50 +1,139 @@
 """This file tests the napari widgets and should be used for development purposes."""
-from skimage.data import cell
+import unittest
 
-from napari_sparrow.widgets import clean_widget, segment_widget
+import tifffile as tiff
+from hydra.core.hydra_config import HydraConfig
+from PyQt5.QtCore import QEventLoop
 
-# # make_napari_viewer is a pytest fixture that returns a napari viewer object
-# # capsys is a pytest fixture that captures stdout and stderr output streams
-# def test_example_q_widget(make_napari_viewer, capsys):
-#     # make viewer and add an image layer using our fixture
-#     viewer = make_napari_viewer()
-#     viewer.add_image(np.random.random((100, 100)))
-
-#     # create our widget, passing in the viewer
-#     my_widget = ExampleQWidget(viewer)
-
-#     # call our widget method
-#     my_widget._on_click()
-
-#     # read captured output and check that it's as we expected
-#     captured = capsys.readouterr()
-#     assert captured.out == "napari has 1 layers\n"
+from napari_sparrow import utils as utils
+from napari_sparrow.widgets import (allocate_widget, annotate_widget,
+                                    clean_widget, export_widget, load_widget,
+                                    segment_widget)
 
 
-def test_clean_widget(make_napari_viewer, caplog):
+def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
+    """
+    Integration test for sparrow plugin in napari
+    """
+
+    HydraConfig().set_config(cfg_pipeline)
+
+    viewer = make_napari_viewer()
+
+    # Start load widget
+    _load_widget = load_widget()
+
+    worker = _load_widget(
+        viewer,
+        path_image=cfg_pipeline.dataset.image,
+        output_dir=cfg_pipeline.paths.output_dir,
+    )
+
+    _run_event_loop_until_worker_finishes(worker)
+
+    assert "Finished creating sdata" in caplog.text
+    assert f"Added {utils.LOAD}" in caplog.text
+
+    # Start clean widget
+    _clean_widget = clean_widget()
+
+    worker = _clean_widget(viewer, viewer.layers[utils.LOAD])
+
+    _run_event_loop_until_worker_finishes(worker)
+
+    assert "Tiling correction finished" in caplog.text
+    assert "Tophat filtering finished" in caplog.text
+    assert "Contrast enhancing finished" in caplog.text
+    assert f"Added {utils.CLEAN}" in caplog.text
+    assert "Cleaning finished" in caplog.text
+
+    # Start segment widget
+    _segment_widget = segment_widget()
+
+    worker = _segment_widget(viewer, viewer.layers[utils.CLEAN])
+
+    _run_event_loop_until_worker_finishes(worker)
+
+    assert "Segmentation finished" in caplog.text
+    assert f"Added {utils.SEGMENT}" in caplog.text
+
+    # Start allocate widget
+    _allocate_widget = allocate_widget()
+
+    worker = _allocate_widget(viewer, transcripts_file=cfg_pipeline.dataset.coords)
+
+    _run_event_loop_until_worker_finishes(worker)
+
+    assert "Allocation finished" in caplog.text
+    assert "Preprocessing AnnData finished" in caplog.text
+    assert "Clustering finished" in caplog.text
+    assert f"Added {utils.ALLOCATION} layer" in caplog.text
+
+    # Start annotate widget
+    _allocate_widget = annotate_widget()
+
+    worker = _allocate_widget(viewer, markers_file=cfg_pipeline.dataset.markers)
+
+    _run_event_loop_until_worker_finishes(worker)
+
+    assert "Scoring genes finished" in caplog.text
+    assert "Annotation metadata added" in caplog.text
+
+    # Start export widget
+    _export_widget = export_widget()
+    _export_widget(viewer)
+    assert "Exporting finished" in caplog.text
+
+
+@unittest.skip
+def test_load_widget(make_napari_viewer, cfg_pipeline, caplog):
+    """Test if the load works."""
+    HydraConfig().set_config(cfg_pipeline)
+
+    viewer = make_napari_viewer()
+
+    _load_widget = load_widget()
+
+    worker = _load_widget(
+        viewer,
+        path_image=cfg_pipeline.dataset.image,
+        output_dir=cfg_pipeline.paths.output_dir,
+    )
+
+    _run_event_loop_until_worker_finishes(worker)
+
+    assert "Finished creating sdata" in caplog.text
+    assert f"Added {utils.LOAD}" in caplog.text
+
+
+@unittest.skip
+def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
     """Tests if the clean widget works."""
+
+    HydraConfig().set_config(cfg_pipeline)
+
     viewer = make_napari_viewer()
-    viewer.add_image(cell())
 
-    # this time, our widget will be a MagicFactory or FunctionGui instance
-    my_widget = clean_widget()
+    image = tiff.imread(cfg_pipeline.dataset.image)
 
-    # if we "call" this object, it'll execute our function
-    my_widget(viewer.layers[0])
+    viewer.add_image(image, name=utils.LOAD)
 
-    assert "About to clean" in caplog.text
+    viewer.layers[utils.LOAD].metadata["cfg"] = cfg_pipeline
+
+    _clean_widget = clean_widget()
+
+    worker = _clean_widget(viewer, viewer.layers[utils.LOAD])
+
+    _run_event_loop_until_worker_finishes(worker)
+
+    assert "Tiling correction finished" in caplog.text
+    assert "Tophat filtering finished" in caplog.text
+    assert "Contrast enhancing finished" in caplog.text
+    assert f"Added {utils.CLEAN}" in caplog.text
+    assert "Cleaning finished" in caplog.text
 
 
-def test_segment_widget(make_napari_viewer, caplog):
-    """Test if the segmentation widget works."""
-    viewer = make_napari_viewer()
-    viewer.add_image(cell())
-
-    # this time, our widget will be a MagicFactory or FunctionGui instance
-    my_widget = segment_widget()
-
-    # if we "call" this object, it'll execute our function
-    my_widget(viewer.layers[0])
-
-    # read captured logging and check that it's as we expected
-    assert "About to segment" in caplog.text
+def _run_event_loop_until_worker_finishes(worker):
+    loop = QEventLoop()
+    worker.finished.connect(loop.quit)
+    loop.exec_()

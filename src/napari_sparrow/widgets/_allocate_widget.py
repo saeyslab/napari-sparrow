@@ -182,6 +182,8 @@ def allocate_widget(
         viewer.layers[layer_name].metadata["sdata"] = sdata
         viewer.layers[layer_name].metadata["cfg"] = cfg
 
+        log.info( f"Added {utils.ALLOCATION} layer" )
+
         utils._export_config( cfg.allocate, os.path.join( cfg.paths.output_dir, 'configs', 'allocate', 'plugin.yaml' ) )
 
         show_info("Allocation finished")
@@ -192,3 +194,5 @@ def allocate_widget(
     worker.returned.connect(lambda data: add_metadata(data, cfg, f"{utils.ALLOCATION}"))
     show_info("Allocation started")
     worker.start()
+
+    return worker
