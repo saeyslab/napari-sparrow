@@ -8,7 +8,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 
 
-@pytest.fixture(scope="package")
+@pytest.fixture(scope='function')
 def cfg_pipeline_global() -> DictConfig:
     # Expecting pytest to be run from the root dir. config_path should be relative to this file
     # The data_dir needs to be overwritten to point to the test data
@@ -24,7 +24,10 @@ def cfg_pipeline_global() -> DictConfig:
                 "dataset.image=${dataset.data_dir}/20272_slide1_A1-1_DAPI_4288_2144.tiff",
                 "dataset.coords=${dataset.data_dir}/20272_slide1_A1-1_results_4288_2144.txt",
                 #"dataset.markers=${dataset.data_dir}/markerGeneListMartinNoLow.csv",
-                "allocate=resolve_liver",
+                "allocate.delimiter='\t'",
+                "allocate.column_x=0",
+                "allocate.column_y=1",
+                "allocate.column_gene=3",
                 "segmentation=cellpose",
             ],
             return_hydra_config=True,
