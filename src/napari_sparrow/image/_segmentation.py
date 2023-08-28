@@ -144,7 +144,6 @@ def segmentation_cellpose(
     sdata.add_labels(name=output_layer, labels=spatial_label)
 
     polygons = _mask_image_to_polygons(mask=sdata[output_layer].data)
-    polygons = polygons.dissolve(by="cells")
 
     x_translation, y_translation = _get_translation(sdata[output_layer])
     polygons["geometry"] = polygons["geometry"].apply(

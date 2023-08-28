@@ -64,7 +64,11 @@ def _mask_image_to_polygons(mask: da.Array) -> geopandas.GeoDataFrame:
         all_values.extend(values)
 
     # Create a GeoDataFrame from the extracted polygons and values
-    return geopandas.GeoDataFrame({"geometry": all_polygons, "cells": all_values})
+    gdf = geopandas.GeoDataFrame({"geometry": all_polygons, "cells": all_values})
+
+    # Combine polygons that are actually pieces of the same cell back together.
+    # (These cells got broken into pieces because of image chunking, needed for parallel processing.)
+    return gdf.dissolve(by="cells")
 
 
 def _extract_boundaries_from_geometry_collection(geometry):
