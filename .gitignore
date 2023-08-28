@@ -13,6 +13,14 @@ logs
 .env
 .autoenv
 
+notebooks
+
+# test data
+src/napari_sparrow/_tests/test_data/*
+!src/napari_sparrow/_tests/test_data/20272_slide1_A1-1_DAPI_4288_2144.tiff
+!src/napari_sparrow/_tests/test_data/20272_slide1_A1-1_results_4288_2144.txt
+
+# Add exection for example configs for resolve and vizgen
 !configs/allocate/resolve_liver.yaml
 !configs/allocate/vizgen_example.yaml
 !configs/annotate/resolve_liver.yaml

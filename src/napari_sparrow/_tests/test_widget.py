@@ -6,9 +6,14 @@ from hydra.core.hydra_config import HydraConfig
 from PyQt5.QtCore import QEventLoop
 
 from napari_sparrow import utils as utils
-from napari_sparrow.widgets import (allocate_widget, annotate_widget,
-                                    clean_widget, export_widget, load_widget,
-                                    segment_widget)
+from napari_sparrow.widgets import (
+    allocate_widget,
+    annotate_widget,
+    clean_widget,
+    export_widget,
+    load_widget,
+    segment_widget,
+)
 
 
 def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
@@ -69,15 +74,18 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     assert "Clustering finished" in caplog.text
     assert f"Added {utils.ALLOCATION} layer" in caplog.text
 
-    # Start annotate widget
-    _allocate_widget = annotate_widget()
+    # TODO check if we haven open source markers file.
+    if cfg_pipeline.dataset.markers is not None:
 
-    worker = _allocate_widget(viewer, markers_file=cfg_pipeline.dataset.markers)
+        # Start annotate widget
+        _annotate_widget = annotate_widget()
 
-    _run_event_loop_until_worker_finishes(worker)
+        worker = _annotate_widget(viewer, markers_file=cfg_pipeline.dataset.markers)
 
-    assert "Scoring genes finished" in caplog.text
-    assert "Annotation metadata added" in caplog.text
+        _run_event_loop_until_worker_finishes(worker)
+
+        assert "Scoring genes finished" in caplog.text
+        assert "Annotation metadata added" in caplog.text
 
     # Start export widget
     _export_widget = export_widget()

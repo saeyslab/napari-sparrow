@@ -20,11 +20,10 @@ def cfg_pipeline_global() -> DictConfig:
             config_name="pipeline",
             overrides=[
                 f"paths.data_dir={root}/src/napari_sparrow/_tests/test_data",
-                f"paths.output_dir={root}/src/napari_sparrow/_tests/test_data/output_dir",
                 "dataset.data_dir=${paths.data_dir}",
                 "dataset.image=${dataset.data_dir}/20272_slide1_A1-1_DAPI_4288_2144.tiff",
                 "dataset.coords=${dataset.data_dir}/20272_slide1_A1-1_results_4288_2144.txt",
-                "dataset.markers=${dataset.data_dir}/markerGeneListMartinNoLow.csv",
+                #"dataset.markers=${dataset.data_dir}/markerGeneListMartinNoLow.csv",
                 "allocate=resolve_liver",
                 "segmentation=cellpose",
             ],
