@@ -12,10 +12,48 @@ from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 
 
 def _mask_image_to_polygons(mask: da.Array) -> geopandas.GeoDataFrame:
-    """Returns the polygons as GeoDataFrame
+    """
+    Convert a cell segmentation mask to polygons and return them as a GeoDataFrame.
 
-    This function converts the mask to polygons.
-    https://rocreguant.com/convert-a-mask-into-a-polygon-for-images-using-shapely-and-rasterio/1786/
+    This function computes the polygonal outlines of the cells present in the
+    given segmentation mask. The polygons are calculated in parallel using Dask
+    delayed computations.
+
+    Parameters
+    ----------
+    mask : dask.array.core.Array
+        A Dask array representing the segmentation mask. Non-zero pixels belong
+        to a cell; pixels with the same intensity value belong to the same cell.
+        Zero pixels represent background (no cell).
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        A GeoDataFrame containing polygons extracted from the input mask. Each polygon
+        is associated with a cell ID: the pixel intensity from the original mask.
+
+    Notes
+    -----
+    The mask is processed in chunks to facilitate parallel computation. Polygons that
+    are actually pieces of the same cell are combined back together to form coherent
+    cells. This is necessary due to image chunking during parallel processing.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import dask.array as da
+    >>> from napari_sparrow.shape._shape import _mask_image_to_polygons
+    >>> mask = da.from_array(np.array([[0, 3], [5, 5]]), chunks=(1, 1))
+    >>> gdf = _mask_image_to_polygons(mask)
+    >>> gdf
+                                                    geometry
+    cells
+    3      POLYGON ((1.00000 0.00000, 1.00000 1.00000, 2....
+    5      POLYGON ((0.00000 2.00000, 1.00000 2.00000, 2....
+    >>> gdf.geometry[3]
+    <POLYGON ((1 0, 1 1, 2 1, 2 0, 1 0))>
+    >>> gdf.geometry[5]
+    <POLYGON ((0 2, 1 2, 2 2, 2 1, 1 1, 0 1, 0 2))>
     """
 
     # Define a function to extract polygons and values from each chunk
