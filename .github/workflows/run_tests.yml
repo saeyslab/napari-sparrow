@@ -26,7 +26,7 @@ jobs:
       uses: conda-incubator/setup-miniconda@v2
       with:
         activate-environment: napari-sparrow
-        environment-file: src/napari_sparrow/environment.yml
+        environment-file: environment.yml
         python-version: ${{ matrix.python-version }}
         auto-activate-base: false
   
