@@ -17,7 +17,7 @@ jobs:
         os: [ macos-latest ] #[ubuntu-latest, macos-latest]
         python-version: ['3.10']
     runs-on: ${{ matrix.os }}
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v2
@@ -25,20 +25,11 @@ jobs:
     - name: Setup Conda
       uses: conda-incubator/setup-miniconda@v2
       with:
+        activate-environment: napari-sparrow
+        environment-file: src/napari-sparrow/environment.yml
         python-version: ${{ matrix.python-version }}
-        auto-activate-base: true
-    
-    - name: Install Mamba with libmamba
-      run: |
-        conda install mamba -c conda-forge
-        export MAMBA_ROOT_PREFIX=$(conda info --root)
-        mamba config set global.libmamba true
-
-    - name: Create and Activate Environment
-      run: |
-        mamba env create -f src/napari-sparrow/environment.yml
-        conda activate napari-sparrow
-    
+        auto-activate-base: false
+  
     - name: Install dependencies
       run: |
         pip install -e '.[testing]'
