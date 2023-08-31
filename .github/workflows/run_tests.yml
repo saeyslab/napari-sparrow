@@ -8,7 +8,6 @@ on:
     paths:
       - 'src/napari_sparrow/**'
       - '.github/workflows/run_tests.yml'
-      - 'environment.yml'
   workflow_dispatch:
 
 jobs:
@@ -37,12 +36,11 @@ jobs:
         conda install -n base conda-libmamba-solver python=${{ matrix.python-version }}
         conda config --set solver libmamba
 
-    # Create the specific Conda environment using libmamba as the solver
-    - name: Create napari-sparrow Environment
-      uses: conda-incubator/setup-miniconda@v2
-      with:
-        environment-file: environment.yml
-        activate-environment: napari-sparrow
+    - name: Create and activate environment
+      shell: bash -l {0}
+      run: |
+        conda env create -f environment.yml
+        conda activate napari-sparrow
 
     - name: Install dependencies
       run: |
