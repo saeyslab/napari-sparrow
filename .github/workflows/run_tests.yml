@@ -23,14 +23,26 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v2
 
-    - name: Setup Conda
+    # First, we set up a basic Conda to be able to modify it
+    - name: Setup Basic Conda
       uses: conda-incubator/setup-miniconda@v2
       with:
-        activate-environment: napari-sparrow
-        environment-file: environment.yml
+        auto-activate-base: true
         python-version: ${{ matrix.python-version }}
-        auto-activate-base: false
-  
+
+    # Now we set up libmamba for conda
+    - name: Install libmamba
+      run: |
+        conda update -n base conda
+        conda install -n base conda-libmamba-solver
+        conda config --set solver libmamba
+
+    # Now, create and activate the specific Conda environment using libmamba as the solver
+    - name: Create and Activate napari-sparrow Environment
+      run: |
+        conda env create -f environment.yml
+        conda activate napari-sparrow
+
     - name: Install dependencies
       run: |
         pip install -e '.[testing]'
