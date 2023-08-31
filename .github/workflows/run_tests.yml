@@ -53,6 +53,6 @@ jobs:
       - name: Run pytest
         shell: bash -l {0}
         run: |
-          mamba activate napari-sparrow
+          conda activate napari-sparrow
           pytest -vv src/napari_sparrow/_tests/test_pipeline.py
           pytest -vv src/napari_sparrow/_tests/test_widget.py
