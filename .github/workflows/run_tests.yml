@@ -8,6 +8,7 @@ on:
     paths:
       - 'src/napari_sparrow/**'
       - '.github/workflows/run_tests.yml'
+      - 'environment.yml'
   workflow_dispatch:
 
 jobs:
