@@ -49,6 +49,10 @@ jobs:
         run: mamba env update -n my-env -f environment.yml
         if: steps.cache.outputs.cache-hit != 'true'
 
-      - name: Run tests
+
+      - name: Run pytest
         shell: bash -l {0}
-        run: pytest ./tests
+        run: |
+          mamba activate napari-sparrow
+          pytest -vv src/napari_sparrow/_tests/test_pipeline.py
+          pytest -vv src/napari_sparrow/_tests/test_widget.py
