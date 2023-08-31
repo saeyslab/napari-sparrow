@@ -21,12 +21,15 @@ jobs:
 
     strategy:
       matrix:
-        os: [ macos-latest ] #[ubuntu-latest, macos-latest]
+        os: [ ubuntu-latest ] #[ubuntu-latest, macos-latest]
         python-version: ['3.10']
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v2
+
+      # these libraries enable testing on Qt on linux
+      - uses: tlambert03/setup-qt-libs@v1
 
       - name: Setup Mambaforge
         uses: conda-incubator/setup-miniconda@v2
@@ -54,5 +57,6 @@ jobs:
         shell: bash -l {0}
         run: |
           conda activate napari-sparrow
+          pip install -e '.[testing]'
           pytest -vv src/napari_sparrow/_tests/test_pipeline.py
           pytest -vv src/napari_sparrow/_tests/test_widget.py
