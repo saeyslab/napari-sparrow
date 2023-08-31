@@ -58,6 +58,8 @@ jobs:
         pip install -e '.[testing]'
 
     - name: Run pytest
+      shell: bash -l {0}
       run: |
+        conda activate napari-sparrow
         pytest src/napari_sparrow/_tests/test_pipeline.py
         pytest src/napari_sparrow/_tests/test_widget.py
