@@ -29,6 +29,16 @@ jobs:
         auto-activate-base: true
         python-version: ${{ matrix.python-version }}
 
+      # these libraries enable testing on Qt on linux
+    - uses: tlambert03/setup-qt-libs@v1
+
+    # strategy borrowed from vispy for installing opengl libs on windows
+    - name: Install Windows OpenGL
+      if: runner.os == 'Windows'
+      run: |
+        git clone --depth 1 https://github.com/pyvista/gl-ci-helpers.git
+        powershell gl-ci-helpers/appveyor/install_opengl.ps1
+
     # Now we set up libmamba for conda
     - name: Install libmamba
       run: |
@@ -36,14 +46,15 @@ jobs:
         conda install -n base conda-libmamba-solver python=${{ matrix.python-version }}
         conda config --set solver libmamba
 
-    - name: Create and activate environment
+    - name: Check libmamba solver
+      run: |
+        conda config --show | grep solver
+
+    - name: Create, activate environment, and install dependencies
       shell: bash -l {0}
       run: |
         conda env create -f environment.yml
         conda activate napari-sparrow
-
-    - name: Install dependencies
-      run: |
         pip install -e '.[testing]'
 
     - name: Run pytest
