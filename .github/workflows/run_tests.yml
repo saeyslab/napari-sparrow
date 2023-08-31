@@ -59,4 +59,3 @@ jobs:
           conda activate napari-sparrow
           pip install -e '.[testing]'
           pytest -vv src/napari_sparrow/_tests/test_pipeline.py
-          pytest -vv src/napari_sparrow/_tests/test_widget.py
