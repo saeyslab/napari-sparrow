@@ -34,14 +34,15 @@ jobs:
     - name: Install libmamba
       run: |
         conda update -n base conda
-        conda install -n base conda-libmamba-solver
+        conda install -n base conda-libmamba-solver python=${{ matrix.python-version }}
         conda config --set solver libmamba
 
-    # Now, create and activate the specific Conda environment using libmamba as the solver
-    - name: Create and Activate napari-sparrow Environment
-      run: |
-        conda env create -f environment.yml
-        conda activate napari-sparrow
+    # Create the specific Conda environment using libmamba as the solver
+    - name: Create napari-sparrow Environment
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        environment-file: environment.yml
+        activate-environment: napari-sparrow
 
     - name: Install dependencies
       run: |
