@@ -4,8 +4,8 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - geopandas=0.12.2=pyhd8ed1ab_0
-  - leidenalg=0.9.1
+ # - geopandas=0.12.2=pyhd8ed1ab_0
+ # - leidenalg=0.9.1
   #- matplotlib=3.5.2
   - napari=0.4.16=pyh275ddea_0_pyqt
   - numpy=1.24.4
