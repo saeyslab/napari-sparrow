@@ -38,13 +38,21 @@ jobs:
             miniforge-version: latest
             activate-environment: napari-sparrow
             use-mamba: true
+            python-version: ${{ matrix.python-version }}
 
-      - name: Set cache date
-        run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
+      - name: Set cache environment variables
+        shell: bash -l {0}
+        run: |
+          CONDA_PREFIX=$(python -c "import sys; print(sys.prefix)")
+          echo "CONDA_PREFIX"
+          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
+
+      #- name: Set cache date
+      #  run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
 
       - uses: actions/cache@v2
         with:
-          path: usr/share/miniconda3/envs/napari-sparrow
+          path: ${{ env.CONDA_PREFIX }}
           key: conda-env-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('environment.yml') }}
         id: cache
 
