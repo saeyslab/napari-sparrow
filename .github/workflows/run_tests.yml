@@ -1,17 +1,19 @@
 name: Run tests
 
 on:
-  push:
-    branches:
-      - SC_19_github-actions
+  workflow_dispatch:
 
-  pull_request:
-    branches:
-      - SC_19_github-actions
+  #push:
+  #  branches:
+  #    - SC_19_github-actions
 
-    paths:
-      - 'src/napari_sparrow/**'
-      - '.github/workflows/run_tests.yml'
+  #pull_request:
+  #  branches:
+  #    - SC_19_github-actions
+
+  #  paths:
+  #    - 'src/napari_sparrow/**'
+  #    - '.github/workflows/run_tests.yml'
 
 env:
   CACHE_NUMBER: 1  # increase to reset cache manually
@@ -40,12 +42,12 @@ jobs:
             use-mamba: true
             python-version: ${{ matrix.python-version }}
 
-      - name: Set cache environment variables
-        shell: bash -l {0}
-        run: |
-          CONDA_PREFIX=$(python -c "import sys; print(sys.prefix)")
-          echo "$CONDA_PREFIX"
-          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
+      #- name: Set cache environment variables
+      #  shell: bash -l {0}
+      #  run: |
+      #    CONDA_PREFIX=$(python -c "import sys; print(sys.prefix)")
+      #    echo "$CONDA_PREFIX"
+      #    echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
 
       #- name: Set cache date
       #  run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
