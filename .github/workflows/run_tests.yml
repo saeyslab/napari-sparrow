@@ -14,7 +14,7 @@ on:
       - '.github/workflows/run_tests.yml'
 
 env:
-  CACHE_NUMBER: 0  # increase to reset cache manually
+  CACHE_NUMBER: 1  # increase to reset cache manually
 
 jobs:
   test:
@@ -72,10 +72,21 @@ jobs:
         run: |
           conda activate napari-sparrow
           pip install -e '.[testing]'
-          pip install tox<4 tox-gh-actions
           tox
         env:
           PLATFORM: ${{ matrix.os }}
+
+
+      # this runs the platform-specific tests declared in tox.ini
+      #- name: Test with tox
+      #  shell: bash -l {0}
+      #  run: |
+      #    conda activate napari-sparrow
+      #    pip install -e '.[testing]'
+      #    pip install tox tox-gh-actions
+      #    tox
+      #  env:
+      #    PLATFORM: ${{ matrix.os }}
 
 
       #- name: Run pytest
