@@ -60,17 +60,19 @@ jobs:
         run: mamba env update -n napari-sparrow -f environment.yml
         if: steps.cache.outputs.cache-hit != 'true'
 
+      - name: Install tox-conda
+        shell: bash -l {0}
+        run: |
+          conda activate napari-sparrow
+          pip install tox-conda
 
       # this runs the platform-specific tests declared in tox.ini
       - name: Test with tox
         shell: bash -l {0}
         run: |
-          echo $CONDA_DEFAULT_ENV
           conda activate napari-sparrow
-          echo $CONDA_DEFAULT_ENV
           pip install -e '.[testing]'
           pip install tox tox-gh-actions
-          conda list
           tox
         env:
           PLATFORM: ${{ matrix.os }}
