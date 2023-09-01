@@ -72,7 +72,7 @@ jobs:
         run: |
           conda activate napari-sparrow
           pip install -e '.[testing]'
-          pip install tox tox-gh-actions
+          pip install tox<4 tox-gh-actions
           tox
         env:
           PLATFORM: ${{ matrix.os }}
