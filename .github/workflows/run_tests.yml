@@ -42,12 +42,12 @@ jobs:
             use-mamba: true
             python-version: ${{ matrix.python-version }}
 
-      #- name: Set cache environment variables
-      #  shell: bash -l {0}
-      #  run: |
-      #    CONDA_PREFIX=$(python -c "import sys; print(sys.prefix)")
-      #    echo "$CONDA_PREFIX"
-      #    echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
+      - name: Set cache environment variables
+        shell: bash -l {0}
+        run: |
+          CONDA_PREFIX=$(python -c "import sys; print(sys.prefix)")
+          echo "$CONDA_PREFIX"
+          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
 
       #- name: Set cache date
       #  run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
