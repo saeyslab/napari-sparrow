@@ -3,17 +3,17 @@ name: Run tests
 on:
   workflow_dispatch:
 
-  #push:
-  #  branches:
-  #    - SC_19_github-actions
+  push:
+    branches:
+      - SC_19_github-actions
 
-  #pull_request:
-  #  branches:
-  #    - SC_19_github-actions
+  pull_request:
+    branches:
+      - SC_19_github-actions
 
-  #  paths:
-  #    - 'src/napari_sparrow/**'
-  #    - '.github/workflows/run_tests.yml'
+    paths:
+      - 'src/napari_sparrow/**'
+      - '.github/workflows/run_tests.yml'
 
 env:
   CACHE_NUMBER: 1  # increase to reset cache manually
