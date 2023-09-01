@@ -65,6 +65,9 @@ jobs:
       - name: Test with tox
         shell: bash -l {0}
         run: |
+          echo $CONDA_DEFAULT_ENV
+          conda activate napari-sparrow
+          echo $CONDA_DEFAULT_ENV
           pip install -e '.[testing]'
           pip install tox tox-gh-actions
           conda list
