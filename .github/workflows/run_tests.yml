@@ -14,7 +14,7 @@ on:
       - '.github/workflows/run_tests.yml'
 
 env:
-  CACHE_NUMBER: 0  # increase to reset cache manually TODO, add to cache
+  CACHE_NUMBER: 0  # increase to reset cache manually TODO, add to cach
 
 jobs:
   test:
