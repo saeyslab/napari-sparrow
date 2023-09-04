@@ -75,22 +75,9 @@ jobs:
           PLATFORM: ${{ matrix.os }}
 
 
-      # this runs the platform-specific tests declared in tox.ini
-      #- name: Test with tox
-      #  shell: bash -l {0}
-      #  run: |
-      #    conda activate napari-sparrow
-      #    pip install -e '.[testing]'
-      #    pip install tox tox-gh-actions
-      #    tox
-      #  env:
-      #    PLATFORM: ${{ matrix.os }}
-
-
-      #- name: Run pytest
-      #  shell: bash -l {0}
-      #  run: |
-      #    conda activate napari-sparrow
-      #    conda list -n napari-sparrow
-      #    pip install -e '.[testing]'
-      #    pytest -vv src/napari_sparrow/_tests/test_pipeline.py
+      - name: Upload coverage.xml
+        uses: actions/upload-artifact@v2
+        with:
+          name: coverage-report
+          path: coverage.xml
+      
