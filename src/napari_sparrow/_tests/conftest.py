@@ -23,7 +23,7 @@ def cfg_pipeline_global() -> DictConfig:
                 "dataset.data_dir=${paths.data_dir}",
                 "dataset.image=${dataset.data_dir}/20272_slide1_A1-1_DAPI_4288_2144.tiff",
                 "dataset.coords=${dataset.data_dir}/20272_slide1_A1-1_results_4288_2144.txt",
-                #"dataset.markers=${dataset.data_dir}/markerGeneListMartinNoLow.csv",
+                "dataset.markers=${dataset.data_dir}/dummy_markers.csv",
                 "allocate.delimiter='\t'",
                 "allocate.column_x=0",
                 "allocate.column_y=1",

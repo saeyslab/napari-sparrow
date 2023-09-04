@@ -19,6 +19,7 @@ notebooks
 src/napari_sparrow/_tests/test_data/*
 !src/napari_sparrow/_tests/test_data/20272_slide1_A1-1_DAPI_4288_2144.tiff
 !src/napari_sparrow/_tests/test_data/20272_slide1_A1-1_results_4288_2144.txt
+!src/napari_sparrow/_tests/test_data/dummy_markers.csv
 
 # Add exection for example configs for resolve and vizgen
 !configs/allocate/resolve_liver.yaml
