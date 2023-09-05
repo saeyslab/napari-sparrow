@@ -62,9 +62,6 @@ jobs:
         run: mamba env update -n napari-sparrow -f environment.yml
         if: steps.cache.outputs.cache-hit != 'true'
 
-      - name: Ensure pytest temp directory exists
-        run: mkdir -p /tmp/pytest-of-runner
-      
       # this runs the platform-specific tests declared in tox.ini
       - name: Test with tox
         shell: bash -l {0}
