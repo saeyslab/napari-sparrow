@@ -166,6 +166,8 @@ def transcript_density(
     )
 
     blurred_transcripts = blurred_transcripts.T
+    # rechunk, otherwise possible issues when saving to zarr
+    blurred_transcripts=blurred_transcripts.rechunk( blurred_transcripts.chunksize )
 
     spatial_image = spatialdata.models.Image2DModel.parse(
         blurred_transcripts[None,], dims=("c", "y", "x")
