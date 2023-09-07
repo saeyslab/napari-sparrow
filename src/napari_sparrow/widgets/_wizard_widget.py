@@ -89,8 +89,8 @@ def get_choices():
                     "- subset (optional): select a subset of the image by adding a rectangular shapes layer. This will only be used for the computationally heavy tiling correction step. If the tiling correction step is not selected, it will be ignored.\n"
                     "- Choose whether the tiling correction step should be run.\n"
                     "- tile size: select the tile size of the image for the tiling correction step. Note that the tile size should be a multiple of the dimension of the image, both in x and y direction.\n"
-                    "- Choose whether the tophat filtering step (improves object separation) should be run.\n"
-                    "- size tophat: select the size of the tophat filter. A good starting point is the estimated mean diameter of the nucleus or cell. For multi-channel images, one should specify a value for each channel.\n"
+                    "- Choose whether the min max filtering step (improves object separation) should be run.\n"
+                    "- size min max filter: select the size of the minimum maximum filter. A good starting point is the estimated mean diameter of the nucleus or cell. For multi-channel images, one should specify a value for each channel.\n"
                     "- Select whether the contrast enhancing step (based on OpenCV CLAHE) should be run.\n"
                     "- contrast clip: select the contrast clip for the contrast enhancing step. For multi-channel images, one should specify a value for each channel."
                 ),

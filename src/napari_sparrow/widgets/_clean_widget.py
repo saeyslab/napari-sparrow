@@ -69,8 +69,8 @@ def clean_widget(
     subset: Optional[napari.layers.Shapes] = None,
     tiling_correction_step: bool = True,
     tile_size: int = 2144,
-    tophat_filtering_step: bool = True,
-    size_tophat: List[int] = [85],
+    min_max_filtering_step: bool = True,
+    size_min_max_filter: List[int] = [85],
     contrast_enhancing_step: bool = True,
     contrast_clip: List[float] = [3.5],
 ):
@@ -84,8 +84,8 @@ def clean_widget(
     cfg.clean.tilingCorrection = tiling_correction_step
     cfg.clean.tile_size = tile_size
 
-    cfg.clean.tophatFiltering = tophat_filtering_step
-    cfg.clean.size_tophat = size_tophat
+    cfg.clean.minmaxFiltering = min_max_filtering_step
+    cfg.clean.size_min_max_filter = size_min_max_filter
 
     cfg.clean.contrastEnhancing = contrast_enhancing_step
     cfg.clean.contrast_clip = contrast_clip
@@ -101,7 +101,7 @@ def clean_widget(
         # viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD] is backed by .zarr store
         # and we are not allowed to overwrite it (i.e. we would not be allowed to run the cleaning step twice)
         sdata = create_sdata(
-            input=image.data_raw, layer_name="raw_image", chunks=1024, dims=dims
+            input=image.data_raw, img_layer="raw_image", chunks=1024, dims=dims
         )
 
         if 'sdata' in viewer.layers[utils.LOAD].metadata:

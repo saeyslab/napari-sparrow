@@ -87,7 +87,7 @@ def load_widget(
         sdata = create_sdata(
             input=path_image,
             output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
-            layer_name=utils.LOAD,
+            img_layer=utils.LOAD,
             chunks=1024,
             crd=crd if crd else None,
         )

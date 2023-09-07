@@ -22,7 +22,7 @@ def create_sdata(
     | List[np.ndarray]
     | List[da.Array],
     output_path: Optional[str | Path] = None,
-    layer_name: str = "raw_image",
+    img_layer: str = "raw_image",
     chunks: Optional[int] = None,
     dims: Optional[List[str]] = None,
     crd: Optional[List[int]] = None,
@@ -64,7 +64,7 @@ def create_sdata(
         Input can also be a numpy array. In that case the dims parameter should be specified.
     output_path : Optional[str | Path], default=None
         If specified, the resulting SpatialData object will be written to this path as a zarr.
-    layer_name : str, default="raw_image"
+    img_layer : str, default="raw_image"
         The name of the image layer to be created in the SpatialData object.
     chunks : Optional[int], default=None
         If specified, the underlying dask array will be rechunked to this size.
@@ -115,7 +115,7 @@ def create_sdata(
         if chunks:
             spatial_image = spatial_image.chunk(chunks)
 
-    sdata.add_image(name=layer_name, image=spatial_image)
+    sdata.add_image(name=img_layer, image=spatial_image)
 
     if output_path is not None:
         sdata.write(output_path)

@@ -47,7 +47,7 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     _run_event_loop_until_worker_finishes(worker)
 
     assert "Tiling correction finished" in caplog.text
-    assert "Tophat filtering finished" in caplog.text
+    assert "Min max filtering finished" in caplog.text
     assert "Contrast enhancing finished" in caplog.text
     assert f"Added {utils.CLEAN}" in caplog.text
     assert "Cleaning finished" in caplog.text
@@ -135,7 +135,7 @@ def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
     _run_event_loop_until_worker_finishes(worker)
 
     assert "Tiling correction finished" in caplog.text
-    assert "Tophat filtering finished" in caplog.text
+    assert "Min max filtering finished" in caplog.text
     assert "Contrast enhancing finished" in caplog.text
     assert f"Added {utils.CLEAN}" in caplog.text
     assert "Cleaning finished" in caplog.text

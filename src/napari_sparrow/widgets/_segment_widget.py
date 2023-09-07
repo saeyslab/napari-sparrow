@@ -5,9 +5,9 @@ microscopy images with nuclear stains.
 Segmentation is performed with Squidpy ImageContainer and segment.
 """
 
+import os
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
-import os
 
 import napari
 import napari.layers
@@ -21,8 +21,8 @@ from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
 import napari_sparrow.utils as utils
-from napari_sparrow.io import create_sdata
 from napari_sparrow.image._image import _get_translation
+from napari_sparrow.io import create_sdata
 from napari_sparrow.pipeline import segment
 
 log = utils.get_pylogger(__name__)
@@ -64,7 +64,7 @@ def _segmentation_worker(
 )
 def segment_widget(
     viewer: napari.Viewer,
-    image: Optional[napari.layers.Image]=None,
+    image: Optional[napari.layers.Image] = None,
     subset: Optional[napari.layers.Shapes] = None,
     device: str = "cpu",
     min_size: int = 80,
@@ -108,7 +108,7 @@ def segment_widget(
         cfg = viewer.layers[utils.LOAD].metadata["cfg"]
 
         sdata = create_sdata(
-            input=image.data_raw, layer_name="raw_image", chunks=1024, dims=dims
+            input=image.data_raw, img_layer="raw_image", chunks=1024, dims=dims
         )
 
         # get offset of previous layer, and set it to newly created sdata object:
@@ -140,7 +140,6 @@ def segment_widget(
             int(coordinates[:, 0].max()),
         ]
 
-        # FIXME note crd will be ignored if you do not do tiling correction
         cfg.segmentation.crop_param = crd
 
     else:
@@ -148,7 +147,7 @@ def segment_widget(
 
     # update config
     cfg.device = device
-    cfg.segmentation.small_size_vis=cfg.segmentation.crop_param
+    cfg.segmentation.small_size_vis = cfg.segmentation.crop_param
     cfg.segmentation.min_size = min_size
     cfg.segmentation.flow_threshold = flow_threshold
     cfg.segmentation.diameter = diameter
@@ -214,9 +213,14 @@ def segment_widget(
         viewer.layers[layer_name].metadata["shapes"] = sdata.shapes.copy()
         viewer.layers[layer_name].metadata["cfg"] = cfg
 
-        log.info( f"Added {utils.SEGMENT} layer" )
+        log.info(f"Added {utils.SEGMENT} layer")
 
-        utils._export_config( cfg.segmentation, os.path.join( cfg.paths.output_dir, 'configs', 'segmentation', 'plugin.yaml' ) )
+        utils._export_config(
+            cfg.segmentation,
+            os.path.join(
+                cfg.paths.output_dir, "configs", "segmentation", "plugin.yaml"
+            ),
+        )
 
         show_info("Segmentation finished")
 
