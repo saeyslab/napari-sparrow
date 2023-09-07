@@ -17,6 +17,7 @@ log = get_pylogger(__name__)
 
 def tiling_correction(
     sdata: SpatialData,
+    img_layer: Optional[str]=None,
     tile_size: int = 2144,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output_layer: str = "tiling_correction",
@@ -29,17 +30,19 @@ def tiling_correction(
     ----------
     sdata : SpatialData
         The SpatialData object containing the image data to correct.
+    img_layer : Optional[str], default=None
+        The image layer in `sdata` to be corrected for tiling effects. If not provided, the last image layer in `sdata` is used.
     tile_size : int, default=2144
         The size of the tiles in the image.
     crd : Optional[Tuple[int, int, int, int]], default=None
         Coordinates defining the region of the image to correct. It defines the bounds (x_min, x_max, y_min, y_max).
     output_layer : str, default="tiling_correction"
-        Name of the layer where the corrected image will be stored in the `sdata` object.
+        Name of the image layer where the corrected image will be stored in the `sdata` object.
 
     Returns
     -------
     Tuple[SpatialData, List[np.ndarray]]
-        Updated SpatialData object containing the corrected image and a list of flatfield arrays with length equal to the number of channels.
+        Updated `sdata` object containing the corrected image and a list of flatfield arrays with length equal to the number of channels.
 
     Raises
     ------
@@ -50,14 +53,15 @@ def tiling_correction(
     -----
     The function integrates the BaSiC algorithm for illumination correction and uses OpenCV's inpainting
     to stitch tiles together. It manages the pre- and post-processing of data, translation of coordinates,
-    and addition of corrected image results back to the SpatialData object.
+    and addition of corrected image results back to the `sdata` object.
     """
 
-    layer = [*sdata.images][-1]
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
 
-    if sdata[layer].sizes["x"] % tile_size or sdata[layer].sizes["y"] % tile_size:
+    if sdata[img_layer].sizes["x"] % tile_size or sdata[img_layer].sizes["y"] % tile_size:
         raise ValueError(
-            f"Dimension of image layer '{layer}' ({sdata[layer].shape}) on which to run the "
+            f"Dimension of image layer '{img_layer}' ({sdata[img_layer].shape}) on which to run the "
             f"tilingCorrection is not a multiple of the given tile size ({tile_size})."
         )
 
@@ -65,18 +69,18 @@ def tiling_correction(
     # need to substract possible translation, because we use crd to crop imagecontainer, which does not take
     # translation into account
     if crd:
-        crd = _substract_translation_crd(sdata[layer], crd)
+        crd = _substract_translation_crd(sdata[img_layer], crd)
 
-    tx, ty = _get_translation(sdata[layer])
+    tx, ty = _get_translation(sdata[img_layer])
 
     result_list = []
     flatfields = []
 
-    for channel in sdata[layer].c.data:
-        ic = sq.im.ImageContainer(sdata[layer].isel(c=channel), layer=layer)
+    for channel in sdata[img_layer].c.data:
+        ic = sq.im.ImageContainer(sdata[img_layer].isel(c=channel), layer=img_layer)
 
         # Create the tiles
-        tiles = ic.generate_equal_crops(size=tile_size, as_array=layer)
+        tiles = ic.generate_equal_crops(size=tile_size, as_array=img_layer)
         tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
         black = np.array(
             [1 if ~np.any(tile - 1) else 0 for tile in tiles]
@@ -119,7 +123,7 @@ def tiling_correction(
             ]
         ).astype(np.uint16)
 
-        ic = sq.im.ImageContainer(i_new, layer=layer)
+        ic = sq.im.ImageContainer(i_new, layer=img_layer)
         ic.add_img(
             i_mask.astype(np.uint8),
             layer="mask_black_lines",
@@ -135,7 +139,7 @@ def tiling_correction(
         # Perform inpainting
         ic.apply(
             {"0": cv2.inpaint},
-            layer=layer,
+            layer=img_layer,
             drop=False,
             channel=0,
             new_layer=output_layer,

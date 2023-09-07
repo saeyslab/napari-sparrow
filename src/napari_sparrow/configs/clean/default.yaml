@@ -1,8 +1,8 @@
 tilingCorrection: True
 crop_param: null
 tile_size: 2144
-tophatFiltering: True
-size_tophat: 85
+minmaxFiltering: True
+size_min_max_filter: 85
 contrastEnhancing: True
 contrast_clip: 3.5
 chunksize_clahe: 10000

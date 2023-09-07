@@ -15,8 +15,6 @@ log = nas.utils.get_pylogger(__name__)
 def load(cfg: DictConfig) -> SpatialData:
     """Loading step, the first step of the pipeline, performs creation of spatial data object."""
 
-    layer_name = "raw_image"
-
     # cast to list if cfg.dataset.image is a ListConfig object (i.e. for multiple channels)
     if isinstance(cfg.dataset.image, ListConfig):
         filename_pattern = list(cfg.dataset.image)
@@ -27,7 +25,7 @@ def load(cfg: DictConfig) -> SpatialData:
     sdata = nas.io.create_sdata(
         input=filename_pattern,
         output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
-        layer_name=layer_name,
+        img_layer="raw_image",
         crd=None,
         chunks=1024,  # TODO make chunks configurable
     )
@@ -84,25 +82,25 @@ def clean(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
             img_layer="tiling_correction",
         )
 
-    # tophat filtering
+    # min max filtering
 
-    if cfg.clean.tophatFiltering:
-        log.info("Start tophat filtering.")
+    if cfg.clean.minmaxFiltering:
+        log.info("Start min max filtering.")
 
-        sdata = nas.im.tophat_filtering(
+        sdata = nas.im.min_max_filtering(
             sdata=sdata,
-            size_tophat=list(cfg.clean.size_tophat)
-            if isinstance(cfg.clean.size_tophat, ListConfig)
-            else cfg.clean.size_tophat,
+            size_min_max_filter=list(cfg.clean.size_min_max_filter)
+            if isinstance(cfg.clean.size_min_max_filter, ListConfig)
+            else cfg.clean.size_min_max_filter,
         )
 
-        log.info("Tophat filtering finished.")
+        log.info("Min max filtering finished.")
 
         nas.pl.plot_image(
             sdata=sdata,
-            output=os.path.join(cfg.paths.output_dir, "tophat_filtered"),
+            output=os.path.join(cfg.paths.output_dir, "min_max_filtered"),
             crd=cfg.clean.small_size_vis,
-            img_layer="tophat_filtered",
+            img_layer="min_max_filtered",
         )
 
     # contrast enhancement

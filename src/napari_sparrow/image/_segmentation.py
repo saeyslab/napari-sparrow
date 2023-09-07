@@ -13,8 +13,7 @@ from napari_sparrow.image._image import _substract_translation_crd, _get_transla
 
 def segmentation_cellpose(
     sdata: SpatialData,
-    layer: Optional[str] = None,
-    output_layer: str = "segmentation_mask",
+    img_layer: Optional[str] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     device: str = "cpu",
     min_size: int = 80,
@@ -25,6 +24,7 @@ def segmentation_cellpose(
     channels=[0, 0],
     chunks="auto",
     lazy=False,
+    output_layer: str = "segmentation_mask",
 ) -> SpatialData:
     """
     Segment images using the Cellpose algorithm and add segmentation results to the SpatialData object.
@@ -33,10 +33,8 @@ def segmentation_cellpose(
     ----------
     sdata : SpatialData
         The SpatialData object.
-    layer : Optional[str], default=None
+    img_layer : Optional[str], default=None
         The image layer in `sdata` to be segmented. If not provided, the last image layer in `sdata` is used.
-    output_layer : str, default="segmentation_mask"
-        The name of the label layer in which segmentation results will be stored in `sdata`.
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be segmented. It defines the bounds (x_min, x_max, y_min, y_max).
     device : str, default="cpu"
@@ -62,11 +60,13 @@ def segmentation_cellpose(
         The size of the chunks used by cellpose.
     lazy : bool, default=False
         If True, compute segmentation lazily.
+    output_layer : str, default="segmentation_mask"
+        The name of the label layer in which segmentation results will be stored in `sdata`.
 
     Returns
     -------
     SpatialData
-        Updated SpatialData object containing the segmentation mask and boundaries obtained from Cellpose. 
+        Updated sdata` object containing the segmentation mask and boundaries obtained from Cellpose. 
         Segmentation masks will be added as a labels layer to the SpatialData object with name output_layer, 
         and masks boundaries as a shapes layer with name f'{output_layer}_boundaries.'
 
@@ -85,16 +85,16 @@ def segmentation_cellpose(
         raise ValueError( "Please choose an output_layer name that does not have 'filtered' in its name, "
                         " as these are reserved for filtered out masks and shapes." )
 
-    if layer is None:
-        layer = [*sdata.images][-1]
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
 
-    ic = sq.im.ImageContainer(sdata[layer], layer=layer)
+    ic = sq.im.ImageContainer(sdata[img_layer], layer=img_layer)
 
     # crd is specified on original uncropped pixel coordinates
     # need to substract possible translation, because we use crd to crop imagecontainer, which does not take
     # translation into account
     if crd:
-        crd = _substract_translation_crd(sdata[layer], crd)
+        crd = _substract_translation_crd(sdata[img_layer], crd)
     if crd:
         x0 = crd[0]
         x_size = crd[1] - crd[0]
@@ -102,17 +102,11 @@ def segmentation_cellpose(
         y_size = crd[3] - crd[2]
         ic = ic.crop_corner(y=y0, x=x0, size=(y_size, x_size))
 
-        # rechunk if you take crop, in order to be able to save as spatialdata object.
-        # TODO check if this still necessary
-        # for layer in ic.data.data_vars:
-        #    chunksize = ic[layer].data.chunksize[0]
-        #    ic[layer] = ic[layer].chunk(chunksize)
-
-    tx, ty = _get_translation(sdata[layer])
+    tx, ty = _get_translation(sdata[img_layer])
 
     sq.im.segment(
         img=ic,
-        layer=layer,
+        layer=img_layer,
         method=_cellpose,
         channel=None,
         chunks=chunks,
