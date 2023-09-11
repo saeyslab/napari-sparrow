@@ -1,0 +1,13 @@
+version: '3'
+
+services:
+  napari-sparrow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: napari-sparrow:latest
+    volumes:
+      - ./data:/data
+      #- .:/napari-sparrow  # Mount the source code as a volume
+    ports:
+      - "8888:8888"
