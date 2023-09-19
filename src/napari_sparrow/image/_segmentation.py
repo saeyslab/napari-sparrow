@@ -1,17 +1,371 @@
-from typing import Optional, Tuple
-from spatialdata import SpatialData
+import itertools
+import uuid
+from typing import Any, Dict, Optional, Tuple
+
+import dask.array as da
+import numpy as np
 import spatialdata
 import squidpy as sq
 import torch
-from spatialdata.transformations import set_transformation, Translation
 from cellpose import models
+from dask.array import Array
+from dask.array.overlap import coerce_depth, ensure_minimum_chunksize
+from numpy.typing import NDArray
 from shapely.affinity import translate
+from spatialdata import SpatialData
+from spatialdata.transformations import (Translation,
+                                         set_transformation)
 
+from napari_sparrow.image._image import (_get_translation,
+                                         _substract_translation_crd)
 from napari_sparrow.shape._shape import _mask_image_to_polygons
-from napari_sparrow.image._image import _substract_translation_crd, _get_translation 
+
+_SEG_DTYPE = np.uint32
 
 
-def segmentation_cellpose(
+
+def _segment_chunk(
+    block: NDArray,
+    block_id: Tuple[int, ...],
+    num_blocks: Tuple[int, ...],
+    shift: int,
+    **kwargs: Any,
+) -> NDArray:
+    if len(num_blocks) == 2:
+        block_num = block_id[0] * num_blocks[1] + block_id[1]
+    elif len(num_blocks) == 3:
+        block_num = (
+            block_id[0] * (num_blocks[1] * num_blocks[2]) + block_id[1] * num_blocks[2]
+        )
+    elif len(num_blocks) == 4:
+        if num_blocks[-1] != 1:
+            raise ValueError(
+                f"Expected the number of blocks in the Z-dimension to be `1`, found `{num_blocks[-1]}`."
+            )
+        block_num = (
+            block_id[0] * (num_blocks[1] * num_blocks[2]) + block_id[1] * num_blocks[2]
+        )
+    else:
+        raise ValueError(
+            f"Expected either `2`, `3` or `4` dimensional chunks, found `{len(num_blocks)}`."
+        )
+
+    labels = _cellpose(block, **kwargs).astype(_SEG_DTYPE)
+    mask: NDArray = labels > 0
+    labels[mask] = (labels[mask] << shift) | block_num
+
+    return labels
+
+
+def _clean_up_masks(
+    block: NDArray,
+    block_id: tuple[int, ...],
+    block_info,
+    depth,
+) -> NDArray:
+    total_blocks = block_info[0]["num-chunks"]
+
+    # get the 'inside' region of the block, i.e. the original chunk without depth appended
+    y_start, y_stop = depth[0], block.shape[0] - depth[0]
+    x_start, x_stop = depth[1], block.shape[1] - depth[1]
+
+    # get indices of all adjacent blocks
+    adjacent_blocks = _get_ajdacent_block_ids(block_id, total_blocks)
+
+    # get all masks id's that cross the boundary of original chunk (without depth appended)
+    # masks that are on the boundary of the larger array (e.g. y==depth[0] axis are skipped)
+
+    # TODO check if it is not depth[0]+1 or block[ block.shape[0]-depth[0] ] -1, +1, double check
+    crossing_masks = []
+    if block_id[0] != 0:
+        crossing_masks.append(block[depth[0]])
+    if block_id[1] != 0:
+        crossing_masks.append(block[:, depth[1]])
+    if block_id[0] != total_blocks[0] - 1:
+        crossing_masks.append(block[block.shape[0] - depth[0]])
+    if block_id[1] != total_blocks[1] - 1:
+        crossing_masks.append(block[:, block.shape[1] - depth[1]])
+
+    crossing_masks = np.unique(np.hstack(crossing_masks))
+
+    def calculate_area(crd, mask_position):
+        return np.sum(
+            (crd[0] <= mask_position[0])
+            & (mask_position[0] < crd[1])
+            & (crd[2] <= mask_position[1])
+            & (mask_position[1] < crd[3])
+        )
+
+    for mask_label in crossing_masks:
+        if mask_label == 0:
+            continue
+        mask_position = np.where(block == mask_label)
+
+        inside_region = calculate_area(
+            (y_start, y_stop, x_start, x_stop), mask_position
+        )
+
+        for adjacent_block_id in adjacent_blocks:
+            crd = _calculate_boundary_adjacent_block(
+                block, depth, block_id, adjacent_block_id
+            )
+
+            outside_region = calculate_area(crd, mask_position)
+
+            # if intersection with mask and region outside chunk is bigger than inside region, set values of chunk to 0 for this masks.
+            # For edge case where inside region and outside region is the same, it will be assigned to both chunks.
+            # Because we write out final masks single threaded, this is no issue.
+            # Note that is better that both chunks claim the masks, than that no chunks are claiming the mask. If they both claim the mask,
+            # It will be assigned to the 'last' chunk, while writing to zarr store.
+            if outside_region > inside_region:
+                block[block == mask_label] = 0
+                break
+
+    # Set all masks that are fully outside the region to zero, they will be covered by other chunks
+    subset = block[
+        depth[0] : block.shape[0] - depth[0], depth[1] : block.shape[1] - depth[1]
+    ]
+    # Unique masks gives you all masks that are in 'original' array (i.e. without depth added)
+    unique_masks = np.unique(subset)
+
+    # Create a mask for labels that are NOT in the subset
+    mask = ~np.isin(block, unique_masks)
+    block[mask] = 0
+
+    return block
+
+
+def _trim_masks(masks: Array, depth: Dict[int, int] ):
+
+    # now create final array
+    chunk_coords = list(
+        itertools.product(
+            *[range(0, s, cs) for s, cs in zip(masks.shape, masks.chunksize)]
+        )
+    )
+    chunk_ids = [(y // masks.chunksize[0], x // masks.chunksize[1]) for (y, x) in chunk_coords]
+
+    chunks=_substract_depth_from_chunks_size( masks.chunks, depth=depth)
+
+    masks_trimmed=da.zeros( ( sum( chunks[0]), sum( chunks[1] ) ), chunks=chunks, dtype=int )
+
+    for chunk_id, chunk_coord in zip(chunk_ids, chunk_coords):
+
+        chunk=masks.blocks[ chunk_id ]
+
+        mask_chunk_shape=chunk.shape
+
+        y_start=chunk_coord[0]
+        x_start=chunk_coord[1]
+
+        # trim labels if chunk lays on boundary of larger array
+        if y_start==0:
+            chunk=chunk[ depth[0]:, : ]
+        if x_start==0:
+            chunk=chunk[ :, depth[1]: ]
+        if (y_start+mask_chunk_shape[0])==masks.shape[0]:
+            chunk=chunk[ :-depth[0], : ]
+        if (x_start+mask_chunk_shape[1]) ==masks.shape[1]:
+            chunk=chunk[ :,:-depth[1] ]
+
+        # now convert back to non-overlapping coordinates.
+
+        # check if this is correct TODO, thinks so
+        y_offset=max(0, y_start - (chunk_id[0]* 2*depth[0] + depth[0] ) )
+        x_offset=max(0, x_start - (chunk_id[1]* 2*depth[1] + depth[1] ) )
+
+        non_zero_mask = chunk != 0
+
+        # Update only the non-zero positions in the dask array
+        masks_trimmed[y_offset:y_offset+chunk.shape[0], x_offset:x_offset+chunk.shape[1]] = da.where(
+            non_zero_mask,
+            chunk,
+            masks_trimmed[y_offset:y_offset+chunk.shape[0], x_offset:x_offset+chunk.shape[1]]
+    )
+
+    return masks_trimmed
+
+
+def segment(
+    sdata: SpatialData,
+    img_layer="clahe",
+    output_layer="segmentation_masks",
+    chunks=1024,
+    depth={0: 200, 1: 200},
+    boundary: str = "reflect",
+):
+    x = sdata[ img_layer ].data.transpose(1, 2, 0)
+
+    _check_boundary(boundary)
+
+    if chunks is not None:
+        x = x.rechunk(chunks)
+
+    # rechunk if new chunks are needed to fit depth in every chunk,
+    # this allows us to send allow_rechunk=False with map_overlap,
+    # and have control of chunk sizes of input dask array and output dask array
+    depth2 = coerce_depth(x.ndim, depth)
+
+    depths = [max(d) if isinstance(d, tuple) else d for d in depth2.values()]
+    new_chunks = tuple(
+        ensure_minimum_chunksize(size, c) for size, c in zip(depths, x.chunks)
+    )
+
+    x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
+
+    output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
+
+    shift = int(np.prod(x.numblocks) - 1).bit_length()
+
+    # TODO pass these kwargs to segment function
+    kwargs = {
+        "depth": depth,
+        "boundary": boundary,
+        "min_size": 80,
+        "cellprob_threshold": -4,
+        "flow_threshold": 0.85,
+        "diameter": 85,
+        "model_type": "cyto",
+        "channels": [2, 1],
+        "device": "cpu",
+    }
+
+    # kwargs.setdefault("depth", {0: 30, 1: 30})
+    # kwargs.setdefault("boundary", "reflect")
+
+    x_labels = da.map_overlap(
+        _segment_chunk,
+        x,
+        dtype=_SEG_DTYPE,
+        num_blocks=x.numblocks,
+        shift=shift,
+        drop_axis=x.ndim
+        - 1,  # drop the last axis, i.e. the c-axis (only for determining output size of array)
+        trim=False,
+        allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
+        chunks=output_chunks,  # e.g. ((1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60) ),
+        # still need to send translation also to segment_chunk, because we need to do the translation that is on image layer 'clahe'
+        **kwargs,
+    )
+
+    x_labels = da.map_blocks(
+        _clean_up_masks, x_labels, dtype=_SEG_DTYPE, depth=depth,
+    )
+
+    spatial_label = spatialdata.models.Labels2DModel.parse(
+        x_labels
+    )
+
+    tx, ty = _get_translation(sdata[ img_layer ])
+    # need to substract depth from translation, because otherwise labels layer not aligend with image
+    tx=tx - depth[1]
+    ty=ty - depth[0]
+
+    translation = Translation([tx, ty], axes=("x", "y"))
+
+    set_transformation(spatial_label, translation)
+
+    name_masks_with_overlap=f'_masks_{uuid.uuid4()}'
+
+    # write to intermediate zarr here, to avoid race conditions, TODO check if necessary
+    sdata.add_labels(name=name_masks_with_overlap, labels=spatial_label)
+
+    masks=sdata[ name_masks_with_overlap ].data
+
+    masks=_trim_masks( masks=masks, depth=depth )
+
+    spatial_label = spatialdata.models.Labels2DModel.parse(
+        masks
+    )
+
+    # TODO
+    # if a crop is taken, need to add the crop to the offset.
+    tx, ty = _get_translation(sdata[ img_layer ])
+
+    translation = Translation([tx, ty], axes=("x", "y"))
+
+    set_transformation(spatial_label, translation)
+
+    # during adding of image it is written to zarr store
+    sdata.add_labels(name=output_layer, labels=spatial_label)
+
+    return sdata
+
+
+def _check_boundary(boundary: str) -> None:
+    valid_boundaries = ["reflect", "periodic", "nearest"]
+
+    if boundary not in valid_boundaries:
+        raise ValueError(
+            f"'{boundary}' is not a valid boundary. It must be one of {valid_boundaries}."
+        )
+
+def _add_depth_to_chunks_size(
+    chunks: Tuple[Tuple[int, ...], ...], depth: Dict[int, int]
+):
+    result = []
+    for i, item in enumerate(chunks):
+        if i in depth:  # check if there's a corresponding depth value
+            result.append(tuple(x + depth[i] * 2 for x in item))
+    return tuple(result)
+
+def _substract_depth_from_chunks_size( chunks: Tuple[Tuple[int, ...], ...] , depth: Dict[ int, int ]  ):
+    result = []
+    for i, item in enumerate( chunks ):
+        if i in depth:  # check if there's a corresponding depth value
+            result.append(tuple(x - depth[i]*2 for x in item))
+    return tuple(result)
+
+
+def _get_ajdacent_block_ids(block_id, total_blocks):
+    y, x = block_id
+    max_y, max_x = total_blocks
+
+    potential_neighbors = [
+        (y - 1, x - 1),  # top-left
+        (y, x - 1),  # top
+        (y + 1, x - 1),  # top-right
+        (y - 1, x),  # left
+        (y + 1, x),  # right
+        (y - 1, x + 1),  # bottom-left
+        (y, x + 1),  # bottom
+        (y + 1, x + 1),  # bottom-right
+    ]
+
+    # Filter out neighbors that have negative IDs or exceed the total number of blocks
+    neighbors = [
+        neighbor
+        for neighbor in potential_neighbors
+        if 0 <= neighbor[0] < max_x and 0 <= neighbor[1] < max_y
+    ]
+    return neighbors
+
+
+def _calculate_boundary_adjacent_block(chunk, depth, block_id, adjacent_block_id):
+    if adjacent_block_id[0] > block_id[0]:
+        y_start = chunk.shape[0] - depth[0]
+        y_stop = chunk.shape[0]
+    elif adjacent_block_id[0] == block_id[0]:
+        y_start = depth[0]
+        y_stop = chunk.shape[0] - depth[0]
+    else:
+        y_start = 0
+        y_stop = depth[0]
+
+    if adjacent_block_id[1] > block_id[1]:
+        x_start = chunk.shape[1] - depth[1]
+        x_stop = chunk.shape[1]
+    elif adjacent_block_id[1] == block_id[1]:
+        x_start = depth[1]
+        x_stop = chunk.shape[1] - depth[1]
+    else:
+        x_start = 0
+        x_stop = depth[1]
+
+    return (y_start, y_stop, x_start, x_stop)
+
+
+def segmentation_cellpose_deprecated(
     sdata: SpatialData,
     img_layer: Optional[str] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
@@ -50,11 +404,11 @@ def segmentation_cellpose(
     model_type : str, default="nuclei"
         Type of model to be used in Cellpose, options include "nuclei" or "cyto".
     channels : list, default=[0, 0]
-        Channels to use in Cellpose. 
-        For single channel images, the default value ([0,0]) should not be adapted. 
-        For multi channel images, the first element of the list is the channel to segment (count from 1), 
-        and the second element is the optional nuclear channel. 
-        E.g. for an image with PolyT in second channel, and DAPI in first channel use [2,1] if you want to segment PolyT + nuclei on DAPI; 
+        Channels to use in Cellpose.
+        For single channel images, the default value ([0,0]) should not be adapted.
+        For multi channel images, the first element of the list is the channel to segment (count from 1),
+        and the second element is the optional nuclear channel.
+        E.g. for an image with PolyT in second channel, and DAPI in first channel use [2,1] if you want to segment PolyT + nuclei on DAPI;
         [2,0] if you only want to use PolyT and [1,0] if you only want to use DAPI."
     chunks : str, default="auto"
         The size of the chunks used by cellpose.
@@ -66,8 +420,8 @@ def segmentation_cellpose(
     Returns
     -------
     SpatialData
-        Updated sdata` object containing the segmentation mask and boundaries obtained from Cellpose. 
-        Segmentation masks will be added as a labels layer to the SpatialData object with name output_layer, 
+        Updated sdata` object containing the segmentation mask and boundaries obtained from Cellpose.
+        Segmentation masks will be added as a labels layer to the SpatialData object with name output_layer,
         and masks boundaries as a shapes layer with name f'{output_layer}_boundaries.'
 
     Raises
@@ -77,13 +431,15 @@ def segmentation_cellpose(
 
     Notes
     -----
-    The function integrates Cellpose segmentation into the SpatialData framework. It manages the pre and post-processing 
+    The function integrates Cellpose segmentation into the SpatialData framework. It manages the pre and post-processing
     of data, translation of coordinates, and addition of segmentation results back to the SpatialData object.
     """
-    
+
     if "filtered" in output_layer:
-        raise ValueError( "Please choose an output_layer name that does not have 'filtered' in its name, "
-                        " as these are reserved for filtered out masks and shapes." )
+        raise ValueError(
+            "Please choose an output_layer name that does not have 'filtered' in its name, "
+            " as these are reserved for filtered out masks and shapes."
+        )
 
     if img_layer is None:
         img_layer = [*sdata.images][-1]
@@ -119,6 +475,7 @@ def segmentation_cellpose(
         model_type=model_type,
         channels=channels,
         device=device,
+        depth={ 0:200, 1:200 }
     )
 
     if crd:
