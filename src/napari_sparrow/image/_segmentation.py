@@ -1,7 +1,7 @@
 import itertools
 import uuid
 from types import MappingProxyType
-from typing import Any, Callable, Dict, Optional, Tuple, Mapping
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 import dask.array as da
 import numpy as np
@@ -16,8 +16,7 @@ from shapely.affinity import translate
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
-from napari_sparrow.image._image import (_get_translation,
-                                         _substract_translation_crd)
+from napari_sparrow.image._image import _get_translation, _substract_translation_crd
 from napari_sparrow.shape._shape import _mask_image_to_polygons
 from napari_sparrow.utils.pylogger import get_pylogger
 
@@ -55,13 +54,13 @@ def segment(
     img_layer: Optional[str] = None,
     model: Callable[..., NDArray] = _cellpose,
     output_layer="segmentation_mask",
-    depth: Optional[Tuple[int, int]]=None,
+    depth: Optional[Tuple[int, int]] = None,
     chunks: Optional[str | int | tuple[int, ...]] = None,
     boundary: str = "reflect",
-    **kwargs: Any, # keyword arguments to be passed to model
+    trim: bool = False, #  will use squidpy algo if True
+    **kwargs: Any,  # keyword arguments to be passed to model
 ):
-        
-    fn_kwargs=kwargs
+    fn_kwargs = kwargs
 
     # take the last image as layer to do next step in pipeline
     if img_layer is None:
@@ -74,22 +73,24 @@ def segment(
             "this will lead to undesired effects at the borders of the chunks "
         )
 
-    if not callable( model ):
+    if not callable(model):
         raise TypeError(f"Expected `model` to be a callable, found `{type(model)}`.")
-    
-    kwargs={}
+
+    kwargs = {}
     kwargs.setdefault("depth", depth)
     kwargs.setdefault("boundary", boundary)
-    kwargs.setdefault("chunks", chunks )
+    kwargs.setdefault("chunks", chunks)
+    kwargs.setdefault("trim", trim )
 
-    segmentation_model=SegmentationModel( model )
+    segmentation_model = SegmentationModel(model)
 
-    sdata = segmentation_model._segment_img_layer( sdata,
-                                                    img_layer=img_layer,
-                                                    output_layer=output_layer,
-                                                    fn_kwargs=fn_kwargs,
-                                                    **kwargs,
-                                                 )
+    sdata = segmentation_model._segment_img_layer(
+        sdata,
+        img_layer=img_layer,
+        output_layer=output_layer,
+        fn_kwargs=fn_kwargs,
+        **kwargs,
+    )
     return sdata
 
 
@@ -104,28 +105,28 @@ class SegmentationModel:
         self,
         sdata: SpatialData,
         img_layer: Optional[str] = None,
-        output_layer:str="segmentation_masks",
-        fn_kwargs: Mapping[str, Any] = MappingProxyType({}), # keyword arguments to be passed to model
+        output_layer: str = "segmentation_masks",
+        fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
     ):
-        
         if img_layer is None:
             img_layer = [*sdata.images][-1]
 
         if "depth" not in kwargs.keys():
             log.warning(
-                f"'depth' not specified, falling back to setting depth to None. "
+                f"'depth' not specified, falling back to setting depth to (30,30). "
                 f"If the image layer '{img_layer}' contains more than one chunk, "
-                "this will lead to undesired effects at the borders of the chunks. "
+                "this could lead to undesired effects at the borders of the chunks. "
             )
-            kwargs[ "depth" ]=None
-
+            kwargs["depth"] = (30,30)
 
         # take dask array and put channel dimension last
         x = sdata[img_layer].data.transpose(1, 2, 0)
 
         x_labels = self._segment_overlap(
-            x, fn_kwargs, **kwargs,
+            x,
+            fn_kwargs,
+            **kwargs,
         )
 
         spatial_label = spatialdata.models.Labels2DModel.parse(x_labels)
@@ -153,8 +154,8 @@ class SegmentationModel:
         # this should not be done if depth is None or if there is only one chunk
         masks = _trim_masks(masks=masks, depth=depth)
         """
-        
-        spatial_label = spatialdata.models.Labels2DModel.parse( x_labels )
+
+        spatial_label = spatialdata.models.Labels2DModel.parse(x_labels)
 
         # TODO
         # if a crop is taken, need to add the crop to the offset.
@@ -168,18 +169,19 @@ class SegmentationModel:
         sdata.add_labels(name=output_layer, labels=spatial_label)
 
         return sdata
+    
 
     def _segment_overlap(
         self,
         x: Array,
-        fn_kwargs: Mapping[str, Any] = MappingProxyType({}), # keyword arguments to be passed to model
-        **kwargs: Any, # keyword arguments to be passed to map_overlap/map_blocks
+        fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
+        **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
     ):
-        
         chunks = kwargs.pop("chunks", None)
-        depth = kwargs.pop("depth", None)
+        depth = kwargs.pop("depth", {0: 30, 1: 30} )
         boundary = kwargs.pop("boundary", "reflect")
-        
+        trim=kwargs.pop( "trim", False )
+
         _check_boundary(boundary)
 
         if chunks is not None:
@@ -193,29 +195,35 @@ class SegmentationModel:
 
         for i in range(2):
             if depth2[i] > x.chunksize[i]:
-                log.warning(f"Depth at index {i} exceeds chunk size. Adjusting to a quarter of chunk size: {x.chunksize[i]/4}")
+                log.warning(
+                    f"Depth at index {i} exceeds chunk size. Adjusting to a quarter of chunk size: {x.chunksize[i]/4}"
+                )
                 depth2[i] = int(x.chunksize[i] // 4)
 
         depths = [max(d) if isinstance(d, tuple) else d for d in depth2.values()]
         new_chunks = tuple(
-            ensure_minimum_chunksize(size+1, c) for size, c in zip(depths, x.chunks)
+            ensure_minimum_chunksize(size + 1, c)
+            for size, c in zip(depths, x.chunks)
         )
 
         # we don't want channel dimension in depth (coerce_depth added this dimension).
         last_key = list(depth2.keys())[-1]
         depth2.pop(last_key)
-        depth=depth2
+        depth = depth2
 
         x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
 
+        #if not trim:
         output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
+        #else:
+        #    output_chunks=x.chunks[:-1]
 
         shift = int(np.prod(x.numblocks) - 1).bit_length()
 
-        # TODO probably better to pass depth and boundary explicitely to map_overlap, 
+        # TODO probably better to pass depth and boundary explicitely to map_overlap,
         # than it is clear that these are the kwargs to callable method
-        #kwargs.setdefault("depth", depth)
-        #kwargs.setdefault("boundary", boundary)
+        # kwargs.setdefault("depth", depth)
+        # kwargs.setdefault("boundary", boundary)
 
         # kwargs.setdefault("depth", {0: 30, 1: 30})
         # kwargs.setdefault("boundary", "reflect")
@@ -228,26 +236,38 @@ class SegmentationModel:
             shift=shift,
             drop_axis=x.ndim
             - 1,  # drop the last axis, i.e. the c-axis (only for determining output size of array)
-            trim=False,
+            trim=trim,
             allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
             chunks=output_chunks,  # e.g. ((1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60) ),
-            # still need to send translation also to segment_chunk, because we need to do the translation that is on image layer 'clahe'
             depth=depth,
             boundary=boundary,
             fn_kwargs=fn_kwargs,
             **kwargs,
         )
 
-        x_labels = da.map_blocks(
-            _clean_up_masks,
-            x_labels,
-            dtype=_SEG_DTYPE,
-            depth=depth,
-            **kwargs,
-        )
+        # if trim==True --> use squidpies way of handling neighbouring blocks
+        if trim:
+            from dask_image.ndmeasure._utils._label import (
+                connected_components_delayed,
+                label_adjacency_graph,
+                relabel_blocks,
+            )
 
-        # this should not be done if depth is None or if there is only one chunk
-        x_labels = _trim_masks(masks=x_labels, depth=depth)
+            # max because labels are not continuous (and won't be continuous)
+            label_groups = label_adjacency_graph(x_labels, None, x_labels.max())
+            new_labeling = connected_components_delayed(label_groups)
+            x_labels = relabel_blocks(x_labels, new_labeling)
+
+        else:
+            x_labels = da.map_blocks(
+                _clean_up_masks,
+                x_labels,
+                dtype=_SEG_DTYPE,
+                depth=depth,
+                **kwargs,
+            )
+
+            x_labels = _trim_masks(masks=x_labels, depth=depth)
 
         return x_labels
 
@@ -257,7 +277,9 @@ class SegmentationModel:
         block_id: Tuple[int, ...],
         num_blocks: Tuple[int, ...],
         shift: int,
-        fn_kwargs: Mapping[str, Any] = MappingProxyType({}), # keyword arguments to be passed to model
+        fn_kwargs: Mapping[str, Any] = MappingProxyType(
+            {}
+        ),  # keyword arguments to be passed to model
     ) -> NDArray:
         if len(num_blocks) == 2:
             block_num = block_id[0] * num_blocks[1] + block_id[1]
@@ -496,149 +518,3 @@ def _calculate_boundary_adjacent_block(chunk, depth, block_id, adjacent_block_id
         x_stop = depth[1]
 
     return (y_start, y_stop, x_start, x_stop)
-
-
-def segmentation_cellpose_deprecated(
-    sdata: SpatialData,
-    img_layer: Optional[str] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    device: str = "cpu",
-    min_size: int = 80,
-    flow_threshold: float = 0.6,
-    diameter: int = 55,
-    cellprob_threshold: int = 0,
-    model_type: str = "nuclei",
-    channels=[0, 0],
-    chunks="auto",
-    lazy=False,
-    output_layer: str = "segmentation_mask",
-) -> SpatialData:
-    """
-    Segment images using the Cellpose algorithm and add segmentation results to the SpatialData object.
-
-    Parameters
-    ----------
-    sdata : SpatialData
-        The SpatialData object.
-    img_layer : Optional[str], default=None
-        The image layer in `sdata` to be segmented. If not provided, the last image layer in `sdata` is used.
-    crd : Optional[Tuple[int, int, int, int]], default=None
-        The coordinates specifying the region of the image to be segmented. It defines the bounds (x_min, x_max, y_min, y_max).
-    device : str, default="cpu"
-        Device to run Cellpose on, either "cpu" or "cuda" for GPU.
-    min_size : int, default=80
-        Minimum size of detected objects.
-    flow_threshold : float, default=0.6
-        Cellpose flow threshold.
-    diameter : int, default=55
-        Approximate diameter of objects to be detected.
-    cellprob_threshold : int, default=0
-        Cellpose cell probability threshold.
-    model_type : str, default="nuclei"
-        Type of model to be used in Cellpose, options include "nuclei" or "cyto".
-    channels : list, default=[0, 0]
-        Channels to use in Cellpose.
-        For single channel images, the default value ([0,0]) should not be adapted.
-        For multi channel images, the first element of the list is the channel to segment (count from 1),
-        and the second element is the optional nuclear channel.
-        E.g. for an image with PolyT in second channel, and DAPI in first channel use [2,1] if you want to segment PolyT + nuclei on DAPI;
-        [2,0] if you only want to use PolyT and [1,0] if you only want to use DAPI."
-    chunks : str, default="auto"
-        The size of the chunks used by cellpose.
-    lazy : bool, default=False
-        If True, compute segmentation lazily.
-    output_layer : str, default="segmentation_mask"
-        The name of the label layer in which segmentation results will be stored in `sdata`.
-
-    Returns
-    -------
-    SpatialData
-        Updated sdata` object containing the segmentation mask and boundaries obtained from Cellpose.
-        Segmentation masks will be added as a labels layer to the SpatialData object with name output_layer,
-        and masks boundaries as a shapes layer with name f'{output_layer}_boundaries.'
-
-    Raises
-    ------
-    ValueError
-        If the chosen output_layer name contains the word 'filtered'.
-
-    Notes
-    -----
-    The function integrates Cellpose segmentation into the SpatialData framework. It manages the pre and post-processing
-    of data, translation of coordinates, and addition of segmentation results back to the SpatialData object.
-    """
-
-    if "filtered" in output_layer:
-        raise ValueError(
-            "Please choose an output_layer name that does not have 'filtered' in its name, "
-            " as these are reserved for filtered out masks and shapes."
-        )
-
-    if img_layer is None:
-        img_layer = [*sdata.images][-1]
-
-    ic = sq.im.ImageContainer(sdata[img_layer], layer=img_layer)
-
-    # crd is specified on original uncropped pixel coordinates
-    # need to substract possible translation, because we use crd to crop imagecontainer, which does not take
-    # translation into account
-    if crd:
-        crd = _substract_translation_crd(sdata[img_layer], crd)
-    if crd:
-        x0 = crd[0]
-        x_size = crd[1] - crd[0]
-        y0 = crd[2]
-        y_size = crd[3] - crd[2]
-        ic = ic.crop_corner(y=y0, x=x0, size=(y_size, x_size))
-
-    tx, ty = _get_translation(sdata[img_layer])
-
-    sq.im.segment(
-        img=ic,
-        layer=img_layer,
-        method=_cellpose,
-        channel=None,
-        chunks=chunks,
-        lazy=lazy,
-        min_size=min_size,
-        layer_added=output_layer,
-        cellprob_threshold=cellprob_threshold,
-        flow_threshold=flow_threshold,
-        diameter=diameter,
-        model_type=model_type,
-        channels=channels,
-        device=device,
-        depth={0: 200, 1: 200},
-    )
-
-    if crd:
-        tx = tx + crd[0]
-        ty = ty + crd[2]
-
-    translation = Translation([tx, ty], axes=("x", "y"))
-
-    temp = ic.data.rename_dims({"channels": "c"})
-    spatial_label = spatialdata.models.Labels2DModel.parse(
-        temp[output_layer].squeeze().transpose("y", "x")
-    )
-
-    set_transformation(spatial_label, translation)
-
-    # during adding of image it is written to zarr store
-    sdata.add_labels(name=output_layer, labels=spatial_label)
-
-    polygons = _mask_image_to_polygons(mask=sdata[output_layer].data)
-
-    x_translation, y_translation = _get_translation(sdata[output_layer])
-    polygons["geometry"] = polygons["geometry"].apply(
-        lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
-    )
-
-    shapes_name = f"{output_layer}_boundaries"
-
-    sdata.add_shapes(
-        name=shapes_name,
-        shapes=spatialdata.models.ShapesModel.parse(polygons),
-    )
-
-    return sdata
