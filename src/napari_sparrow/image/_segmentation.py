@@ -55,7 +55,7 @@ def segment(
     img_layer: Optional[str] = None,
     model: Callable[..., NDArray] = _cellpose,
     output_layer="segmentation_mask",
-    depth: Optional[Dict[int, int]]=None,
+    depth: Optional[Tuple[int, int]]=None,
     chunks: Optional[str | int | tuple[int, ...]] = None,
     boundary: str = "reflect",
     **kwargs: Any, # keyword arguments to be passed to model
@@ -108,7 +108,7 @@ class SegmentationModel:
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}), # keyword arguments to be passed to model
         **kwargs: Any,
     ):
-        # take the last image as layer to do next step in pipeline
+        
         if img_layer is None:
             img_layer = [*sdata.images][-1]
 
@@ -116,24 +116,22 @@ class SegmentationModel:
             log.warning(
                 f"'depth' not specified, falling back to setting depth to None. "
                 f"If the image layer '{img_layer}' contains more than one chunk, "
-                "this will lead to undesired effects at the borders of the chunks "
+                "this will lead to undesired effects at the borders of the chunks. "
             )
             kwargs[ "depth" ]=None
 
-        #chunks = kwargs.get("chunks", None)
-        depth = kwargs.get("depth")
-        #boundary = kwargs.get("boundary", "reflect")
 
         # take dask array and put channel dimension last
         x = sdata[img_layer].data.transpose(1, 2, 0)
 
-        x_labels = self._segment(
+        x_labels = self._segment_overlap(
             x, fn_kwargs, **kwargs,
         )
 
         spatial_label = spatialdata.models.Labels2DModel.parse(x_labels)
 
-        # TODO
+        # TODO check if necessary to write to intermediate zarr to avoid race conditions
+        """
         # if a crop is taken, need to add the crop to the offset.
         tx, ty = _get_translation(sdata[img_layer])
         # need to substract depth from translation, because otherwise labels layer not aligend with image
@@ -152,10 +150,11 @@ class SegmentationModel:
 
         masks = sdata[name_masks_with_overlap].data
 
-        # this should not be done is depth is None
+        # this should not be done if depth is None or if there is only one chunk
         masks = _trim_masks(masks=masks, depth=depth)
-
-        spatial_label = spatialdata.models.Labels2DModel.parse(masks)
+        """
+        
+        spatial_label = spatialdata.models.Labels2DModel.parse( x_labels )
 
         # TODO
         # if a crop is taken, need to add the crop to the offset.
@@ -170,11 +169,11 @@ class SegmentationModel:
 
         return sdata
 
-    def _segment(
+    def _segment_overlap(
         self,
         x: Array,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}), # keyword arguments to be passed to model
-        **kwargs: Any, # keyword arguments to be passed to map_overlap
+        **kwargs: Any, # keyword arguments to be passed to map_overlap/map_blocks
     ):
         
         chunks = kwargs.pop("chunks", None)
@@ -192,9 +191,14 @@ class SegmentationModel:
         # TODO fix case where depth is None
         depth2 = coerce_depth(x.ndim, depth)
 
+        for i in range(2):
+            if depth2[i] > x.chunksize[i]:
+                log.warning(f"Depth at index {i} exceeds chunk size. Adjusting to a quarter of chunk size: {x.chunksize[i]/4}")
+                depth2[i] = int(x.chunksize[i] // 4)
+
         depths = [max(d) if isinstance(d, tuple) else d for d in depth2.values()]
         new_chunks = tuple(
-            ensure_minimum_chunksize(size, c) for size, c in zip(depths, x.chunks)
+            ensure_minimum_chunksize(size+1, c) for size, c in zip(depths, x.chunks)
         )
 
         # we don't want channel dimension in depth (coerce_depth added this dimension).
@@ -204,7 +208,7 @@ class SegmentationModel:
 
         x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
 
-        output_chunks = _add_depth_to_chunks_size(x.chunks, depth2)
+        output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
 
         shift = int(np.prod(x.numblocks) - 1).bit_length()
 
@@ -241,6 +245,9 @@ class SegmentationModel:
             depth=depth,
             **kwargs,
         )
+
+        # this should not be done if depth is None or if there is only one chunk
+        x_labels = _trim_masks(masks=x_labels, depth=depth)
 
         return x_labels
 
@@ -298,7 +305,6 @@ def _clean_up_masks(
     # get all masks id's that cross the boundary of original chunk (without depth appended)
     # masks that are on the boundary of the larger array (e.g. y==depth[0] axis are skipped)
 
-    # TODO check if it is not depth[0]+1 or block[ block.shape[0]-depth[0] ] -1, +1, double check
     crossing_masks = []
     if block_id[0] != 0:
         crossing_masks.append(block[depth[0]])
@@ -309,7 +315,8 @@ def _clean_up_masks(
     if block_id[1] != total_blocks[1] - 1:
         crossing_masks.append(block[:, block.shape[1] - depth[1]])
 
-    crossing_masks = np.unique(np.hstack(crossing_masks))
+    if crossing_masks:
+        crossing_masks = np.unique(np.hstack(crossing_masks))
 
     def calculate_area(crd, mask_position):
         return np.sum(
