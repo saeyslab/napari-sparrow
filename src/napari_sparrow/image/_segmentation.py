@@ -1,6 +1,7 @@
 import itertools
 import uuid
-from typing import Any, Dict, Optional, Tuple, Callable
+from types import MappingProxyType
+from typing import Any, Callable, Dict, Optional, Tuple, Mapping
 
 import dask.array as da
 import numpy as np
@@ -15,9 +16,9 @@ from shapely.affinity import translate
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
-from napari_sparrow.image._image import _get_translation, _substract_translation_crd
+from napari_sparrow.image._image import (_get_translation,
+                                         _substract_translation_crd)
 from napari_sparrow.shape._shape import _mask_image_to_polygons
-
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -59,7 +60,9 @@ def segment(
     boundary: str = "reflect",
     **kwargs: Any, # keyword arguments to be passed to model
 ):
-    
+        
+    fn_kwargs=kwargs
+
     # take the last image as layer to do next step in pipeline
     if img_layer is None:
         img_layer = [*sdata.images][-1]
@@ -74,6 +77,7 @@ def segment(
     if not callable( model ):
         raise TypeError(f"Expected `model` to be a callable, found `{type(model)}`.")
     
+    kwargs={}
     kwargs.setdefault("depth", depth)
     kwargs.setdefault("boundary", boundary)
     kwargs.setdefault("chunks", chunks )
@@ -83,7 +87,8 @@ def segment(
     sdata = segmentation_model._segment_img_layer( sdata,
                                                     img_layer=img_layer,
                                                     output_layer=output_layer,
-                                                   **kwargs,
+                                                    fn_kwargs=fn_kwargs,
+                                                    **kwargs,
                                                  )
     return sdata
 
@@ -100,9 +105,7 @@ class SegmentationModel:
         sdata: SpatialData,
         img_layer: Optional[str] = None,
         output_layer:str="segmentation_masks",
-        # chunks:Optional[str | int | tuple[int, ...]] = None,
-        # depth: Dict[int, int]={0: 200, 1: 200},
-        # boundary: str = "reflect",
+        fn_kwargs: Mapping[str, Any] = MappingProxyType({}), # keyword arguments to be passed to model
         **kwargs: Any,
     ):
         # take the last image as layer to do next step in pipeline
@@ -115,16 +118,17 @@ class SegmentationModel:
                 f"If the image layer '{img_layer}' contains more than one chunk, "
                 "this will lead to undesired effects at the borders of the chunks "
             )
+            kwargs[ "depth" ]=None
 
-        chunks = kwargs.pop("chunks", None)
-        depth = kwargs.pop("depth", None)
-        boundary = kwargs.pop("boundary", "reflect")
+        #chunks = kwargs.get("chunks", None)
+        depth = kwargs.get("depth")
+        #boundary = kwargs.get("boundary", "reflect")
 
         # take dask array and put channel dimension last
         x = sdata[img_layer].data.transpose(1, 2, 0)
 
         x_labels = self._segment(
-            x, depth=depth, chunks=chunks, boundary=boundary, **kwargs
+            x, fn_kwargs, **kwargs,
         )
 
         spatial_label = spatialdata.models.Labels2DModel.parse(x_labels)
@@ -169,11 +173,14 @@ class SegmentationModel:
     def _segment(
         self,
         x: Array,
-        depth: Dict[int, int],
-        chunks: Optional[str | int | tuple[int, ...]] = None,
-        boundary: str = "reflect",
-        **kwargs: Any,
+        fn_kwargs: Mapping[str, Any] = MappingProxyType({}), # keyword arguments to be passed to model
+        **kwargs: Any, # keyword arguments to be passed to map_overlap
     ):
+        
+        chunks = kwargs.pop("chunks", None)
+        depth = kwargs.pop("depth", None)
+        boundary = kwargs.pop("boundary", "reflect")
+        
         _check_boundary(boundary)
 
         if chunks is not None:
@@ -182,6 +189,7 @@ class SegmentationModel:
         # rechunk if new chunks are needed to fit depth in every chunk,
         # this allows us to send allow_rechunk=False with map_overlap,
         # and have control of chunk sizes of input dask array and output dask array
+        # TODO fix case where depth is None
         depth2 = coerce_depth(x.ndim, depth)
 
         depths = [max(d) if isinstance(d, tuple) else d for d in depth2.values()]
@@ -189,29 +197,21 @@ class SegmentationModel:
             ensure_minimum_chunksize(size, c) for size, c in zip(depths, x.chunks)
         )
 
+        # we don't want channel dimension in depth (coerce_depth added this dimension).
+        last_key = list(depth2.keys())[-1]
+        depth2.pop(last_key)
+        depth=depth2
+
         x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
 
-        output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
+        output_chunks = _add_depth_to_chunks_size(x.chunks, depth2)
 
         shift = int(np.prod(x.numblocks) - 1).bit_length()
 
         # TODO probably better to pass depth and boundary explicitely to map_overlap, 
         # than it is clear that these are the kwargs to callable method
-        kwargs.setdefault("depth", depth)
-        kwargs.setdefault("boundary", boundary)
-
-        # TODO pass these kwargs to segment function
-        # kwargs = {
-        #    "depth": depth,
-        #    "boundary": boundary,
-        #    "min_size": 80,
-        #    "cellprob_threshold": -4,
-        #    "flow_threshold": 0.85,
-        #    "diameter": 85,
-        #    "model_type": "cyto",
-        #    "channels": [2, 1],
-        #   "device": "cpu",
-        # }
+        #kwargs.setdefault("depth", depth)
+        #kwargs.setdefault("boundary", boundary)
 
         # kwargs.setdefault("depth", {0: 30, 1: 30})
         # kwargs.setdefault("boundary", "reflect")
@@ -228,6 +228,9 @@ class SegmentationModel:
             allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
             chunks=output_chunks,  # e.g. ((1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60) ),
             # still need to send translation also to segment_chunk, because we need to do the translation that is on image layer 'clahe'
+            depth=depth,
+            boundary=boundary,
+            fn_kwargs=fn_kwargs,
             **kwargs,
         )
 
@@ -236,6 +239,7 @@ class SegmentationModel:
             x_labels,
             dtype=_SEG_DTYPE,
             depth=depth,
+            **kwargs,
         )
 
         return x_labels
@@ -246,7 +250,7 @@ class SegmentationModel:
         block_id: Tuple[int, ...],
         num_blocks: Tuple[int, ...],
         shift: int,
-        **kwargs: Any,
+        fn_kwargs: Mapping[str, Any] = MappingProxyType({}), # keyword arguments to be passed to model
     ) -> NDArray:
         if len(num_blocks) == 2:
             block_num = block_id[0] * num_blocks[1] + block_id[1]
@@ -269,7 +273,7 @@ class SegmentationModel:
                 f"Expected either `2`, `3` or `4` dimensional chunks, found `{len(num_blocks)}`."
             )
 
-        labels = self._model(block, **kwargs).astype(_SEG_DTYPE)
+        labels = self._model(block, **fn_kwargs).astype(_SEG_DTYPE)
         mask: NDArray = labels > 0
         labels[mask] = (labels[mask] << shift) | block_num
 
