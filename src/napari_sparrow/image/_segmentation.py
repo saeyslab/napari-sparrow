@@ -22,9 +22,7 @@ from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
-
 _SEG_DTYPE = np.uint32
-
 
 def _cellpose(
     img,
@@ -54,10 +52,11 @@ def segment(
     img_layer: Optional[str] = None,
     model: Callable[..., NDArray] = _cellpose,
     output_layer="segmentation_mask",
-    depth: Optional[Tuple[int, int]] = None,
-    chunks: Optional[str | int | tuple[int, ...]] = None,
+    depth: Optional[Tuple[int, int]] = (100,100),
+    chunks: Optional[str | int | tuple[int, ...]] = 'auto',
     boundary: str = "reflect",
     trim: bool = False, #  will use squidpy algo if True
+    crd: Optional[Tuple[int, int, int, int]] = None,
     **kwargs: Any,  # keyword arguments to be passed to model
 ):
     fn_kwargs = kwargs
@@ -66,16 +65,10 @@ def segment(
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 
-    if depth is None:
-        log.warning(
-            f"'depth' is equal to None, "
-            f"If the image layer '{img_layer}' contains more than one chunk, "
-            "this will lead to undesired effects at the borders of the chunks "
-        )
-
     if not callable(model):
         raise TypeError(f"Expected `model` to be a callable, found `{type(model)}`.")
 
+    # kwargs to be passed to map_overlap/map_blocks
     kwargs = {}
     kwargs.setdefault("depth", depth)
     kwargs.setdefault("boundary", boundary)
@@ -88,6 +81,7 @@ def segment(
         sdata,
         img_layer=img_layer,
         output_layer=output_layer,
+        crd=crd,
         fn_kwargs=fn_kwargs,
         **kwargs,
     )
@@ -106,22 +100,22 @@ class SegmentationModel:
         sdata: SpatialData,
         img_layer: Optional[str] = None,
         output_layer: str = "segmentation_masks",
+        crd: Optional[Tuple[int, int, int, int]] = None,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
     ):
         if img_layer is None:
             img_layer = [*sdata.images][-1]
 
-        if "depth" not in kwargs.keys():
-            log.warning(
-                f"'depth' not specified, falling back to setting depth to (30,30). "
-                f"If the image layer '{img_layer}' contains more than one chunk, "
-                "this could lead to undesired effects at the borders of the chunks. "
-            )
-            kwargs["depth"] = (30,30)
-
         # take dask array and put channel dimension last
         x = sdata[img_layer].data.transpose(1, 2, 0)
+
+        # crd is specified on original uncropped pixel coordinates
+        # need to substract possible translation, because we use crd to crop dask array, which does not take
+        # translation into account
+        if crd:
+            crd = _substract_translation_crd(sdata[img_layer], crd)
+            x = x[ crd[2] : crd[3], crd[0] : crd[1], :]
 
         x_labels = self._segment_overlap(
             x,
@@ -161,6 +155,10 @@ class SegmentationModel:
         # if a crop is taken, need to add the crop to the offset.
         tx, ty = _get_translation(sdata[img_layer])
 
+        if crd:
+            tx = tx + crd[0]
+            ty = ty + crd[2]
+
         translation = Translation([tx, ty], axes=("x", "y"))
 
         set_transformation(spatial_label, translation)
@@ -178,7 +176,7 @@ class SegmentationModel:
         **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
     ):
         chunks = kwargs.pop("chunks", None)
-        depth = kwargs.pop("depth", {0: 30, 1: 30} )
+        depth = kwargs.pop("depth", {0: 100, 1: 100} )
         boundary = kwargs.pop("boundary", "reflect")
         trim=kwargs.pop( "trim", False )
 
