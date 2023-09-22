@@ -24,6 +24,7 @@ log = get_pylogger(__name__)
 
 _SEG_DTYPE = np.uint32
 
+
 def _cellpose(
     img,
     min_size=80,
@@ -51,11 +52,12 @@ def segment(
     sdata: SpatialData,
     img_layer: Optional[str] = None,
     model: Callable[..., NDArray] = _cellpose,
-    output_layer="segmentation_mask",
-    depth: Optional[Tuple[int, int]] = (100,100),
-    chunks: Optional[str | int | tuple[int, ...]] = 'auto',
+    output_labels_layer: str = "segmentation_mask",
+    output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
+    depth: Tuple[int, int] = (100, 100),
+    chunks: Optional[str | int | tuple[int, ...]] = "auto",
     boundary: str = "reflect",
-    trim: bool = False, #  will use squidpy algo if True
+    trim: bool = False,  #  will use squidpy algo if True
     crd: Optional[Tuple[int, int, int, int]] = None,
     **kwargs: Any,  # keyword arguments to be passed to model
 ):
@@ -73,14 +75,15 @@ def segment(
     kwargs.setdefault("depth", depth)
     kwargs.setdefault("boundary", boundary)
     kwargs.setdefault("chunks", chunks)
-    kwargs.setdefault("trim", trim )
+    kwargs.setdefault("trim", trim)
 
     segmentation_model = SegmentationModel(model)
 
     sdata = segmentation_model._segment_img_layer(
         sdata,
         img_layer=img_layer,
-        output_layer=output_layer,
+        output_labels_layer=output_labels_layer,
+        output_shapes_layer=output_shapes_layer,
         crd=crd,
         fn_kwargs=fn_kwargs,
         **kwargs,
@@ -99,7 +102,8 @@ class SegmentationModel:
         self,
         sdata: SpatialData,
         img_layer: Optional[str] = None,
-        output_layer: str = "segmentation_masks",
+        output_labels_layer: str = "segmentation_mask",
+        output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
         crd: Optional[Tuple[int, int, int, int]] = None,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
@@ -115,9 +119,9 @@ class SegmentationModel:
         # translation into account
         if crd:
             crd = _substract_translation_crd(sdata[img_layer], crd)
-            x = x[ crd[2] : crd[3], crd[0] : crd[1], :]
+            x = x[crd[2] : crd[3], crd[0] : crd[1], :]
 
-        x_labels = self._segment_overlap(
+        x_labels = self._segment(
             x,
             fn_kwargs,
             **kwargs,
@@ -164,21 +168,35 @@ class SegmentationModel:
         set_transformation(spatial_label, translation)
 
         # during adding of image it is written to zarr store
-        sdata.add_labels(name=output_layer, labels=spatial_label)
+        sdata.add_labels(name=output_labels_layer, labels=spatial_label)
+
+        # only calculate shapes layer if is specified
+        if output_shapes_layer is not None:
+            # now calculate the polygons
+            polygons = _mask_image_to_polygons(mask=sdata[output_labels_layer].data)
+
+            x_translation, y_translation = _get_translation(sdata[output_labels_layer])
+            polygons["geometry"] = polygons["geometry"].apply(
+                lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
+            )
+
+            sdata.add_shapes(
+                name=output_shapes_layer,
+                shapes=spatialdata.models.ShapesModel.parse(polygons),
+            )
 
         return sdata
-    
 
-    def _segment_overlap(
+    def _segment(
         self,
         x: Array,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
     ):
         chunks = kwargs.pop("chunks", None)
-        depth = kwargs.pop("depth", {0: 100, 1: 100} )
+        depth = kwargs.pop("depth", {0: 100, 1: 100})
         boundary = kwargs.pop("boundary", "reflect")
-        trim=kwargs.pop( "trim", False )
+        trim = kwargs.pop("trim", False)
 
         _check_boundary(boundary)
 
@@ -188,7 +206,10 @@ class SegmentationModel:
         # rechunk if new chunks are needed to fit depth in every chunk,
         # this allows us to send allow_rechunk=False with map_overlap,
         # and have control of chunk sizes of input dask array and output dask array
-        # TODO fix case where depth is None
+        if isinstance(depth, list):
+            depth = tuple(depth)
+        if isinstance(depth, int):
+            depth = (x.ndim - 1) * (depth,)
         depth2 = coerce_depth(x.ndim, depth)
 
         for i in range(2):
@@ -200,8 +221,7 @@ class SegmentationModel:
 
         depths = [max(d) if isinstance(d, tuple) else d for d in depth2.values()]
         new_chunks = tuple(
-            ensure_minimum_chunksize(size + 1, c)
-            for size, c in zip(depths, x.chunks)
+            ensure_minimum_chunksize(size + 1, c) for size, c in zip(depths, x.chunks)
         )
 
         # we don't want channel dimension in depth (coerce_depth added this dimension).
@@ -211,9 +231,9 @@ class SegmentationModel:
 
         x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
 
-        #if not trim:
+        # if not trim:
         output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
-        #else:
+        # else:
         #    output_chunks=x.chunks[:-1]
 
         shift = int(np.prod(x.numblocks) - 1).bit_length()

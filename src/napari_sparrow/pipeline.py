@@ -21,7 +21,7 @@ def load(cfg: DictConfig) -> SpatialData:
     else:
         filename_pattern = cfg.dataset.image
 
-    log.info( "Creating sdata." )
+    log.info("Creating sdata.")
     sdata = nas.io.create_sdata(
         input=filename_pattern,
         output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
@@ -29,7 +29,7 @@ def load(cfg: DictConfig) -> SpatialData:
         crd=None,
         chunks=1024,  # TODO make chunks configurable
     )
-    log.info( "Finished creating sdata." )
+    log.info("Finished creating sdata.")
 
     return sdata
 
@@ -134,29 +134,41 @@ def segment(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     log.info("Start segmentation.")
 
+    depth = cfg.segmentation.depth
+    if isinstance(depth, ListConfig):
+        depth = tuple(depth)
+    elif depth is None:
+        log.info(
+            f"Depth not provided for segmentation, "
+            f"setting depth equal to 2 times the estimated size of the nucleus/cell: 2*{ cfg.segmentation.diameter}"
+        )
+        depth = (2 * cfg.segmentation.diameter, 2 * cfg.segmentation.diameter)
+
     # Perform segmentation
-    sdata = nas.im.segmentation_cellpose(
+    sdata = nas.im.segment(
         sdata=sdata,
-        output_layer=cfg.segmentation.output_layer,
-        crd=cfg.segmentation.crop_param,
+        output_labels_layer=cfg.segmentation.output_labels_layer,
+        output_shapes_layer=cfg.segmentation.output_shapes_layer,
+        depth=depth,
+        chunks=cfg.segmentation.chunks,
+        trim=cfg.segmentation.trim,
+        crd=cfg.segmentation.crop_param
+        if cfg.segmentation.crop_param is not None
+        else None,
         device=cfg.device,
         min_size=cfg.segmentation.min_size,
         flow_threshold=cfg.segmentation.flow_threshold,
         diameter=cfg.segmentation.diameter,
         cellprob_threshold=cfg.segmentation.cellprob_threshold,
         model_type=cfg.segmentation.model_type,
-        channels=cfg.segmentation.channels,
-        chunks=cfg.segmentation.chunks,
-        lazy=cfg.segmentation.lazy,
+        channels=list(cfg.segmentation.channels)
+        if isinstance(cfg.segmentation.channels, ListConfig)
+        else cfg.segmentation.channels,
     )
 
     log.info("Segmentation finished.")
 
-    shapes_layer = None
-    for key in sdata.shapes.keys():
-        if "boundaries" in key:
-            shapes_layer = key
-            break
+    shapes_layer = cfg.segmentation.output_shapes_layer
 
     # plot the image in SpatialData object in last position, will typically be 'clahe'
     img_layer = [*sdata.images][-1]
@@ -209,10 +221,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
     if cfg.segmentation.voronoi_radius:
         shapes_layer = "expanded_cells" + str(cfg.segmentation.voronoi_radius)
     else:
-        for key in sdata.shapes.keys():
-            if "boundaries" in key:
-                shapes_layer = key
-                break
+        shapes_layer = cfg.segmentation.output_shapes_layer
 
     log.info("Start allocation.")
 
@@ -238,7 +247,7 @@ def allocate(cfg: DictConfig, sdata: SpatialData) -> SpatialData:
 
     nas.pl.analyse_genes_left_out(
         sdata,
-        labels_layer=cfg.segmentation.output_layer,
+        labels_layer=cfg.segmentation.output_labels_layer,
         output=cfg.paths.analyse_genes_left_out,
     )
 
@@ -341,7 +350,7 @@ def annotate(
 
     # Load marker genes, replace columns with different name, delete genes from list
 
-    log.info( "Start scoring genes" )
+    log.info("Start scoring genes")
 
     mg_dict, scoresper_cluster = nas.tb.score_genes(
         sdata=sdata,
@@ -352,15 +361,12 @@ def annotate(
         del_celltypes=del_celltypes,
     )
 
-    log.info( "Scoring genes finished" )
+    log.info("Scoring genes finished")
 
     if cfg.segmentation.voronoi_radius:
         shapes_layer = "expanded_cells" + str(cfg.segmentation.voronoi_radius)
     else:
-        for key in sdata.shapes.keys():
-            if "boundaries" in key:
-                shapes_layer = key
-                break
+        shapes_layer = cfg.segmentation.output_shapes_layer
 
     # plot the image in SpatialData object in last position, will typically be 'clahe'
     img_layer = [*sdata.images][-1]
@@ -408,10 +414,7 @@ def visualize(
     if cfg.segmentation.voronoi_radius:
         shapes_layer = "expanded_cells" + str(cfg.segmentation.voronoi_radius)
     else:
-        for key in sdata.shapes.keys():
-            if "boundaries" in key:
-                shapes_layer = key
-                break
+        shapes_layer = cfg.segmentation.output_shapes_layer
 
     # plot the image in SpatialData object in last position, will typically be 'clahe'
     img_layer = [*sdata.images][-1]
