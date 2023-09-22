@@ -116,6 +116,7 @@ def get_choices():
                     "- channels: select channels. For single channel images, the default value ([1,0]) should not be adapted. For multi channel images, the first element of the list is the channel to segment (count from 1), and the second element is the optional nuclear channel. E.g. for an image with PolyT in second channel, and DAPI in first channel use [2,1] if you want to segment PolyT + nuclei on DAPI; [2,0] if you only want to use PolyT and [1,0] if you only want to use DAPI.\n"
                     "- voronoi radius: select the radius that will be used to expand the masks, using a voronoi diagram.\n"
                     "- chunks: select the chunksize used by cellpose.\n"
+                    "- depth: select the overlapping depth used by map_overlap. Setting depth to at least 2*diameter is advised to prevent potential chunking effects.\n"
                 ),
             ),
         ),

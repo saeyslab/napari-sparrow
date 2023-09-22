@@ -158,7 +158,7 @@ def allocate_widget(
         if cfg.segmentation.voronoi_radius:
             shapes_layer = f"expanded_cells{cfg.segmentation.voronoi_radius}"
         else:
-            shapes_layer = f"{cfg.segmentation.output_layer}_boundaries"
+            shapes_layer = cfg.segmentation.output_shapes_layer
 
         polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[shapes_layer])
 

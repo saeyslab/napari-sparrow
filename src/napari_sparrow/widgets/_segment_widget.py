@@ -75,6 +75,7 @@ def segment_widget(
     channels: List[int] = [1, 0],
     voronoi_radius: int = 0,
     chunks: int = 2048,
+    depth: int = 100,
 ):
     """This function represents the segment widget and is called by the wizard to create the widget."""
 
@@ -155,10 +156,11 @@ def segment_widget(
     cfg.segmentation.model_type = model_type.value
     cfg.segmentation.channels = channels
     cfg.segmentation.chunks = chunks
+    cfg.segmentation.depth = depth
     cfg.segmentation.voronoi_radius = voronoi_radius
     # we override default settings, because for plugin, we want to keep things in memory,
     # otherwise export step would redo segmentation step.
-    cfg.segmentation.lazy = False
+    #cfg.segmentation.lazy = False
 
     fn_kwargs["cfg"] = cfg
 
@@ -179,7 +181,7 @@ def segment_widget(
         if cfg.segmentation.voronoi_radius:
             shapes_layer = f"expanded_cells{cfg.segmentation.voronoi_radius}"
         else:
-            shapes_layer = f"{cfg.segmentation.output_layer}_boundaries"
+            shapes_layer = cfg.segmentation.output_shapes_layer
 
         polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[shapes_layer])
 
