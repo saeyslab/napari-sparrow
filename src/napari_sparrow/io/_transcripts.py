@@ -119,7 +119,8 @@ def read_transcripts(
     sdata: SpatialData,
     path_count_matrix: Union[str, Path],
     path_transform_matrix: Optional[Union[str, Path]] = None,
-    points_layer: str = 'transcripts',
+    points_layer: str = "transcripts",
+    overwrite: bool = False,
     debug: bool = False,
     column_x: int = 0,
     column_y: int = 1,
@@ -146,6 +147,8 @@ def read_transcripts(
         If no transform matrix is specified, the identity matrix will be used.
     points_layer: str, default='transcripts'.
         Name of the points layer of the SpatialData object to which the transcripts will be added.
+    overwrite: bool, default=False
+        If True overwrites the element (points layer) if it already exists.
     debug : bool, default=False
         If True, a sample of the data is processed for debugging purposes.
     column_x : int, default=0
@@ -219,13 +222,17 @@ def read_transcripts(
     # Reorder
     transformed_ddf = transformed_ddf[["pixel_x", "pixel_y", "gene"]]
 
-    sdata = _add_transcripts_to_sdata(sdata, transformed_ddf, points_layer )
+    sdata = _add_transcripts_to_sdata(sdata, transformed_ddf, points_layer, overwrite=overwrite)
 
     return sdata
 
 
-def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame, points_layer: str):
-    # TODO below fix to remove transcripts does not work when backed by zarr store, points not allowed to be deleted on disk.
+def _add_transcripts_to_sdata(
+    sdata: SpatialData,
+    transformed_ddf: DaskDataFrame,
+    points_layer: str,
+    overwrite: bool = False,
+):
     if sdata.points:
         for points_layer in [*sdata.points]:
             del sdata.points[points_layer]
@@ -235,5 +242,6 @@ def _add_transcripts_to_sdata(sdata: SpatialData, transformed_ddf: DaskDataFrame
         points=spatialdata.models.PointsModel.parse(
             transformed_ddf, coordinates={"x": "pixel_x", "y": "pixel_y"}
         ),
+        overwrite=overwrite,
     )
     return sdata

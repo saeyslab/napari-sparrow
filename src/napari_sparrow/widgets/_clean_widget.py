@@ -5,8 +5,8 @@ is to improve the image quality so that subsequent image segmentation
 will be more accurate.
 """
 
-from typing import Any, Callable, Dict, Optional, List
 import os
+from typing import Any, Callable, Dict, List, Optional
 
 import napari
 import napari.layers
@@ -16,31 +16,22 @@ import numpy as np
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
-from omegaconf.dictconfig import DictConfig
-from spatialdata import SpatialData
-from spatialdata.transformations import Translation, set_transformation
+from spatialdata import SpatialData, read_zarr
 
-from napari_sparrow.pipeline import clean
 from napari_sparrow import utils as utils
 from napari_sparrow.image._image import _get_translation
-from napari_sparrow.io import create_sdata
+from napari_sparrow.pipeline import SparrowPipeline
 
 log = utils.get_pylogger(__name__)
 
 
 def cleanImage(
     sdata: SpatialData,
-    cfg: DictConfig,
+    pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the cleaning step, this calls all the needed functions to improve the image quality."""
 
-    sdata = clean(cfg, sdata)
-
-    # add the last layer as the CLEAN layer
-    layer_name = utils.CLEAN
-    layer = [*sdata.images][-1]
-
-    sdata.add_image(name=layer_name, image=sdata[layer])
+    sdata = pipeline.clean(sdata)
 
     return sdata
 
@@ -79,46 +70,26 @@ def clean_widget(
     if image is None:
         raise ValueError("Please select an image")
 
-    cfg = viewer.layers[utils.LOAD].metadata["cfg"]
-
-    cfg.clean.tilingCorrection = tiling_correction_step
-    cfg.clean.tile_size = tile_size
-
-    cfg.clean.minmaxFiltering = min_max_filtering_step
-    cfg.clean.size_min_max_filter = size_min_max_filter
-
-    cfg.clean.contrastEnhancing = contrast_enhancing_step
-    cfg.clean.contrast_clip = contrast_clip
-
-    # update this
-    if len(image.data_raw.shape) == 3:
-        dims = ["c", "y", "x"]
-    elif len(image.data_raw.shape) == 2:
-        dims = ["y", "x"]
-
-    if image.name == utils.LOAD:
-        # We need to create new sdata object, because sdata object in
-        # viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD] is backed by .zarr store
-        # and we are not allowed to overwrite it (i.e. we would not be allowed to run the cleaning step twice)
-        sdata = create_sdata(
-            input=image.data_raw, img_layer="raw_image", chunks=1024, dims=dims
-        )
-
-        if 'sdata' in viewer.layers[utils.LOAD].metadata:
-            # get offset of previous layer, and set it to newly created sdata object:
-            offset_x, offset_y = _get_translation(
-                viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD]
-            )
-            translation = Translation([offset_x, offset_y], axes=("x", "y"))
-            set_transformation(
-                sdata.images["raw_image"], translation, to_coordinate_system="global"
-            )
-
-    else:
+    if image.name != utils.LOAD:
         raise ValueError(
             f"Please run the cleaning step on the layer with name '{utils.LOAD}',"
             f"it seems layer with name '{image.name}' was selected."
         )
+
+    pipeline = viewer.layers[utils.LOAD].metadata["pipeline"]
+
+    # need to load it back from zarr store, because otherwise not able to overwrite it
+    sdata = read_zarr(os.path.join(pipeline.cfg.paths.output_dir, "sdata.zarr"))
+
+    pipeline.cfg.clean.tilingCorrection = tiling_correction_step
+    pipeline.cfg.clean.tile_size = tile_size
+
+    pipeline.cfg.clean.minmaxFiltering = min_max_filtering_step
+    pipeline.cfg.clean.size_min_max_filter = size_min_max_filter
+
+    pipeline.cfg.clean.contrastEnhancing = contrast_enhancing_step
+    pipeline.cfg.clean.contrast_clip = contrast_clip
+    pipeline.cfg.clean.overwrite = True
 
     if subset:
         # Check if shapes layer only holds one shape and shape is rectangle
@@ -134,20 +105,20 @@ def clean_widget(
         ]
 
         # FIXME note crd will be ignored if you do not do tiling correction
-        cfg.clean.crop_param = crd
+        pipeline.cfg.clean.crop_param = crd
 
     else:
-        cfg.clean.crop_param = None
+        pipeline.cfg.clean.crop_param = None
 
-    cfg.clean.small_size_vis=cfg.clean.crop_param
+    pipeline.cfg.clean.small_size_vis = pipeline.cfg.clean.crop_param
 
     fn_kwargs: Dict[str, Any] = {
-        "cfg": cfg,
+        "pipeline": pipeline,
     }
 
     worker = _clean_worker(sdata, method=cleanImage, fn_kwargs=fn_kwargs)
 
-    def add_image(sdata: SpatialData, cfg: DictConfig, layer_name: str):
+    def add_image(sdata: SpatialData, pipeline: SparrowPipeline, layer_name: str):
         """Add the image to the napari viewer, overwrite if it already exists."""
         try:
             # if the layer exists, update its data
@@ -159,11 +130,11 @@ def clean_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        offset_x, offset_y = _get_translation(sdata[layer_name])
+        offset_x, offset_y = _get_translation(sdata[pipeline.cleaned_image_name])
 
         # Translate image to appear on selected region
         viewer.add_image(
-            sdata[layer_name].data.squeeze(),
+            sdata[pipeline.cleaned_image_name].data.squeeze(),
             translate=[
                 offset_y,
                 offset_x,
@@ -171,17 +142,21 @@ def clean_widget(
             name=layer_name,
         )
 
-        viewer.layers[layer_name].metadata["sdata"] = sdata
-        viewer.layers[layer_name].metadata["cfg"] = cfg
+        viewer.layers[layer_name].metadata["pipeline"] = pipeline
 
-        log.info( f"Added {utils.CLEAN} layer" )
+        log.info(f"Added {utils.CLEAN} layer")
 
-        utils._export_config( cfg.clean, os.path.join( cfg.paths.output_dir, 'configs', 'clean', 'plugin.yaml' ) )
-        log.info( "Cleaning finished" )
+        utils._export_config(
+            pipeline.cfg.clean,
+            os.path.join(
+                pipeline.cfg.paths.output_dir, "configs", "clean", "plugin.yaml"
+            ),
+        )
+        log.info("Cleaning finished")
         show_info("Cleaning finished")
 
-    worker.returned.connect(lambda data: add_image(data, cfg, utils.CLEAN))
-    log.info( "Cleaning started" )
+    worker.returned.connect(lambda data: add_image(data, pipeline, utils.CLEAN))
+    log.info("Cleaning started")
     show_info("Cleaning started")
     worker.start()
 

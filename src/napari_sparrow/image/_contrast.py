@@ -15,6 +15,7 @@ def enhance_contrast(
     chunks: int = 10000,
     depth: int = 3000,
     output_layer: str = "clahe",
+    overwrite: bool = False,
 ) -> SpatialData:
     """
     Enhance the contrast of an image in a SpatialData object using
@@ -42,6 +43,8 @@ def enhance_contrast(
     output_layer : str, optional
         The name of the image layer where the enhanced image will be stored.
         The default value is "clahe".
+    overwrite: bool
+        If True overwrites the element if it already exists.
 
     Returns
     -------
@@ -112,6 +115,6 @@ def enhance_contrast(
     set_transformation(spatial_image, trf)
 
     # during adding of image it is written to zarr store
-    sdata.add_image(name=output_layer, image=spatial_image)
+    sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite )
 
     return sdata

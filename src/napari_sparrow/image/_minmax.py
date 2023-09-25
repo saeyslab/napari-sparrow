@@ -12,6 +12,7 @@ def min_max_filtering(
     img_layer: Optional[str] = None,
     size_min_max_filter: int | List[int] = 85,
     output_layer="min_max_filtered",
+    overwrite: bool = False,
 ) -> SpatialData:
     """
     Apply min max filtering to the given SpatialData object using dask.
@@ -31,6 +32,8 @@ def min_max_filtering(
         must match the number of channels. Defaults to 85.
     output_layer : str, optional
         The name of the output layer. Defaults to "min_max_filtered".
+    overwrite: bool
+        If True overwrites the element if it already exists.
 
     Returns
     -------
@@ -97,6 +100,6 @@ def min_max_filtering(
     set_transformation(spatial_image, trf)
 
     # during adding of image it is written to zarr store
-    sdata.add_image(name=output_layer, image=spatial_image)
+    sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite)
 
     return sdata

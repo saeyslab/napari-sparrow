@@ -12,7 +12,6 @@ from napari_sparrow.widgets import (
     allocate_widget,
     annotate_widget,
     clean_widget,
-    export_widget,
     load_widget,
     segment_widget,
 )
@@ -162,19 +161,6 @@ def get_choices():
                     "- markers file: a file containing marker genes for each cell type. This file should be one-hot encoded, with cell types listed in the first row, and marker genes in the first column.\n"
                     "- delimiter: select the delimiter used by the marker genes file, by default ',' is used.\n"
                     "- del celltypes: select the cell types that should not be included in the analysis."
-                ),
-            ),
-        ),
-        (
-            "Step 5: Export",
-            Step(
-                "Export",
-                "#5 Export",
-                export_widget,
-                (
-                    "## Step 5: Export\n"
-                    "### Export to .zarr.:\n"
-                    "A .zarr file with name 'sdata_export.zarr' will be written to the output directory set in the Load step. This .zarr file can be read via SpatialData and contains the input image, the cleaned image, the segmentation masks and the corresponding shapes layer, and the AnnData object."
                 ),
             ),
         ),

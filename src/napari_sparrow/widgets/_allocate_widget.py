@@ -5,31 +5,28 @@ import os
 import pathlib
 from typing import Any, Callable, Dict, Optional
 
-
 import napari
 import napari.layers
 import napari.types
-
+import spatialdata
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
-from omegaconf.dictconfig import DictConfig
-import spatialdata
-from spatialdata import SpatialData
+from spatialdata import SpatialData, read_zarr
 
 import napari_sparrow.utils as utils
-from napari_sparrow.pipeline import allocate
+from napari_sparrow.pipeline import SparrowPipeline
 
 log = utils.get_pylogger(__name__)
 
 
 def allocateImage(
     sdata: SpatialData,
-    cfg: DictConfig,
+    pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the allocation step, this calls all the needed functions to allocate the transcripts to the cells."""
 
-    sdata = allocate(cfg, sdata)
+    sdata = pipeline.allocate(sdata)
 
     return sdata
 
@@ -63,8 +60,8 @@ def allocate_widget(
     midcount: bool = False,
     column_midcount: Optional[int] = None,
     transform_matrix: Optional[pathlib.Path] = None,
-    min_counts:int=10,
-    min_cells:int=5,
+    min_counts: int = 10,
+    min_cells: int = 5,
     size_normalization: bool = True,
     n_comps: int = 50,
     min_size: int = 500,
@@ -87,13 +84,15 @@ def allocate_widget(
         raise RuntimeError(f"Layer with name '{utils.SEGMENT}' is not available")
 
     try:
-        sdata = segment_layer.metadata["sdata"]
+        pipeline = segment_layer.metadata["pipeline"]
         shapes = segment_layer.metadata["shapes"]
-        cfg = segment_layer.metadata["cfg"]
     except KeyError:
         raise RuntimeError(
             f"Please run segmentation step before running allocation step."
         )
+
+    # need to load it back from zarr store, because otherwise not able to overwrite it
+    sdata = read_zarr(os.path.join(pipeline.cfg.paths.output_dir, "sdata.zarr"))
 
     # need to add original unfiltered shapes to sdata object at the beginning of the allocation step.
     # otherwise polygons that were filtered out would not be available any more if you do a rerun of the allocation step.
@@ -116,33 +115,34 @@ def allocate_widget(
     else:
         column_midcount = None
 
-    cfg.dataset.coords = transcripts_file
+    pipeline.cfg.dataset.coords = transcripts_file
     if transform_matrix:
-        cfg.dataset.transform_matrix = transform_matrix
+        pipeline.cfg.dataset.transform_matrix = transform_matrix
 
-    cfg.allocate.size_norm = size_normalization
-    cfg.allocate.min_counts= min_counts
-    cfg.allocate.min_cells=min_cells
-    cfg.allocate.n_comps = n_comps
-    cfg.allocate.min_size = min_size
-    cfg.allocate.max_size = max_size
-    cfg.allocate.pcs = pcs
-    cfg.allocate.neighbors = neighbors
-    cfg.allocate.cluster_resolution = cluster_resolution
-    cfg.allocate.delimiter = delimiter
-    cfg.allocate.header = header
-    cfg.allocate.column_x = column_x
-    cfg.allocate.column_y = column_y
-    cfg.allocate.column_gene = column_gene
-    cfg.allocate.column_midcount = column_midcount
+    pipeline.cfg.allocate.size_norm = size_normalization
+    pipeline.cfg.allocate.min_counts = min_counts
+    pipeline.cfg.allocate.min_cells = min_cells
+    pipeline.cfg.allocate.n_comps = n_comps
+    pipeline.cfg.allocate.min_size = min_size
+    pipeline.cfg.allocate.max_size = max_size
+    pipeline.cfg.allocate.pcs = pcs
+    pipeline.cfg.allocate.neighbors = neighbors
+    pipeline.cfg.allocate.cluster_resolution = cluster_resolution
+    pipeline.cfg.allocate.delimiter = delimiter
+    pipeline.cfg.allocate.header = header
+    pipeline.cfg.allocate.column_x = column_x
+    pipeline.cfg.allocate.column_y = column_y
+    pipeline.cfg.allocate.column_gene = column_gene
+    pipeline.cfg.allocate.column_midcount = column_midcount
+    pipeline.cfg.allocate.overwrite = True
 
     fn_kwargs = {
-        "cfg": cfg,
+        "pipeline": pipeline,
     }
 
     worker = _allocation_worker(sdata, allocateImage, fn_kwargs=fn_kwargs)
 
-    def add_metadata(sdata: SpatialData, cfg: DictConfig, layer_name: str):
+    def add_metadata(sdata: SpatialData, pipeline: SparrowPipeline, layer_name: str):
         """Update the polygons, add anndata object to the metadata, so it can be viewed via napari spatialdata plugin, and it
         becomes visible in next steps."""
 
@@ -155,12 +155,9 @@ def allocate_widget(
         except KeyError:
             log.info(f"Layer '{layer_name}' does not exist.")
 
-        if cfg.segmentation.voronoi_radius:
-            shapes_layer = f"expanded_cells{cfg.segmentation.voronoi_radius}"
-        else:
-            shapes_layer = cfg.segmentation.output_shapes_layer
-
-        polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[shapes_layer])
+        polygons = utils._get_polygons_in_napari_format(
+            df=sdata.shapes[pipeline.shapes_layer_name]
+        )
 
         # we add the polygons again in this step, because some of them are filtered out in the allocate step
         # (i.e. due to size of polygons etc). If we do not update the polygons here, napari complains because
@@ -178,20 +175,28 @@ def allocate_widget(
             opacity=0.5,
         )
 
-        viewer.layers[layer_name].metadata["adata"] = sdata.table
-        viewer.layers[layer_name].metadata["sdata"] = sdata
-        viewer.layers[layer_name].metadata["cfg"] = cfg
+        viewer.layers[layer_name].metadata["pipeline"] = pipeline
+        viewer.layers[layer_name].metadata[
+            "adata"
+        ] = sdata.table  # spatialdata plugin uses this
 
-        log.info( f"Added {utils.ALLOCATION} layer" )
+        log.info(f"Added '{utils.ALLOCATION}' layer")
 
-        utils._export_config( cfg.allocate, os.path.join( cfg.paths.output_dir, 'configs', 'allocate', 'plugin.yaml' ) )
+        utils._export_config(
+            pipeline.cfg.allocate,
+            os.path.join(
+                pipeline.cfg.paths.output_dir, "configs", "allocate", "plugin.yaml"
+            ),
+        )
 
         show_info("Allocation finished")
 
         # Options for napari-spatialData plugin
         viewer.scale_bar.visible = True
 
-    worker.returned.connect(lambda data: add_metadata(data, cfg, f"{utils.ALLOCATION}"))
+    worker.returned.connect(
+        lambda data: add_metadata(data, pipeline, f"{utils.ALLOCATION}")
+    )
     show_info("Allocation started")
     worker.start()
 

@@ -28,11 +28,11 @@ _SEG_DTYPE = np.uint32
 def _cellpose(
     img,
     min_size=80,
-    cellprob_threshold=-4,
-    flow_threshold=0.85,
-    diameter=100,
-    model_type="cyto",
-    channels=[1, 0],
+    cellprob_threshold=0,
+    flow_threshold=0.6,
+    diameter=55,
+    model_type="nuclei",
+    channels=[0, 0],
     device="cpu",
 ):
     gpu = torch.cuda.is_available()
@@ -59,6 +59,7 @@ def segment(
     boundary: str = "reflect",
     trim: bool = False,  #  will use squidpy algo if True
     crd: Optional[Tuple[int, int, int, int]] = None,
+    overwrite: bool= False,
     **kwargs: Any,  # keyword arguments to be passed to model
 ):
     fn_kwargs = kwargs
@@ -85,6 +86,7 @@ def segment(
         output_labels_layer=output_labels_layer,
         output_shapes_layer=output_shapes_layer,
         crd=crd,
+        overwrite=overwrite,
         fn_kwargs=fn_kwargs,
         **kwargs,
     )
@@ -105,6 +107,7 @@ class SegmentationModel:
         output_labels_layer: str = "segmentation_mask",
         output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
         crd: Optional[Tuple[int, int, int, int]] = None,
+        overwrite: bool = False,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
     ):
@@ -168,7 +171,7 @@ class SegmentationModel:
         set_transformation(spatial_label, translation)
 
         # during adding of image it is written to zarr store
-        sdata.add_labels(name=output_labels_layer, labels=spatial_label)
+        sdata.add_labels(name=output_labels_layer, labels=spatial_label, overwrite=overwrite)
 
         # only calculate shapes layer if is specified
         if output_shapes_layer is not None:
@@ -183,6 +186,7 @@ class SegmentationModel:
             sdata.add_shapes(
                 name=output_shapes_layer,
                 shapes=spatialdata.models.ShapesModel.parse(polygons),
+                overwrite=overwrite,
             )
 
         return sdata

@@ -8,3 +8,5 @@ voronoi_radius: null
 
 output_labels_layer: "segmentation_mask"
 output_shapes_layer: "segmentation_mask_boundaries"
+
+overwrite: False

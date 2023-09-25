@@ -33,3 +33,8 @@ shape_size_alpha: 0.5
 leiden_column: "leiden"
 leiden_cmap: "magma"
 leiden_alpha: 0.5
+
+overwrite: False
+points_layer_name: "transcripts"
+calculate_transcripts_density: True
+transcripts_density_img_layer_name: "transcript_density"
