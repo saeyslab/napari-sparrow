@@ -145,13 +145,6 @@ def segment_widget(
     else:
         pipeline.cfg.segmentation.overwrite=False
 
-    # TODO check if it is this necessary here?
-    #for shapes_layer in [*sdata.shapes]:
-    #    del sdata.shapes[shapes_layer]
-
-    #for labels in [*sdata.labels]:
-    #    del sdata.labels[labels]
-
     fn_kwargs["pipeline"] = pipeline
 
     worker = _segmentation_worker(sdata, segmentImage, fn_kwargs=fn_kwargs)
@@ -186,7 +179,7 @@ def segment_widget(
             opacity=0.5,
         )
 
-        # we need the original shapes, in order for next step (allocation) to be able to run multiple times
+        # we need the original shapes, in order for next step (allocation) to be able to run allocation step multiple times
         viewer.layers[layer_name].metadata["shapes"] = sdata.shapes.copy()
         viewer.layers[layer_name].metadata["pipeline"] = pipeline
 

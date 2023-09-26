@@ -1,12 +1,10 @@
 import itertools
-import uuid
 from types import MappingProxyType
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import dask.array as da
 import numpy as np
 import spatialdata
-import squidpy as sq
 import torch
 from cellpose import models
 from dask.array import Array
@@ -16,7 +14,8 @@ from shapely.affinity import translate
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
-from napari_sparrow.image._image import _get_translation, _substract_translation_crd
+from napari_sparrow.image._image import (_get_translation,
+                                         _substract_translation_crd)
 from napari_sparrow.shape._shape import _mask_image_to_polygons
 from napari_sparrow.utils.pylogger import get_pylogger
 
@@ -26,15 +25,15 @@ _SEG_DTYPE = np.uint32
 
 
 def _cellpose(
-    img,
-    min_size=80,
-    cellprob_threshold=0,
-    flow_threshold=0.6,
-    diameter=55,
-    model_type="nuclei",
-    channels=[0, 0],
-    device="cpu",
-):
+    img: NDArray,
+    min_size: int = 80,
+    cellprob_threshold: int = 0,
+    flow_threshold: float = 0.6,
+    diameter: int = 55,
+    model_type: str = "nuclei",
+    channels: List[int] = [0, 0],
+    device: str = "cpu",
+) -> NDArray:
     gpu = torch.cuda.is_available()
     model = models.Cellpose(gpu=gpu, model_type=model_type, device=torch.device(device))
     masks, _, _, _ = model.eval(
@@ -57,11 +56,56 @@ def segment(
     depth: Tuple[int, int] = (100, 100),
     chunks: Optional[str | int | tuple[int, ...]] = "auto",
     boundary: str = "reflect",
-    trim: bool = False,  #  will use squidpy algo if True
+    trim: bool = False,
     crd: Optional[Tuple[int, int, int, int]] = None,
-    overwrite: bool= False,
-    **kwargs: Any,  # keyword arguments to be passed to model
+    overwrite: bool = False,
+    **kwargs: Any,
 ):
+    """
+    Segment images using a provided model and add segmentation results
+    (labels layer and shapes layer) to the SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object containing the image layer to segment.
+    img_layer : Optional[str], default=None
+        The image layer in `sdata` to be segmented. If not provided, the last image layer in `sdata` is used.
+    model : Callable[..., NDArray], default=_cellpose
+        The segmentation model function used to process the images.
+    output_labels_layer : str, default="segmentation_mask"
+        Name of the label layer in which segmentation results will be stored in `sdata`.
+    output_shapes_layer : Optional[str], default="segmentation_mask_boundaries"
+        Name of the shapes layer where boundaries obtained output_labels_layer will be stored. If set to None, shapes won't be stored.
+    depth : Tuple[int, int], default=(100, 100)
+        The depth parameter to be passed to map_overlap. If trim is set to False,
+        it's recommended to set the depth to a value greater than twice the estimated diameter of the cells/nulcei.
+    chunks : Optional[str | int | tuple[int, ...]], default="auto"
+        Chunk sizes for processing. Can be a string, integer or tuple of integers.
+    boundary : str, default="reflect"
+        Boundary parameter passed to map_overlap.
+    trim : bool, default=False
+        If set to True, overlapping regions will be processed using the `squidpy` algorithm.
+        If set to False, the `sparrow` algorithm will be employed instead. For dense cell distributions,
+        we recommend setting trim to True.
+    crd : Optional[Tuple[int, int, int, int]], default=None
+        The coordinates specifying the region of the image to be segmented. Defines the bounds (x_min, x_max, y_min, y_max).
+    overwrite : bool, default=False
+        If True, overwrites the existing layers if they exist. Otherwise, raises an error if the layers exist.
+    **kwargs : Any
+        Additional keyword arguments passed to the provided `model`.
+
+    Returns
+    -------
+    SpatialData
+        Updated `sdata` object containing the segmentation results.
+
+    Raises
+    ------
+    TypeError
+        If the provided `model` is not callable.
+    """
+
     fn_kwargs = kwargs
 
     # take the last image as layer to do next step in pipeline
@@ -132,34 +176,6 @@ class SegmentationModel:
 
         spatial_label = spatialdata.models.Labels2DModel.parse(x_labels)
 
-        # TODO check if necessary to write to intermediate zarr to avoid race conditions
-        """
-        # if a crop is taken, need to add the crop to the offset.
-        tx, ty = _get_translation(sdata[img_layer])
-        # need to substract depth from translation, because otherwise labels layer not aligend with image
-        if depth is not None:
-            tx = tx - depth[1]
-            ty = ty - depth[0]
-
-        translation = Translation([tx, ty], axes=("x", "y"))
-
-        set_transformation(spatial_label, translation)
-
-        name_masks_with_overlap = f"_masks_{uuid.uuid4()}"
-
-        # write to intermediate zarr here, to avoid race conditions, TODO check if necessary
-        sdata.add_labels(name=name_masks_with_overlap, labels=spatial_label)
-
-        masks = sdata[name_masks_with_overlap].data
-
-        # this should not be done if depth is None or if there is only one chunk
-        masks = _trim_masks(masks=masks, depth=depth)
-        """
-
-        spatial_label = spatialdata.models.Labels2DModel.parse(x_labels)
-
-        # TODO
-        # if a crop is taken, need to add the crop to the offset.
         tx, ty = _get_translation(sdata[img_layer])
 
         if crd:
@@ -171,7 +187,9 @@ class SegmentationModel:
         set_transformation(spatial_label, translation)
 
         # during adding of image it is written to zarr store
-        sdata.add_labels(name=output_labels_layer, labels=spatial_label, overwrite=overwrite)
+        sdata.add_labels(
+            name=output_labels_layer, labels=spatial_label, overwrite=overwrite
+        )
 
         # only calculate shapes layer if is specified
         if output_shapes_layer is not None:
@@ -235,20 +253,9 @@ class SegmentationModel:
 
         x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
 
-        # if not trim:
         output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
-        # else:
-        #    output_chunks=x.chunks[:-1]
 
         shift = int(np.prod(x.numblocks) - 1).bit_length()
-
-        # TODO probably better to pass depth and boundary explicitely to map_overlap,
-        # than it is clear that these are the kwargs to callable method
-        # kwargs.setdefault("depth", depth)
-        # kwargs.setdefault("boundary", boundary)
-
-        # kwargs.setdefault("depth", {0: 30, 1: 30})
-        # kwargs.setdefault("boundary", "reflect")
 
         x_labels = da.map_overlap(
             self._segment_chunk,
@@ -267,13 +274,11 @@ class SegmentationModel:
             **kwargs,
         )
 
-        # if trim==True --> use squidpies way of handling neighbouring blocks
+        # if trim==True --> use squidpy's way of handling neighbouring blocks
         if trim:
             from dask_image.ndmeasure._utils._label import (
-                connected_components_delayed,
-                label_adjacency_graph,
-                relabel_blocks,
-            )
+                connected_components_delayed, label_adjacency_graph,
+                relabel_blocks)
 
             # max because labels are not continuous (and won't be continuous)
             label_groups = label_adjacency_graph(x_labels, None, x_labels.max())
@@ -299,9 +304,7 @@ class SegmentationModel:
         block_id: Tuple[int, ...],
         num_blocks: Tuple[int, ...],
         shift: int,
-        fn_kwargs: Mapping[str, Any] = MappingProxyType(
-            {}
-        ),  # keyword arguments to be passed to model
+        fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     ) -> NDArray:
         if len(num_blocks) == 2:
             block_num = block_id[0] * num_blocks[1] + block_id[1]
