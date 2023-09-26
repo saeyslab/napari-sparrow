@@ -24,16 +24,19 @@ from pkg_resources import resource_filename
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
-from napari_sparrow.io import create_sdata
 from napari_sparrow.image._image import _get_translation
+from napari_sparrow.io import create_sdata
+from napari_sparrow.pipeline import SparrowPipeline
 
 log = utils.get_pylogger(__name__)
 
 
 def loadImage(
-    sdata: SpatialData,
+    pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the loading step."""
+
+    sdata = pipeline.load()
 
     return sdata
 
@@ -42,7 +45,6 @@ def loadImage(
     progress=True
 )  # TODO: show string with description of current step in the napari progress bar
 def _load_worker(
-    sdata: SpatialData,
     method: Callable,
     fn_kwargs: Dict[str, Any],
 ) -> list[np.ndarray]:
@@ -50,7 +52,7 @@ def _load_worker(
     load image in a thread worker
     """
 
-    res = method(sdata, **fn_kwargs)
+    res = method(**fn_kwargs)
 
     return res
 
@@ -77,53 +79,38 @@ def load_widget(
     with initialize_config_dir(version_base=None, config_dir=abs_config_dir):
         cfg = compose(config_name="pipeline")
 
-    cfg.paths.output_dir=str(output_dir)
+    cfg.paths.output_dir = str(output_dir)
 
     crd = [x_min, x_max, y_min, y_max]
     crd = [None if val == "" else int(val) for val in crd]
 
-    log.info("Creating sdata")
-    if path_image:
-        sdata = create_sdata(
-            input=path_image,
-            output_path=os.path.join(cfg.paths.output_dir, "sdata.zarr"),
-            img_layer=utils.LOAD,
-            chunks=1024,
-            crd=crd if crd else None,
-        )
-        log.info( "Finished creating sdata" )
+    cfg.dataset.crop_param = crd
+    cfg.dataset.image = path_image
 
-    # elif image:
-    # need to pass this as arguments
-    #    if len( image.data_raw.shape )==3:
-    #        dims=[ 'y', 'x', 'c' ]
-    #    elif len( image.data_raw.shape )==2:
-    #        dims=[ 'y', 'x' ]
-    #    sdata=create_sdata( input=image.data_raw, layer_name=utils.LOAD, chunks=1024, dims=dims )
-    else:
-        raise ValueError("Please select an image, or set a path to an image")
+    pipeline = SparrowPipeline(cfg)
 
-    fn_kwargs: Dict[str, Any] = {}
+    fn_kwargs: Dict[str, Any] = {"pipeline": pipeline}
 
-    worker = _load_worker(sdata, method=loadImage, fn_kwargs=fn_kwargs)
+    worker = _load_worker(method=loadImage, fn_kwargs=fn_kwargs)
 
-    def add_image(sdata: SpatialData, cfg: DictConfig, layer_name:str ):
+    def add_image(sdata: SpatialData, pipeline: SparrowPipeline, layer_name: str):
         """Add the image to the napari viewer, overwrite if it already exists."""
+
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]
             viewer.layers.remove(layer)
 
-            log.info(f"Refreshing {layer_name}")
+            log.info(f"Refreshing { layer_name }")
         except KeyError:
             # otherwise add it to the viewer
-            log.info(f"Adding {layer_name}")
+            log.info(f"Adding { layer_name }")
 
-        offset_x, offset_y = _get_translation(sdata[layer_name])
+        offset_x, offset_y = _get_translation(sdata[pipeline.loaded_image_name])
 
         # Translate image to appear on selected region
         viewer.add_image(
-            sdata[layer_name].data.squeeze(),
+            sdata[pipeline.loaded_image_name].data.squeeze(),
             translate=[
                 offset_y,
                 offset_x,
@@ -131,14 +118,13 @@ def load_widget(
             name=layer_name,
         )
 
-        viewer.layers[utils.LOAD].metadata["sdata"] = sdata
-        viewer.layers[utils.LOAD].metadata["cfg"] = cfg
+        viewer.layers[layer_name].metadata["pipeline"] = pipeline
 
-        log.info( f"Added {utils.LOAD} layer" )
+        log.info(f"Added { layer_name } layer")
 
         show_info("Loading finished")
 
-    worker.returned.connect(lambda data: add_image(data, cfg, utils.LOAD))
+    worker.returned.connect(lambda data: add_image(data, pipeline, utils.LOAD))
     show_info("Loading started")
     worker.start()
 

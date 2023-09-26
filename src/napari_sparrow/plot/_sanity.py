@@ -17,11 +17,13 @@ from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
+
 def sanity_plot_transcripts_matrix(
     sdata: SpatialData,
     img_layer: Optional[str] = None,
     points_layer: str = "transcripts",
     shapes_layer: Optional[str] = None,
+    channel: Optional[int] = None,
     plot_cell_number: bool = False,
     n_sample: Optional[int] = None,
     name_x: str = "x",
@@ -49,6 +51,8 @@ def sanity_plot_transcripts_matrix(
         The points layer in the SpatialData object representing transcripts.
     shapes_layer : Optional[str], default=None
         The layer in the SpatialData object representing cell boundaries. If None, no cell boundaries are plotted.
+    channel : int or None, optional
+        Channel to display from the img_layer. If none provided, or if provided channel could not be found, first channel is plot.
     plot_cell_number : bool, default=False
         Whether to annotate cells with their numbers on the plot.
     n_sample : Optional[int], default=None
@@ -117,9 +121,13 @@ def sanity_plot_transcripts_matrix(
 
     xarray, x_coords_orig, y_coords_orig = _apply_transform(xarray)
 
-    xarray.squeeze().sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-        cmap=cmap, robust=True, ax=ax, add_colorbar=False
-    )
+    if channel is None:
+        # if channel is None, plot the first channel
+        channel = xarray.c.data[0]
+
+    xarray.isel(c=channel).squeeze().sel(
+        x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
+    ).plot.imshow(cmap=cmap, robust=True, ax=ax, add_colorbar=False)
 
     xarray = _unapply_transform(xarray, x_coords_orig, y_coords_orig)
 

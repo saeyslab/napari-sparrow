@@ -21,6 +21,7 @@ def tiling_correction(
     tile_size: int = 2144,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output_layer: str = "tiling_correction",
+    overwrite: bool = False,
 ) -> Tuple[SpatialData, List[np.ndarray]]:
     """
     This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
@@ -38,6 +39,8 @@ def tiling_correction(
         Coordinates defining the region of the image to correct. It defines the bounds (x_min, x_max, y_min, y_max).
     output_layer : str, default="tiling_correction"
         Name of the image layer where the corrected image will be stored in the `sdata` object.
+    overwrite: bool
+        If True overwrites the element if it already exists.
 
     Returns
     -------
@@ -168,6 +171,6 @@ def tiling_correction(
     set_transformation(spatial_image, translation)
 
     # during adding of image it is written to zarr store
-    sdata.add_image(name=output_layer, image=spatial_image)
+    sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite)
 
     return sdata, flatfields

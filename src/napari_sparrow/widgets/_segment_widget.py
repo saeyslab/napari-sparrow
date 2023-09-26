@@ -7,7 +7,7 @@ Segmentation is performed with Squidpy ImageContainer and segment.
 
 import os
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 import napari
 import napari.layers
@@ -16,14 +16,14 @@ import numpy as np
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
-from omegaconf.dictconfig import DictConfig
 from spatialdata import SpatialData
-from spatialdata.transformations import Translation, set_transformation
+
 
 import napari_sparrow.utils as utils
-from napari_sparrow.image._image import _get_translation
-from napari_sparrow.io import create_sdata
-from napari_sparrow.pipeline import segment
+
+from napari_sparrow.pipeline import SparrowPipeline
+
+from spatialdata import read_zarr
 
 log = utils.get_pylogger(__name__)
 
@@ -35,11 +35,11 @@ class ModelOption(Enum):
 
 def segmentImage(
     sdata: SpatialData,
-    cfg: DictConfig,
-) -> Tuple[SpatialData, DictConfig]:
+    pipeline: SparrowPipeline,
+) -> SpatialData:
     """Function representing the segmentation step, this calls the segmentation function."""
 
-    sdata = segment(cfg, sdata)
+    sdata = pipeline.segment( sdata)
 
     return sdata
 
@@ -75,6 +75,7 @@ def segment_widget(
     channels: List[int] = [1, 0],
     voronoi_radius: int = 0,
     chunks: int = 2048,
+    depth: int = 100,
 ):
     """This function represents the segment widget and is called by the wizard to create the widget."""
 
@@ -83,48 +84,27 @@ def segment_widget(
 
     fn_kwargs: Dict[str, Any] = {}
 
-    # Load SpatialData object from previous layer
+    pipeline = viewer.layers[utils.CLEAN].metadata["pipeline"]
+
+    # need to load it back from zarr store, because otherwise not able to overwrite it
+    sdata=read_zarr( os.path.join( pipeline.cfg.paths.output_dir, "sdata.zarr" ))
+
     if image.name == utils.CLEAN:
-        cfg = viewer.layers[utils.CLEAN].metadata["cfg"]
-        sdata = viewer.layers[image.name].metadata["sdata"]
-
-        for shapes_layer in [*sdata.shapes]:
-            del sdata.shapes[shapes_layer]
-
-        for labels in [*sdata.labels]:
-            del sdata.labels[labels]
-
-    # Create new spatialdata
+        log.info( f"Running segmentation on image layer '{utils.CLEAN}', "
+                 f"corresponding to image layer '{pipeline.cleaned_image_name}' in the SpatialData object used for backing." )
     elif image.name == utils.LOAD:
-        # update this
-        if len(image.data_raw.shape) == 3:
-            dims = ["c", "y", "x"]
-        elif len(image.data_raw.shape) == 2:
-            dims = ["y", "x"]
-
-        # We need to create new sdata object, because sdata object in
-        # viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD] is backed by .zarr store
-        # and we are not allowed to overwrite it (i.e. we would not be allowed to run the cleaning step twice)
-        cfg = viewer.layers[utils.LOAD].metadata["cfg"]
-
-        sdata = create_sdata(
-            input=image.data_raw, img_layer="raw_image", chunks=1024, dims=dims
-        )
-
-        # get offset of previous layer, and set it to newly created sdata object:
-        offset_x, offset_y = _get_translation(
-            viewer.layers[utils.LOAD].metadata["sdata"][utils.LOAD]
-        )
-        translation = Translation([offset_x, offset_y], axes=("x", "y"))
-        set_transformation(
-            sdata.images["raw_image"], translation, to_coordinate_system="global"
-        )
+        log.info( f"Running segmentation on image layer '{utils.LOAD}', "
+                 f"corresponding to image layer '{pipeline.loaded_image_name}' in the SpatialData object used for backing." )
+        # set cleaned image equal to loaded image in pipeline, 
+        # because we want to use image without cleaning applied for segmentation if we pick utils.LOAD
+        pipeline.cleaned_image_name=pipeline.loaded_image_name
 
     else:
         raise ValueError(
-            f"Please run the cleaning step on the layer with name '{utils.LOAD}' or '{utils.CLEAN}',"
+            f"Please run the segmentation step on the layer with name '{utils.LOAD}' or '{utils.CLEAN}',"
             f"it seems layer with name '{image.name}' was selected."
         )
+    
 
     # Subset shape
     if subset:
@@ -140,31 +120,36 @@ def segment_widget(
             int(coordinates[:, 0].max()),
         ]
 
-        cfg.segmentation.crop_param = crd
+        pipeline.cfg.segmentation.crop_param = crd
 
     else:
-        cfg.segmentation.crop_param = None
+        pipeline.cfg.segmentation.crop_param = None
 
     # update config
-    cfg.device = device
-    cfg.segmentation.small_size_vis = cfg.segmentation.crop_param
-    cfg.segmentation.min_size = min_size
-    cfg.segmentation.flow_threshold = flow_threshold
-    cfg.segmentation.diameter = diameter
-    cfg.segmentation.cellprob_threshold = cellprob_threshold
-    cfg.segmentation.model_type = model_type.value
-    cfg.segmentation.channels = channels
-    cfg.segmentation.chunks = chunks
-    cfg.segmentation.voronoi_radius = voronoi_radius
-    # we override default settings, because for plugin, we want to keep things in memory,
-    # otherwise export step would redo segmentation step.
-    cfg.segmentation.lazy = False
+    pipeline.cfg.device = device
+    pipeline.cfg.segmentation.small_size_vis = pipeline.cfg.segmentation.crop_param
+    pipeline.cfg.segmentation.min_size = min_size
+    pipeline.cfg.segmentation.flow_threshold = flow_threshold
+    pipeline.cfg.segmentation.diameter = diameter
+    pipeline.cfg.segmentation.cellprob_threshold = cellprob_threshold
+    pipeline.cfg.segmentation.model_type = model_type.value
+    pipeline.cfg.segmentation.channels = channels
+    pipeline.cfg.segmentation.chunks = chunks
+    pipeline.cfg.segmentation.depth = depth
+    pipeline.cfg.segmentation.voronoi_radius = voronoi_radius
 
-    fn_kwargs["cfg"] = cfg
+
+    # Bug in spatialdata. We can not pass overwrite==True if the labels layer is not yet available.
+    if [*sdata.labels]:
+        pipeline.cfg.segmentation.overwrite=True
+    else:
+        pipeline.cfg.segmentation.overwrite=False
+
+    fn_kwargs["pipeline"] = pipeline
 
     worker = _segmentation_worker(sdata, segmentImage, fn_kwargs=fn_kwargs)
 
-    def add_shape(sdata: SpatialData, cfg: DictConfig, layer_name: str):
+    def add_shape(sdata: SpatialData, pipeline: SparrowPipeline, layer_name: str):
         """Add the shapes to the napari viewer, overwrite if it already exists."""
         try:
             # if the layer exists, update its data
@@ -176,10 +161,10 @@ def segment_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        if cfg.segmentation.voronoi_radius:
-            shapes_layer = f"expanded_cells{cfg.segmentation.voronoi_radius}"
+        if pipeline.cfg.segmentation.voronoi_radius:
+            shapes_layer = f"expanded_cells{ pipeline.cfg.segmentation.voronoi_radius}"
         else:
-            shapes_layer = f"{cfg.segmentation.output_layer}_boundaries"
+            shapes_layer = pipeline.cfg.segmentation.output_shapes_layer
 
         polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[shapes_layer])
 
@@ -194,37 +179,22 @@ def segment_widget(
             opacity=0.5,
         )
 
-        # show_info( "Adding segmentation labels." )
-        # Translate image to appear on selected region
-        """
-        viewer.add_labels(
-            sdata.labels[ cfg.segmentation.output_layer ].data.squeeze(),
-            visible=True,
-            name=layer_name,
-            translate=[
-                offset_y,
-                offset_x,
-            ],
-        )
-        """
-
-        viewer.layers[layer_name].metadata["sdata"] = sdata
-        # we need the original shapes, in order for next step (allocation) to be able to run multiple times
+        # we need the original shapes, in order for next step (allocation) to be able to run allocation step multiple times
         viewer.layers[layer_name].metadata["shapes"] = sdata.shapes.copy()
-        viewer.layers[layer_name].metadata["cfg"] = cfg
+        viewer.layers[layer_name].metadata["pipeline"] = pipeline
 
         log.info(f"Added {utils.SEGMENT} layer")
 
         utils._export_config(
-            cfg.segmentation,
+            pipeline.cfg.segmentation,
             os.path.join(
-                cfg.paths.output_dir, "configs", "segmentation", "plugin.yaml"
+                pipeline.cfg.paths.output_dir, "configs", "segmentation", "plugin.yaml"
             ),
         )
 
         show_info("Segmentation finished")
 
-    worker.returned.connect(lambda data: add_shape(data, cfg, utils.SEGMENT))  # type: ignore
+    worker.returned.connect(lambda data: add_shape(data, pipeline, utils.SEGMENT))  # type: ignore
     show_info(
         "Segmentation started" + ", CPU selected: might take some time"
         if device == "cpu"

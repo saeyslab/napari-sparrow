@@ -4,3 +4,4 @@ image: null
 coords: null
 markers: null
 transform_matrix: null
+crop_param: null

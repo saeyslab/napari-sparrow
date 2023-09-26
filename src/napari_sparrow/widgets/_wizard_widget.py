@@ -12,7 +12,6 @@ from napari_sparrow.widgets import (
     allocate_widget,
     annotate_widget,
     clean_widget,
-    export_widget,
     load_widget,
     segment_widget,
 )
@@ -116,6 +115,7 @@ def get_choices():
                     "- channels: select channels. For single channel images, the default value ([1,0]) should not be adapted. For multi channel images, the first element of the list is the channel to segment (count from 1), and the second element is the optional nuclear channel. E.g. for an image with PolyT in second channel, and DAPI in first channel use [2,1] if you want to segment PolyT + nuclei on DAPI; [2,0] if you only want to use PolyT and [1,0] if you only want to use DAPI.\n"
                     "- voronoi radius: select the radius that will be used to expand the masks, using a voronoi diagram.\n"
                     "- chunks: select the chunksize used by cellpose.\n"
+                    "- depth: select the overlapping depth used by map_overlap. Setting depth to at least 2*diameter is advised to prevent potential chunking effects.\n"
                 ),
             ),
         ),
@@ -161,19 +161,6 @@ def get_choices():
                     "- markers file: a file containing marker genes for each cell type. This file should be one-hot encoded, with cell types listed in the first row, and marker genes in the first column.\n"
                     "- delimiter: select the delimiter used by the marker genes file, by default ',' is used.\n"
                     "- del celltypes: select the cell types that should not be included in the analysis."
-                ),
-            ),
-        ),
-        (
-            "Step 5: Export",
-            Step(
-                "Export",
-                "#5 Export",
-                export_widget,
-                (
-                    "## Step 5: Export\n"
-                    "### Export to .zarr.:\n"
-                    "A .zarr file with name 'sdata_export.zarr' will be written to the output directory set in the Load step. This .zarr file can be read via SpatialData and contains the input image, the cleaned image, the segmentation masks and the corresponding shapes layer, and the AnnData object."
                 ),
             ),
         ),

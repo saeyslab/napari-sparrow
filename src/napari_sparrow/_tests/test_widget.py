@@ -10,7 +10,6 @@ from napari_sparrow.widgets import (
     allocate_widget,
     annotate_widget,
     clean_widget,
-    export_widget,
     load_widget,
     segment_widget,
 )
@@ -72,9 +71,8 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     assert "Allocation finished" in caplog.text
     assert "Preprocessing AnnData finished" in caplog.text
     assert "Clustering finished" in caplog.text
-    assert f"Added {utils.ALLOCATION} layer" in caplog.text
+    assert f"Added '{utils.ALLOCATION}' layer" in caplog.text
 
-    # TODO check if we haven open source markers file.
     if cfg_pipeline.dataset.markers is not None:
 
         # Start annotate widget
@@ -87,10 +85,6 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
         assert "Scoring genes finished" in caplog.text
         assert "Annotation metadata added" in caplog.text
 
-    # Start export widget
-    _export_widget = export_widget()
-    _export_widget(viewer)
-    assert "Exporting finished" in caplog.text
 
 
 @unittest.skip

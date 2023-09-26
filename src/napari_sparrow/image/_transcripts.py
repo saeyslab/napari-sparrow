@@ -25,6 +25,7 @@ def transcript_density(
     chunks: int = 1024,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output_layer: str = "transcript_density",
+    overwrite: bool = False,
 ) -> SpatialData:
     """
     Calculate the transcript density using gaussian filter and add it to the provided spatial data.
@@ -59,6 +60,8 @@ def transcript_density(
     output_layer : str, optional
         The name of the output image layer in the SpatialData where the transcript density will be added,
         by default "transcript_density".
+    overwrite: bool
+        If True overwrites the element if it already exists.
 
     Returns
     -------
@@ -178,6 +181,6 @@ def transcript_density(
         set_transformation(spatial_image, translation)
 
     # during adding of image it is written to zarr store
-    sdata.add_image(name=output_layer, image=spatial_image)
+    sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite)
 
     return sdata
