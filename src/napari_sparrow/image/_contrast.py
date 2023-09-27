@@ -1,19 +1,18 @@
-import warnings
-from typing import List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 import cv2
-import dask.array as da
-import spatialdata
+from numpy.typing import NDArray
 from spatialdata import SpatialData
-from spatialdata.transformations import get_transformation, set_transformation
+
+from napari_sparrow.image._apply import ChannelList, apply
 
 
 def enhance_contrast(
     sdata: SpatialData,
     img_layer: Optional[str] = None,
     contrast_clip: float | List[float] = 3.5,
-    chunks: int = 10000,
-    depth: int = 3000,
+    chunks: Optional[str | tuple[int, int] | int] = 10000,
+    depth: Tuple[int, int] | Dict[int, int] | int = 3000,
     output_layer: str = "clahe",
     overwrite: bool = False,
 ) -> SpatialData:
@@ -33,11 +32,11 @@ def enhance_contrast(
         but also stronger noise amplification.
         If provided as a list, the length must match the number of channels
         The default value is 3.5.
-    chunks : int, optional
+    chunks : str | tuple[int, int] | int, optional
         The size of the chunks used during dask image processing.
         Larger chunks may lead to increased memory usage but faster processing.
         The default value is 10000.
-    depth : int, optional
+    depth : Tuple[int, int] | Dict[ int, int ] | int, optional
         The overlapping depth used in dask array map_overlap operation.
         The default value is 3000.
     output_layer : str, optional
@@ -56,65 +55,23 @@ def enhance_contrast(
     CLAHE is applied to each channel of the image separately.
     """
 
-    if img_layer is None:
-        img_layer = [*sdata.images][-1]
-    img_layer = [*sdata.images][-1]
-
-    # Check if contrast_clip is a list and if its size is the same as the number of channels
-    if isinstance(contrast_clip, list) and len(contrast_clip) != len(
-        sdata[img_layer].c.data
-    ):
-        raise ValueError(
-            "Size of contrast_clip list must be the same as the number of channels."
-        )
-
-    # set depth
-    min_size = min(sdata[img_layer].sizes["x"], sdata[img_layer].sizes["y"])
-    _depth = depth
-    if min_size < depth:
-        if min_size < chunks // 4:
-            depth = min_size // 4
-            warnings.warn(
-                f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'min_size//4 ({depth}')"
-            )
-
-        else:
-            depth = chunks // 4
-            warnings.warn(
-                f"The overlapping depth '{_depth}' is larger than your array '{min_size}'. Setting depth to 'chunks//4 ({depth}')"
-            )
-
-    def _apply_clahe(image, contrast_clip):
+    def _apply_clahe(image: NDArray, contrast_clip: float = 3.5) -> NDArray:
         clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
         return clahe.apply(image)
 
-    result_list = []
+    if isinstance(contrast_clip, Iterable) and not isinstance(contrast_clip, str):
+        contrast_clip = ChannelList(contrast_clip)
 
-    for channel_idx, channel in enumerate(sdata[img_layer].c.data):
-        arr = sdata[img_layer].isel(c=channel).data
-        arr = arr.rechunk(chunks)
-        current_contrast_clip = (
-            contrast_clip[channel_idx]
-            if isinstance(contrast_clip, list)
-            else contrast_clip
-        )
-        result = arr.map_overlap(
-            _apply_clahe,
-            dtype=sdata[img_layer].data.dtype,
-            depth=depth,
-            boundary="reflect",
-            contrast_clip=current_contrast_clip,
-        )
-        result = result.rechunk(chunks)
-        result_list.append(result)
-
-    result = da.stack(result_list, axis=0)
-
-    spatial_image = spatialdata.models.Image2DModel.parse(result, dims=("c", "y", "x"))
-    trf = get_transformation(sdata[img_layer])
-    set_transformation(spatial_image, trf)
-
-    # during adding of image it is written to zarr store
-    sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite )
+    sdata = apply(
+        sdata,
+        _apply_clahe,
+        img_layer=img_layer,
+        output_layer=output_layer,
+        chunks=chunks,
+        channel=None, # channel==None -> apply apply_clahe to each layer seperately
+        fn_kwargs={"contrast_clip": contrast_clip},
+        depth=depth,
+        overwrite=overwrite,
+    )
 
     return sdata
