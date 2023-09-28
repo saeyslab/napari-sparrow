@@ -104,7 +104,6 @@ def clean_widget(
             int(coordinates[:, 0].max()),
         ]
 
-        # FIXME note crd will be ignored if you do not do tiling correction
         pipeline.cfg.clean.crop_param = crd
 
     else:

@@ -154,6 +154,9 @@ class SparrowPipeline:
             sdata = nas.im.min_max_filtering(
                 sdata=sdata,
                 img_layer=self.cleaned_image_name,
+                crd=self.cfg.clean.crop_param
+                if self.cfg.clean.crop_param is not None
+                else None,
                 size_min_max_filter=list(self.cfg.clean.size_min_max_filter)
                 if isinstance(self.cfg.clean.size_min_max_filter, ListConfig)
                 else self.cfg.clean.size_min_max_filter,
@@ -182,6 +185,9 @@ class SparrowPipeline:
             sdata = nas.im.enhance_contrast(
                 sdata=sdata,
                 img_layer=self.cleaned_image_name,
+                crd=self.cfg.clean.crop_param
+                if self.cfg.clean.crop_param is not None
+                else None,
                 contrast_clip=list(self.cfg.clean.contrast_clip)
                 if isinstance(self.cfg.clean.contrast_clip, ListConfig)
                 else self.cfg.clean.contrast_clip,
@@ -222,7 +228,7 @@ class SparrowPipeline:
                 2 * self.cfg.segmentation.diameter,
             )
 
-        self.shapes_layer_name=self.cfg.segmentation.output_shapes_layer
+        self.shapes_layer_name = self.cfg.segmentation.output_shapes_layer
 
         # Perform segmentation
         sdata = nas.im.segment(

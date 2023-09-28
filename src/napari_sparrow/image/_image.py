@@ -6,29 +6,24 @@ import xarray as xr
 from spatial_image import SpatialImage
 from spatialdata.transformations import get_transformation
 
-# TODO: check if we want to keep the functions here in this generally named ïmage.py, there are mostly related to the translation/transformation, should the filename reflect this?
-# TODO: rename _get_translation to _get_image_translation for consistency with _get_image_boundary? or use _get_translation() and _get_boundary() because we're in the image package anyway, so the image is understood already?
-
-# FIXME: we're type hinting crd as Tuple but often use a list for bounding box rectangles
-
 
 def _substract_translation_crd(
-    spatialimage: SpatialImage, crd=Tuple[int, int, int, int]
+    spatial_image: SpatialImage, crd=Tuple[int, int, int, int]
 ) -> Optional[Tuple[int, int, int, int]]:
-    tx, ty = _get_translation(spatialimage)
+    tx, ty = _get_translation(spatial_image)
 
     _crd = crd
     crd = [
         int(max(0, crd[0] - tx)),
-        max(0, int(min(spatialimage.sizes["x"], crd[1] - tx))),
+        max(0, int(min(spatial_image.sizes["x"], crd[1] - tx))),
         int(max(0, crd[2] - ty)),
-        max(0, int(min(spatialimage.sizes["y"], crd[3] - ty))),
+        max(0, int(min(spatial_image.sizes["y"], crd[3] - ty))),
     ]
 
     if crd[1] - crd[0] <= 0 or crd[3] - crd[2] <= 0:
         warnings.warn(
             f"Crop param {_crd} after correction for possible translation on "
-            f"spatialimage object '{spatialimage.name}' is "
+            f"SpatialImage object '{spatial_image.name}' is "
             f"'{crd}. Falling back to setting crd to 'None'."
         )
         crd = None
@@ -36,24 +31,33 @@ def _substract_translation_crd(
     return crd
 
 
-def _get_image_boundary(spatial_image):
+def _get_boundary(spatial_image: SpatialImage) -> Tuple[int, int, int, int]:
     tx, ty = _get_translation(spatial_image)
     width = spatial_image.sizes["x"]
     height = spatial_image.sizes["y"]
-    return [int(tx), int(tx + width), int(ty), int(ty + height)]
+    return (int(tx), int(tx + width), int(ty), int(ty + height))
 
 
-def _get_translation(spatial_image):
+def _get_translation(spatial_image: SpatialImage) -> Tuple[float, float]:
     transform_matrix = get_transformation(spatial_image).to_affine_matrix(
         input_axes=("x", "y"), output_axes=("x", "y")
     )
 
-    # Extract translation components from transformation matrix
-    tx = transform_matrix[:, -1][
-        0
-    ]  # FIXME: why not directly access the correct element in the matrix?
-    ty = transform_matrix[:, -1][1]
-    return tx, ty
+    if (
+        transform_matrix[0, 0] == 1.0
+        and transform_matrix[0, 1] == 0.0
+        and transform_matrix[1, 0] == 0.0
+        and transform_matrix[1, 1] == 1.0
+        and transform_matrix[2, 0] == 0.0
+        and transform_matrix[2, 1] == 0.0
+        and transform_matrix[2, 2] == 1.0
+    ):
+        return transform_matrix[0, 2], transform_matrix[1, 2]
+    else:
+        raise ValueError(
+            f"The provided transform matrix '{transform_matrix}' associated with the SpatialImage "
+            f"element with name '{spatial_image.name}' represents more than just a translation, which is not currently supported."
+        )
 
 
 # FIXME: the type "SpatialImage" is probably too restrictive here, see type of sdata[layer], which is more general

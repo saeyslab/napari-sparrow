@@ -1,5 +1,5 @@
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional, Tuple
 
 import dask.array as da
 import spatialdata
@@ -7,8 +7,10 @@ from dask.array import Array
 from dask.array.overlap import coerce_depth
 from numpy.typing import NDArray
 from spatialdata import SpatialData
-from spatialdata.transformations import get_transformation, set_transformation
+from spatialdata.transformations import Translation, set_transformation
 
+from napari_sparrow.image._image import (_get_translation,
+                                         _substract_translation_crd)
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -21,6 +23,7 @@ def apply(
     output_layer: Optional[str] = None,
     channel: Optional[int | Iterable[int]] = None,
     chunks: str | tuple[int, int] | int | None = None,
+    crd: Optional[Tuple[int, int, int, int]] = None,
     overwrite: bool = False,
     fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     **kwargs: Any,
@@ -44,6 +47,8 @@ def apply(
     chunks : str | tuple[int, int] | int | None, default=None
         Specification for rechunking the data before applying the function.
         If specified, dask's map_overlap or map_blocks is used depending on the occurence of the "depth" parameter in kwargs.
+    crd : Optional[Tuple[int, int, int, int]], default=None
+        The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     overwrite : bool, default=False
         If True, overwrites the output layer if it already exists in `sdata`.
     fn_kwargs : Mapping[str, Any], default=MappingProxyType({})
@@ -79,13 +84,13 @@ def apply(
 
     >>> def my_function( image, parameter ):
     ...    return image*parameter
-    >>> fn_kwargs={ "parameter": ChannelList( [2,3] )  }
-    >>> sdata = apply(sdata, my_function, img_layer="raw_image", output_layer="processed_image", channel=None, fn_kwargs=fn_kwargs )
+    >>> fn_kwargs={ "parameter": ChannelList( [2,3] ) }
+    >>> sdata = apply(sdata, my_function, img_layer="raw_image", output_layer="processed_image", channel=None, fn_kwargs=fn_kwargs)
 
     Apply the same function to only the first channel of the image:
 
     >>> fn_kwargs={ "parameter": 2 }
-    >>> sdata = apply(sdata, my_function, img_layer="raw_image", output_layer="processed_image", channel=0, fn_kwargs=fn_kwargs )
+    >>> sdata = apply(sdata, my_function, img_layer="raw_image", output_layer="processed_image", channel=0, fn_kwargs=fn_kwargs)
     """
 
     if img_layer is None:
@@ -104,6 +109,10 @@ def apply(
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     ) -> Array:
         if chunks is None:
+            # if dask array, we want to rechunk, 
+            # because taking a crop could have caused irregular chunks
+            if isinstance( arr, Array ):
+                arr=arr.rechunk( arr.chunksize )
             arr = func(arr, **fn_kwargs)
             return da.asarray(arr)
         arr = da.asarray(arr).rechunk(chunks)
@@ -165,13 +174,18 @@ def apply(
     # store results per channel
     results = []
 
+    if crd:
+        crd = _substract_translation_crd(sdata[img_layer], crd)
+
     for ch, _fn_kwargs in zip(channel, _fn_kwargs_channel):
         arr = sdata[img_layer].isel(c=ch).data
         if len(arr.shape) != 2:
             raise ValueError(
                 f"Array is of dimension {arr.shape}, currently only 2D images are supported."
             )
-        # need to pass correct value from fn_kwargs to apply_func
+        if crd:
+            arr = arr[crd[2] : crd[3], crd[0] : crd[1]]
+        # passing correct value from fn_kwargs to apply_func
         arr = apply_func(func, arr, _fn_kwargs)
         results.append(arr)
 
@@ -179,12 +193,16 @@ def apply(
 
     spatial_image = spatialdata.models.Image2DModel.parse(arr, dims=("c", "y", "x"))
 
-    # TODO maybe also make it possible to send transformation with the apply function
-    # now by default we copy transformation of old img_layer to new img_layer
-    trf = get_transformation(sdata[img_layer])
-    set_transformation(spatial_image, trf)
+    tx, ty = _get_translation(sdata[img_layer])
 
-    # during adding of image it is written to zarr store
+    if crd:
+        tx = tx + crd[0]
+        ty = ty + crd[2]
+
+    translation = Translation([tx, ty], axes=("x", "y"))
+
+    set_transformation(spatial_image, translation)
+
     sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite)
 
     return sdata

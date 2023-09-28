@@ -7,7 +7,7 @@ import scanpy as sc
 import numpy as np
 
 from napari_sparrow.plot._plot import plot_shapes
-from napari_sparrow.image._image import _get_image_boundary
+from napari_sparrow.image._image import _get_boundary
 
 
 def score_genes(
@@ -62,7 +62,7 @@ def score_genes(
     si = sdata.images[img_layer]
 
     if crd is None:
-        crd = _get_image_boundary(si)
+        crd = _get_boundary(si)
 
     # Custom colormap:
     colors = np.concatenate(

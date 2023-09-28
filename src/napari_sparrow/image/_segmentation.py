@@ -14,8 +14,7 @@ from shapely.affinity import translate
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
-from napari_sparrow.image._image import (_get_translation,
-                                         _substract_translation_crd)
+from napari_sparrow.image._image import _get_translation, _substract_translation_crd
 from napari_sparrow.shape._shape import _mask_image_to_polygons
 from napari_sparrow.utils.pylogger import get_pylogger
 
@@ -34,7 +33,7 @@ def _cellpose(
     channels: List[int] = [0, 0],
     device: str = "cpu",
 ) -> NDArray:
-    gpu = torch.cuda.is_available()
+    gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
     model = models.Cellpose(gpu=gpu, model_type=model_type, device=torch.device(device))
     masks, _, _, _ = model.eval(
         img,
@@ -277,8 +276,10 @@ class SegmentationModel:
         # if trim==True --> use squidpy's way of handling neighbouring blocks
         if trim:
             from dask_image.ndmeasure._utils._label import (
-                connected_components_delayed, label_adjacency_graph,
-                relabel_blocks)
+                connected_components_delayed,
+                label_adjacency_graph,
+                relabel_blocks,
+            )
 
             # max because labels are not continuous (and won't be continuous)
             label_groups = label_adjacency_graph(x_labels, None, x_labels.max())
