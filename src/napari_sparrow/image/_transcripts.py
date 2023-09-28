@@ -7,7 +7,7 @@ from scipy.ndimage import gaussian_filter
 from spatialdata import SpatialData
 from spatialdata.transformations import Translation, set_transformation
 
-from napari_sparrow.image._image import _get_image_boundary
+from napari_sparrow.image._image import _get_boundary
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -82,7 +82,7 @@ def transcript_density(
     # get image boundary from last image layer if img_layer is None
     if img_layer is None:
         img_layer = [*sdata.images][-1]
-    img_boundary = _get_image_boundary(sdata[img_layer])
+    img_boundary = _get_boundary(sdata[img_layer])
 
     # if crd is None, get boundary from image at img_layer if given,
     if crd is None:

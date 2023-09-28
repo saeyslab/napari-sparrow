@@ -8,7 +8,7 @@ from spatialdata import SpatialData
 
 from napari_sparrow.image._image import (
     _apply_transform,
-    _get_image_boundary,
+    _get_boundary,
     _unapply_transform,
 )
 from napari_sparrow.shape import intersect_rectangles
@@ -281,7 +281,7 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     # Update coords
     si, x_coords_orig, y_coords_orig = _apply_transform(si)
 
-    image_boundary = _get_image_boundary(si)
+    image_boundary = _get_boundary(si)
 
     if crd is not None:
         _crd = crd

@@ -1,4 +1,4 @@
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 
 from dask.array import Array
 from dask_image.ndfilters import maximum_filter, minimum_filter
@@ -12,6 +12,7 @@ def min_max_filtering(
     img_layer: Optional[str] = None,
     size_min_max_filter: int | List[int] = 85,
     output_layer="min_max_filtered",
+    crd: Optional[Tuple[int, int, int, int]] = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -30,6 +31,8 @@ def min_max_filtering(
         must match the number of channels. Defaults to 85.
     output_layer : str, optional
         The name of the output layer. Defaults to "min_max_filtered".
+    crd : Optional[Tuple[int, int, int, int]], default=None
+        The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     overwrite: bool
         If True overwrites the element if it already exists.
 
@@ -76,6 +79,7 @@ def min_max_filtering(
         chunks=None,
         channel=None,
         fn_kwargs={"size_min_max_filter": size_min_max_filter},
+        crd=crd,
         overwrite=overwrite,
     )
 

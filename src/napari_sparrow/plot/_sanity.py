@@ -7,7 +7,7 @@ from spatialdata import SpatialData
 
 from napari_sparrow.image._image import (
     _apply_transform,
-    _get_image_boundary,
+    _get_boundary,
     _unapply_transform,
 )
 from napari_sparrow.shape import intersect_rectangles
@@ -101,7 +101,7 @@ def sanity_plot_transcripts_matrix(
 
     _, ax = plt.subplots(figsize=(10, 10))
 
-    image_boundary = _get_image_boundary(xarray)
+    image_boundary = _get_boundary(xarray)
 
     if crd is not None:
         _crd = crd

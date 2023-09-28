@@ -14,6 +14,7 @@ def enhance_contrast(
     chunks: Optional[str | tuple[int, int] | int] = 10000,
     depth: Tuple[int, int] | Dict[int, int] | int = 3000,
     output_layer: str = "clahe",
+    crd: Optional[Tuple[int, int, int, int]] = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -34,7 +35,6 @@ def enhance_contrast(
         The default value is 3.5.
     chunks : str | tuple[int, int] | int, optional
         The size of the chunks used during dask image processing.
-        Larger chunks may lead to increased memory usage but faster processing.
         The default value is 10000.
     depth : Tuple[int, int] | Dict[ int, int ] | int, optional
         The overlapping depth used in dask array map_overlap operation.
@@ -42,6 +42,8 @@ def enhance_contrast(
     output_layer : str, optional
         The name of the image layer where the enhanced image will be stored.
         The default value is "clahe".
+    crd : Optional[Tuple[int, int, int, int]], default=None
+        The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     overwrite: bool
         If True overwrites the element if it already exists.
 
@@ -71,6 +73,7 @@ def enhance_contrast(
         channel=None, # channel==None -> apply apply_clahe to each layer seperately
         fn_kwargs={"contrast_clip": contrast_clip},
         depth=depth,
+        crd=crd,
         overwrite=overwrite,
     )
 
