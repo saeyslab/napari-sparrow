@@ -3,6 +3,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 import cv2
 from numpy.typing import NDArray
 from spatialdata import SpatialData
+from spatialdata.models.models import ScaleFactors_t
 
 from napari_sparrow.image._apply import ChannelList, apply
 
@@ -15,6 +16,7 @@ def enhance_contrast(
     depth: Tuple[int, int] | Dict[int, int] | int = 3000,
     output_layer: str = "clahe",
     crd: Optional[Tuple[int, int, int, int]] = None,
+    scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -44,6 +46,8 @@ def enhance_contrast(
         The default value is "clahe".
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
+    scale_factors
+        Scale factors to apply for multiscale.
     overwrite: bool
         If True overwrites the element if it already exists.
 
@@ -70,10 +74,11 @@ def enhance_contrast(
         img_layer=img_layer,
         output_layer=output_layer,
         chunks=chunks,
-        channel=None, # channel==None -> apply apply_clahe to each layer seperately
+        channel=None,  # channel==None -> apply apply_clahe to each layer seperately
         fn_kwargs={"contrast_clip": contrast_clip},
         depth=depth,
         crd=crd,
+        scale_factors=scale_factors,
         overwrite=overwrite,
     )
 

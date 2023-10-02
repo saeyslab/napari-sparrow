@@ -3,6 +3,7 @@ from typing import Iterable, List, Optional, Tuple
 from dask.array import Array
 from dask_image.ndfilters import maximum_filter, minimum_filter
 from spatialdata import SpatialData
+from spatialdata.models.models import ScaleFactors_t
 
 from napari_sparrow.image._apply import ChannelList, apply
 
@@ -13,6 +14,7 @@ def min_max_filtering(
     size_min_max_filter: int | List[int] = 85,
     output_layer="min_max_filtered",
     crd: Optional[Tuple[int, int, int, int]] = None,
+    scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -33,6 +35,8 @@ def min_max_filtering(
         The name of the output layer. Defaults to "min_max_filtered".
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
+    scale_factors
+        Scale factors to apply for multiscale.
     overwrite: bool
         If True overwrites the element if it already exists.
 
@@ -80,6 +84,7 @@ def min_max_filtering(
         channel=None,
         fn_kwargs={"size_min_max_filter": size_min_max_filter},
         crd=crd,
+        scale_factors=scale_factors,
         overwrite=overwrite,
     )
 

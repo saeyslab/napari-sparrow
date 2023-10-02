@@ -1,12 +1,15 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import dask.array as da
 import numpy as np
 import spatialdata
 from dask_image import imread
-from spatialdata import SpatialData, bounding_box_query
+from spatialdata import SpatialData
+from spatialdata.models.models import ScaleFactors_t
+from spatialdata.transformations import Translation
 
+from napari_sparrow.image._image import _add_image_layer
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -23,9 +26,10 @@ def create_sdata(
     | List[da.Array],
     output_path: Optional[str | Path] = None,
     img_layer: str = "raw_image",
-    chunks: Optional[int] = None,
+    chunks: Optional[str | tuple[int, int, int, int] | int] = None,
     dims: Optional[List[str]] = None,
-    crd: Optional[List[int]] = None,
+    crd: Optional[Tuple[int, int, int, int]] = None,
+    scale_factors: Optional[ScaleFactors_t] = None,
 ) -> SpatialData:
     """
     Convert input images or arrays into a SpatialData object.
@@ -66,8 +70,9 @@ def create_sdata(
         If specified, the resulting SpatialData object will be written to this path as a zarr.
     img_layer : str, default="raw_image"
         The name of the image layer to be created in the SpatialData object.
-    chunks : Optional[int], default=None
+    chunks : Optional[int, tuple], default=None
         If specified, the underlying dask array will be rechunked to this size.
+        If Tuple, desired chunksize along c,z,y,x should be specified, e.g. (1,1,1024,1024).
     dims : Optional[List[str]], default=None
         The dimensions of the input data if it's a numpy array. E.g., ['y','x'] or ['c','y','x','z'].
         If input is a str, Path or List[str], List[Path], this parameter is ignored.
@@ -75,6 +80,8 @@ def create_sdata(
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
         If specified, this region is cropped from the image, and added as image layer to the
         SpatialData object.
+    scale_factors
+        Scale factors to apply for multiscale.
 
     Returns
     -------
@@ -87,35 +94,33 @@ def create_sdata(
     values based on the input image's shape.
     """
 
-    dask_array = _load_image_to_dask(input=input, chunks=chunks, dims=dims)
+    dask_array = _load_image_to_dask(input=input, chunks=chunks, dims=dims, crd=crd)
+
+    #if scale_factors is not None:
+        # otherwise will recompute for every scale
+        # TODO check if this is necessary
+        #dask_array = dask_array.persist()
 
     sdata = spatialdata.SpatialData()
 
-    spatial_image = spatialdata.models.Image2DModel.parse(
-        dask_array, dims=("c", "y", "x")
+    if crd:
+        tx = crd[0]
+        ty = crd[2]
+
+        translation = Translation([tx, ty], axes=("x", "y"))
+
+    else:
+        translation = None
+
+    _add_image_layer(
+        sdata,
+        arr=dask_array,
+        output_layer=img_layer,
+        chunks=chunks,
+        transformation=translation,
+        scale_factors=scale_factors,
+        overwrite=False,
     )
-
-    if crd and any(crd):
-        for i, val in enumerate(crd):
-            if val is None:
-                if i == 0 or i == 2:  # x_min or y_min
-                    crd[i] = 0
-                elif i == 1:  # x_max
-                    crd[i] = spatial_image.shape[2]
-                elif i == 3:  # y_max
-                    crd[i] = spatial_image.shape[1]
-
-        spatial_image = bounding_box_query(
-            spatial_image,
-            axes=("x", "y"),
-            min_coordinate=[crd[0], crd[2]],
-            max_coordinate=[crd[1], crd[3]],
-            target_coordinate_system="global",
-        )
-        if chunks:
-            spatial_image = spatial_image.chunk(chunks)
-
-    sdata.add_image(name=img_layer, image=spatial_image)
 
     if output_path is not None:
         sdata.write(output_path)
@@ -132,7 +137,7 @@ def _load_image_to_dask(
     | List[Path]
     | List[np.ndarray]
     | List[da.Array],
-    chunks: Optional[int] = None,
+    chunks: str | Tuple[int, int, int, int] | int | None = None,
     dims: Optional[List[str]] = None,
     crd: Optional[List[int]] = None,
 ) -> da.Array:

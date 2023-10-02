@@ -12,9 +12,15 @@ from dask.array.overlap import coerce_depth, ensure_minimum_chunksize
 from numpy.typing import NDArray
 from shapely.affinity import translate
 from spatialdata import SpatialData
-from spatialdata.transformations import Translation, set_transformation
+from spatialdata.models.models import ScaleFactors_t
+from spatialdata.transformations import Translation
 
-from napari_sparrow.image._image import _get_translation, _substract_translation_crd
+from napari_sparrow.image._image import (
+    _add_label_layer,
+    _get_spatial_element,
+    _get_translation,
+    _substract_translation_crd,
+)
 from napari_sparrow.shape._shape import _mask_image_to_polygons
 from napari_sparrow.utils.pylogger import get_pylogger
 
@@ -57,6 +63,7 @@ def segment(
     boundary: str = "reflect",
     trim: bool = False,
     crd: Optional[Tuple[int, int, int, int]] = None,
+    scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
     **kwargs: Any,
 ):
@@ -89,6 +96,8 @@ def segment(
         we recommend setting trim to True.
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be segmented. Defines the bounds (x_min, x_max, y_min, y_max).
+    scale_factors
+        Scale factors to apply for multiscale.
     overwrite : bool, default=False
         If True, overwrites the existing layers if they exist. Otherwise, raises an error if the layers exist.
     **kwargs : Any
@@ -129,6 +138,7 @@ def segment(
         output_labels_layer=output_labels_layer,
         output_shapes_layer=output_shapes_layer,
         crd=crd,
+        scale_factors=scale_factors,
         overwrite=overwrite,
         fn_kwargs=fn_kwargs,
         **kwargs,
@@ -150,6 +160,7 @@ class SegmentationModel:
         output_labels_layer: str = "segmentation_mask",
         output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
         crd: Optional[Tuple[int, int, int, int]] = None,
+        scale_factors: Optional[ScaleFactors_t] = None,
         overwrite: bool = False,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
@@ -157,14 +168,16 @@ class SegmentationModel:
         if img_layer is None:
             img_layer = [*sdata.images][-1]
 
+        se = _get_spatial_element(sdata, layer=img_layer)
+
         # take dask array and put channel dimension last
-        x = sdata[img_layer].data.transpose(1, 2, 0)
+        x = se.data.transpose(1, 2, 0)
 
         # crd is specified on original uncropped pixel coordinates
         # need to substract possible translation, because we use crd to crop dask array, which does not take
         # translation into account
         if crd:
-            crd = _substract_translation_crd(sdata[img_layer], crd)
+            crd = _substract_translation_crd(se, crd)
             x = x[crd[2] : crd[3], crd[0] : crd[1], :]
 
         x_labels = self._segment(
@@ -173,9 +186,7 @@ class SegmentationModel:
             **kwargs,
         )
 
-        spatial_label = spatialdata.models.Labels2DModel.parse(x_labels)
-
-        tx, ty = _get_translation(sdata[img_layer])
+        tx, ty = _get_translation(se)
 
         if crd:
             tx = tx + crd[0]
@@ -183,19 +194,23 @@ class SegmentationModel:
 
         translation = Translation([tx, ty], axes=("x", "y"))
 
-        set_transformation(spatial_label, translation)
-
-        # during adding of image it is written to zarr store
-        sdata.add_labels(
-            name=output_labels_layer, labels=spatial_label, overwrite=overwrite
+        sdata=_add_label_layer(
+            sdata,
+            arr=x_labels,
+            output_layer=output_labels_layer,
+            chunks=x_labels.chunksize,
+            transformation=translation,
+            scale_factors=scale_factors,
+            overwrite=overwrite,
         )
 
         # only calculate shapes layer if is specified
         if output_shapes_layer is not None:
+            se_labels = _get_spatial_element(sdata, layer=output_labels_layer)
             # now calculate the polygons
-            polygons = _mask_image_to_polygons(mask=sdata[output_labels_layer].data)
+            polygons = _mask_image_to_polygons(mask=se_labels.data)
 
-            x_translation, y_translation = _get_translation(sdata[output_labels_layer])
+            x_translation, y_translation = _get_translation(se_labels)
             polygons["geometry"] = polygons["geometry"].apply(
                 lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
             )
