@@ -5,7 +5,8 @@ channels:
 dependencies:
   - geopandas=0.12.2
   - leidenalg=0.9.1
-  - napari=0.4.16
+  - napari=0.4.18
+  - pyqt
   - opencv=4.5.5
   - pip=22.2.2
   - python=3.10.8
