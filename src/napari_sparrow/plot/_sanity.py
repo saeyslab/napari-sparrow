@@ -8,11 +8,11 @@ from spatialdata import SpatialData
 from napari_sparrow.image._image import (
     _apply_transform,
     _get_boundary,
+    _get_spatial_element,
     _unapply_transform,
 )
 from napari_sparrow.shape import intersect_rectangles
 from napari_sparrow.shape._shape import _extract_boundaries_from_geometry_collection
-
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -95,13 +95,11 @@ def sanity_plot_transcripts_matrix(
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 
-    xarray = sdata[img_layer]
-
-    # plot for registration sanity check
+    se = _get_spatial_element(sdata, layer=img_layer)
 
     _, ax = plt.subplots(figsize=(10, 10))
 
-    image_boundary = _get_boundary(xarray)
+    image_boundary = _get_boundary(se)
 
     if crd is not None:
         _crd = crd
@@ -119,17 +117,17 @@ def sanity_plot_transcripts_matrix(
     else:
         crd = image_boundary
 
-    xarray, x_coords_orig, y_coords_orig = _apply_transform(xarray)
+    se, x_coords_orig, y_coords_orig = _apply_transform(se)
 
     if channel is None:
         # if channel is None, plot the first channel
-        channel = xarray.c.data[0]
+        channel = se.c.data[0]
 
-    xarray.isel(c=channel).squeeze().sel(
+    se.isel(c=channel).squeeze().sel(
         x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
     ).plot.imshow(cmap=cmap, robust=True, ax=ax, add_colorbar=False)
 
-    xarray = _unapply_transform(xarray, x_coords_orig, y_coords_orig)
+    se = _unapply_transform(se, x_coords_orig, y_coords_orig)
 
     if not hasattr(sdata, "points"):
         raise AttributeError("Please first read transcripts in SpatialData object.")

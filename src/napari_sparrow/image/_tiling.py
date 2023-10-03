@@ -3,13 +3,18 @@ from typing import List, Optional, Tuple
 import cv2
 import dask.array as da
 import numpy as np
-import spatialdata
 import squidpy as sq
 from basicpy import BaSiC
 from spatialdata import SpatialData
-from spatialdata.transformations import Translation, set_transformation
+from spatialdata.models.models import ScaleFactors_t
+from spatialdata.transformations import Translation
 
-from napari_sparrow.image._image import _get_translation, _substract_translation_crd
+from napari_sparrow.image._image import (
+    _add_image_layer,
+    _get_spatial_element,
+    _get_translation,
+    _substract_translation_crd,
+)
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -17,9 +22,10 @@ log = get_pylogger(__name__)
 
 def tiling_correction(
     sdata: SpatialData,
-    img_layer: Optional[str]=None,
+    img_layer: Optional[str] = None,
     tile_size: int = 2144,
     crd: Optional[Tuple[int, int, int, int]] = None,
+    scale_factors: Optional[ScaleFactors_t] = None,
     output_layer: str = "tiling_correction",
     overwrite: bool = False,
 ) -> Tuple[SpatialData, List[np.ndarray]]:
@@ -37,6 +43,8 @@ def tiling_correction(
         The size of the tiles in the image.
     crd : Optional[Tuple[int, int, int, int]], default=None
         Coordinates defining the region of the image to correct. It defines the bounds (x_min, x_max, y_min, y_max).
+    scale_factors
+        Scale factors to apply for multiscale.
     output_layer : str, default="tiling_correction"
         Name of the image layer where the corrected image will be stored in the `sdata` object.
     overwrite: bool
@@ -62,9 +70,11 @@ def tiling_correction(
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 
-    if sdata[img_layer].sizes["x"] % tile_size or sdata[img_layer].sizes["y"] % tile_size:
+    se = _get_spatial_element(sdata, layer=img_layer)
+
+    if se.sizes["x"] % tile_size or se.sizes["y"] % tile_size:
         raise ValueError(
-            f"Dimension of image layer '{img_layer}' ({sdata[img_layer].shape}) on which to run the "
+            f"Spatial Dimension of image layer '{img_layer}' ({se.shape}) on which to run the "
             f"tilingCorrection is not a multiple of the given tile size ({tile_size})."
         )
 
@@ -72,15 +82,15 @@ def tiling_correction(
     # need to substract possible translation, because we use crd to crop imagecontainer, which does not take
     # translation into account
     if crd:
-        crd = _substract_translation_crd(sdata[img_layer], crd)
+        crd = _substract_translation_crd(se, crd)
 
-    tx, ty = _get_translation(sdata[img_layer])
+    tx, ty = _get_translation(se)
 
     result_list = []
     flatfields = []
 
-    for channel in sdata[img_layer].c.data:
-        ic = sq.im.ImageContainer(sdata[img_layer].isel(c=channel), layer=img_layer)
+    for channel in se.c.data:
+        ic = sq.im.ImageContainer(se.isel(c=channel), layer=img_layer)
 
         # Create the tiles
         tiles = ic.generate_equal_crops(size=tile_size, as_array=img_layer)
@@ -161,16 +171,20 @@ def tiling_correction(
     # make one dask array of shape (c,y,x)
     result = da.concatenate(result_list, axis=-1).transpose(3, 0, 1, 2).squeeze(-1)
 
-    spatial_image = spatialdata.models.Image2DModel.parse(result, dims=("c", "y", "x"))
-
     if crd:
         tx = tx + crd[0]
         ty = ty + crd[2]
 
     translation = Translation([tx, ty], axes=("x", "y"))
-    set_transformation(spatial_image, translation)
 
-    # during adding of image it is written to zarr store
-    sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite)
+    sdata=_add_image_layer(
+        sdata,
+        arr=result,
+        output_layer=output_layer,
+        chunks=result.chunksize,
+        transformation=translation,
+        scale_factors=scale_factors,
+        overwrite=overwrite,
+    )
 
     return sdata, flatfields

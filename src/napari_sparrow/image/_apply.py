@@ -2,15 +2,19 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, Optional, Tuple
 
 import dask.array as da
-import spatialdata
 from dask.array import Array
 from dask.array.overlap import coerce_depth
 from numpy.typing import NDArray
 from spatialdata import SpatialData
-from spatialdata.transformations import Translation, set_transformation
+from spatialdata.models.models import ScaleFactors_t
+from spatialdata.transformations import Translation
 
-from napari_sparrow.image._image import (_get_translation,
-                                         _substract_translation_crd)
+from napari_sparrow.image._image import (
+    _get_spatial_element,
+    _get_translation,
+    _substract_translation_crd,
+    _add_image_layer,
+)
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -22,8 +26,9 @@ def apply(
     img_layer: Optional[str] = None,
     output_layer: Optional[str] = None,
     channel: Optional[int | Iterable[int]] = None,
-    chunks: str | tuple[int, int] | int | None = None,
+    chunks: Optional[str | tuple[int, int] | int] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
+    scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
     fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     **kwargs: Any,
@@ -49,6 +54,8 @@ def apply(
         If specified, dask's map_overlap or map_blocks is used depending on the occurence of the "depth" parameter in kwargs.
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
+    scale_factors
+        Scale factors to apply for multiscale.
     overwrite : bool, default=False
         If True, overwrites the output layer if it already exists in `sdata`.
     fn_kwargs : Mapping[str, Any], default=MappingProxyType({})
@@ -109,10 +116,10 @@ def apply(
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     ) -> Array:
         if chunks is None:
-            # if dask array, we want to rechunk, 
+            # if dask array, we want to rechunk,
             # because taking a crop could have caused irregular chunks
-            if isinstance( arr, Array ):
-                arr=arr.rechunk( arr.chunksize )
+            if isinstance(arr, Array):
+                arr = arr.rechunk(arr.chunksize)
             arr = func(arr, **fn_kwargs)
             return da.asarray(arr)
         arr = da.asarray(arr).rechunk(chunks)
@@ -144,6 +151,9 @@ def apply(
             arr = da.map_blocks(func, arr, **fn_kwargs, **kwargs, dtype=arr.dtype)
         return arr.rechunk(chunks)
 
+    # get spatial element
+    se = _get_spatial_element(sdata, layer=img_layer)
+
     if channel is not None:
         channel = (
             list(channel)
@@ -151,7 +161,7 @@ def apply(
             else [channel]
         )
     else:
-        channel = sdata[img_layer].c.data
+        channel = se.c.data
 
     # create fn_kwargs for each channel
 
@@ -168,17 +178,17 @@ def apply(
         for i in range(len(next(iter(fn_kwargs.values()))))
     ]
 
-    # sanity ceck
+    # sanity check
     assert len(_fn_kwargs_channel) == len(channel)
 
     # store results per channel
     results = []
 
-    if crd:
-        crd = _substract_translation_crd(sdata[img_layer], crd)
+    if crd is not None:
+        crd = _substract_translation_crd(se, crd)
 
     for ch, _fn_kwargs in zip(channel, _fn_kwargs_channel):
-        arr = sdata[img_layer].isel(c=ch).data
+        arr = se.isel(c=ch).data
         if len(arr.shape) != 2:
             raise ValueError(
                 f"Array is of dimension {arr.shape}, currently only 2D images are supported."
@@ -191,19 +201,52 @@ def apply(
 
     arr = da.stack(results, axis=0)
 
-    spatial_image = spatialdata.models.Image2DModel.parse(arr, dims=("c", "y", "x"))
+    tx, ty = _get_translation(se)
 
-    tx, ty = _get_translation(sdata[img_layer])
-
-    if crd:
+    if crd is not None:
         tx = tx + crd[0]
         ty = ty + crd[2]
 
     translation = Translation([tx, ty], axes=("x", "y"))
 
+    sdata=_add_image_layer(
+        sdata,
+        arr=arr,
+        output_layer=output_layer,
+        chunks=arr.chunksize,
+        transformation=translation,
+        scale_factors=scale_factors,
+        overwrite=overwrite,
+    )
+
+    """
+    # if scale factors are specified, we perform a persist if not backed by zarr store,
+    # otherwise, we write to intermediate file.
+    #  because otherwise calculation would be redone for every scale
+    # (other solution would be to redo computation for every scale, which will be slow)
+    if scale_factors is not None:
+        if sdata.is_backed():
+            spatial_image = spatialdata.models.Image2DModel.parse(
+                arr, dims=("c", "y", "x"), scale_factors=None, chunks=arr.chunksize
+            )
+            set_transformation(spatial_image, translation)
+            intermediate_output_layer = f"{uuid.uuid4()}_{output_layer}"
+            sdata.add_image(name=intermediate_output_layer, image=spatial_image)
+            arr = sdata.images[intermediate_output_layer].data
+            log.info(
+                f"Wrote intermediate non-scaled results to layer {intermediate_output_layer}"
+            )
+        else:
+            arr = arr.persist()
+
+    spatial_image = spatialdata.models.Image2DModel.parse(
+        arr, dims=("c", "y", "x"), scale_factors=scale_factors, chunks=arr.chunksize
+    )
+
     set_transformation(spatial_image, translation)
 
     sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite)
+    """
 
     return sdata
 

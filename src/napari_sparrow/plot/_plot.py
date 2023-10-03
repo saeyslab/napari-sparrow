@@ -10,6 +10,7 @@ from napari_sparrow.image._image import (
     _apply_transform,
     _get_boundary,
     _unapply_transform,
+    _get_spatial_element,
 )
 from napari_sparrow.shape import intersect_rectangles
 from napari_sparrow.utils.pylogger import get_pylogger
@@ -164,7 +165,8 @@ def plot_shapes(
 
     # if channel is None, get the number of channels from the first img_layer given, maybe print a message about this.
     if channel is None:
-        channels = sdata[img_layer[0]].c.data
+        se=_get_spatial_element( sdata, layer=img_layer[0] )
+        channels = se.c.data
     else:
         channels = channel
 
@@ -276,12 +278,12 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 
-    si = sdata.images[img_layer]
+    se = _get_spatial_element( sdata, layer=img_layer )
 
     # Update coords
-    si, x_coords_orig, y_coords_orig = _apply_transform(si)
+    se, x_coords_orig, y_coords_orig = _apply_transform(se)
 
-    image_boundary = _get_boundary(si)
+    image_boundary = _get_boundary(se)
 
     if crd is not None:
         _crd = crd
@@ -330,21 +332,21 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
 
     if channel is None:
         # if channel is None, plot the first channel
-        channel = si.c.data[0]
-        # if channel not in spatialimage object, plot the first channel
-    elif channel not in si.c.data:
+        channel = se.c.data[0]
+        # if channel not in spatialelement, plot the first channel
+    elif channel not in se.c.data:
         _channel = channel
-        channel = si.c.data[0]
+        channel = se.c.data[0]
         log.warning(
             (
-                f"Provided channel '{_channel}' not in list of available channels '{si.c.data}' "
+                f"Provided channel '{_channel}' not in list of available channels '{se.c.data}' "
                 f"for provided img_layer '{img_layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
             )
         )
 
-    channel_name = si.c.name
+    channel_name = se.c.name
 
-    si.isel(c=channel).squeeze().sel(
+    se.isel(c=channel).squeeze().sel(
         x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
     ).plot.imshow(cmap="gray", robust=True, ax=ax, add_colorbar=False)
 
@@ -394,6 +396,6 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     ax.spines["left"].set_visible(False)
 
     # Restore coords
-    si = _unapply_transform(si, x_coords_orig, y_coords_orig)
+    se = _unapply_transform(se, x_coords_orig, y_coords_orig)
 
     return ax

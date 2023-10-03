@@ -5,9 +5,8 @@ is to improve the image quality so that subsequent image segmentation
 will be more accurate.
 """
 
-import os
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 import napari
 import napari.layers
@@ -19,13 +18,11 @@ from hydra import compose, initialize_config_dir
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
-from omegaconf.dictconfig import DictConfig
 from pkg_resources import resource_filename
 from spatialdata import SpatialData
 
 import napari_sparrow.utils as utils
 from napari_sparrow.image._image import _get_translation
-from napari_sparrow.io import create_sdata
 from napari_sparrow.pipeline import SparrowPipeline
 
 log = utils.get_pylogger(__name__)
@@ -82,7 +79,11 @@ def load_widget(
     cfg.paths.output_dir = str(output_dir)
 
     crd = [x_min, x_max, y_min, y_max]
-    crd = [None if val == "" else int(val) for val in crd]
+    crd = [0 if val == "" else int(val) for val in crd]
+
+    # TODO fix this. Should Replace None values with 0/size of image in create_sdata function
+    if sum( crd )==0:
+        crd=None
 
     cfg.dataset.crop_param = crd
     cfg.dataset.image = path_image

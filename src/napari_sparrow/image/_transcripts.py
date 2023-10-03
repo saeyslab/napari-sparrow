@@ -2,12 +2,12 @@ import warnings
 from typing import Optional, Tuple
 
 import dask.array as da
-import spatialdata
 from scipy.ndimage import gaussian_filter
 from spatialdata import SpatialData
-from spatialdata.transformations import Translation, set_transformation
+from spatialdata.models.models import ScaleFactors_t
+from spatialdata.transformations import Translation
 
-from napari_sparrow.image._image import _get_boundary
+from napari_sparrow.image._image import _get_boundary, _get_spatial_element, _add_image_layer
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -24,6 +24,7 @@ def transcript_density(
     scaling_factor: float = 100,
     chunks: int = 1024,
     crd: Optional[Tuple[int, int, int, int]] = None,
+    scale_factors: Optional[ScaleFactors_t] = None,
     output_layer: str = "transcript_density",
     overwrite: bool = False,
 ) -> SpatialData:
@@ -57,6 +58,8 @@ def transcript_density(
     crd : tuple of int, optional
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
         If provided, the density is computed only for this region, by default None.
+    scale_factors
+        Scale factors to apply for multiscale.
     output_layer : str, optional
         The name of the output image layer in the SpatialData where the transcript density will be added,
         by default "transcript_density".
@@ -82,7 +85,10 @@ def transcript_density(
     # get image boundary from last image layer if img_layer is None
     if img_layer is None:
         img_layer = [*sdata.images][-1]
-    img_boundary = _get_boundary(sdata[img_layer])
+
+    se = _get_spatial_element(sdata, layer=img_layer)
+
+    img_boundary = _get_boundary(se)
 
     # if crd is None, get boundary from image at img_layer if given,
     if crd is None:
@@ -170,17 +176,23 @@ def transcript_density(
 
     blurred_transcripts = blurred_transcripts.T
     # rechunk, otherwise possible issues when saving to zarr
-    blurred_transcripts=blurred_transcripts.rechunk( blurred_transcripts.chunksize )
-
-    spatial_image = spatialdata.models.Image2DModel.parse(
-        blurred_transcripts[None,], dims=("c", "y", "x")
-    )
+    blurred_transcripts = blurred_transcripts.rechunk(blurred_transcripts.chunksize)
 
     if crd:
         translation = Translation([crd[0], crd[2]], axes=("x", "y"))
-        set_transformation(spatial_image, translation)
+    else:
+        translation=None
 
-    # during adding of image it is written to zarr store
-    sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite)
+    arr=blurred_transcripts[None,]
+
+    sdata=_add_image_layer(
+        sdata,
+        arr=arr,
+        output_layer=output_layer,
+        chunks=arr.chunksize,
+        transformation=translation,
+        scale_factors=scale_factors,
+        overwrite=overwrite,
+    )
 
     return sdata
