@@ -25,8 +25,8 @@ class LayerManager(ABC):
         output_layer: str,
         chunks: Optional[str | Tuple[int, ...] | int] = None,
         transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
-        scale_factors=None,
-        overwrite=False,
+        scale_factors: Optional[ScaleFactors_t] = None,
+        overwrite: bool = False,
     ) -> SpatialData:
         self.arr = arr
         self.output_layer = output_layer
@@ -64,6 +64,11 @@ class LayerManager(ABC):
                 )
             else:
                 self.arr = self.arr.persist()
+
+        elif not sdata.is_backed():
+            # if sdata is not backed, and if no scale factors, we also need to do a persist
+            # to prevent recomputation
+            self.arr = self.arr.persist()
 
         spatial_element = self.create_spatial_element(
             self.arr,

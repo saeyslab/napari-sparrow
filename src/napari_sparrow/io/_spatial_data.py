@@ -1,9 +1,12 @@
+import os
+import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
 import spatialdata
+from dask.array import from_zarr
 from dask_image import imread
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
@@ -94,36 +97,37 @@ def create_sdata(
     values based on the input image's shape.
     """
 
-    dask_array = _load_image_to_dask(input=input, chunks=chunks, dims=dims, crd=crd)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # tmp_dir is used to write results for each channel out to separate zarr store,
+        # these results are then combined and written to sdata
+        dask_array = _load_image_to_dask(
+            input=input, chunks=chunks, dims=dims, crd=crd, output_dir=tmp_dir
+        )
 
-    #if scale_factors is not None:
-        # otherwise will recompute for every scale
-        # TODO check if this is necessary
-        #dask_array = dask_array.persist()
+        sdata = spatialdata.SpatialData()
 
-    sdata = spatialdata.SpatialData()
+        # make sure sdata is backed.
+        if output_path is not None:
+            sdata.write(output_path)
 
-    if crd:
-        tx = crd[0]
-        ty = crd[2]
+        if crd:
+            tx = crd[0]
+            ty = crd[2]
 
-        translation = Translation([tx, ty], axes=("x", "y"))
+            translation = Translation([tx, ty], axes=("x", "y"))
 
-    else:
-        translation = None
+        else:
+            translation = None
 
-    _add_image_layer(
-        sdata,
-        arr=dask_array,
-        output_layer=img_layer,
-        chunks=chunks,
-        transformation=translation,
-        scale_factors=scale_factors,
-        overwrite=False,
-    )
-
-    if output_path is not None:
-        sdata.write(output_path)
+        _add_image_layer(
+            sdata,
+            arr=dask_array,
+            output_layer=img_layer,
+            chunks=chunks,
+            transformation=translation,
+            scale_factors=scale_factors,
+            overwrite=False,
+        )
 
     return sdata
 
@@ -140,6 +144,7 @@ def _load_image_to_dask(
     chunks: str | Tuple[int, int, int, int] | int | None = None,
     dims: Optional[List[str]] = None,
     crd: Optional[List[int]] = None,
+    output_dir: Optional[Union[Path, str]] = None,
 ) -> da.Array:
     """
     Load images into a dask array.
@@ -162,7 +167,8 @@ def _load_image_to_dask(
         If input is a str of Path, this parameter is ignored.
     crd : tuple of int, optional
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
-
+    output_dir: if input is a str, Path, or List[str], List[Path], the intermediate results for each channel
+        will be written to zarr store in output_dir to prevent unnecessary memory usage.
 
     Returns
     -------
@@ -177,7 +183,10 @@ def _load_image_to_dask(
 
     if isinstance(input, list):
         # if filename pattern is a list, create (c, y, x) for each filename pattern
-        dask_arrays = [_load_image_to_dask(f, chunks, dims) for f in input]
+        dask_arrays = [
+            _load_image_to_dask(f, chunks, dims, output_dir=output_dir) for f in input
+        ]
+
         dask_array = da.concatenate(dask_arrays, axis=0)
         # add z- dimension, we want (c,z,y,x)
         dask_array = dask_array[:, None, :, :]
@@ -231,6 +240,12 @@ def _load_image_to_dask(
     # if z-dimension is 1, then squeeze it.
     else:
         dask_array = dask_array.squeeze(1)
+
+    if isinstance(input, (str, Path)) and output_dir is not None:
+        name = os.path.splitext(os.path.basename(input))[0]
+        output_zarr = os.path.join(output_dir, f"{name}.zarr")
+        dask_array.to_zarr(output_zarr)
+        dask_array = from_zarr(output_zarr)
 
     return dask_array
 

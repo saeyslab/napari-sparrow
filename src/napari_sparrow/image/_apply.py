@@ -219,35 +219,6 @@ def apply(
         overwrite=overwrite,
     )
 
-    """
-    # if scale factors are specified, we perform a persist if not backed by zarr store,
-    # otherwise, we write to intermediate file.
-    #  because otherwise calculation would be redone for every scale
-    # (other solution would be to redo computation for every scale, which will be slow)
-    if scale_factors is not None:
-        if sdata.is_backed():
-            spatial_image = spatialdata.models.Image2DModel.parse(
-                arr, dims=("c", "y", "x"), scale_factors=None, chunks=arr.chunksize
-            )
-            set_transformation(spatial_image, translation)
-            intermediate_output_layer = f"{uuid.uuid4()}_{output_layer}"
-            sdata.add_image(name=intermediate_output_layer, image=spatial_image)
-            arr = sdata.images[intermediate_output_layer].data
-            log.info(
-                f"Wrote intermediate non-scaled results to layer {intermediate_output_layer}"
-            )
-        else:
-            arr = arr.persist()
-
-    spatial_image = spatialdata.models.Image2DModel.parse(
-        arr, dims=("c", "y", "x"), scale_factors=scale_factors, chunks=arr.chunksize
-    )
-
-    set_transformation(spatial_image, translation)
-
-    sdata.add_image(name=output_layer, image=spatial_image, overwrite=overwrite)
-    """
-
     return sdata
 
 

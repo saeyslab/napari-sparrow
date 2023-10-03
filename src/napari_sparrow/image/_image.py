@@ -1,11 +1,7 @@
-import os
-import shutil
-import uuid
 import warnings
 from typing import Optional, Tuple, Union
 
 import numpy as np
-import spatialdata
 import xarray as xr
 from dask.array import Array
 from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
@@ -13,7 +9,7 @@ from spatial_image import SpatialImage
 from spatialdata import SpatialData
 from spatialdata.models import SpatialElement
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import BaseTransformation, set_transformation
+from spatialdata.transformations import BaseTransformation
 from spatialdata.transformations._utils import (
     _get_transformations,
     _get_transformations_xarray,
@@ -134,7 +130,8 @@ def _get_spatial_element(
         # get the name of the unscaled image
         # TODO maybe add some other checks here
         scale_0 = si.__iter__().__next__()
-        return si[scale_0][layer]
+        name=si[scale_0].__iter__().__next__()
+        return si[scale_0][name]
     else:
         raise ValueError(f"Not implemented for layer '{layer}' of type {type(si)}.")
 
