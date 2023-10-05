@@ -1,7 +1,8 @@
 import scanpy as sc
 from spatialdata import SpatialData
 
-from napari_sparrow.table._table import _back_sdata_table_to_zarr, _filter_shapes
+from napari_sparrow.shape._shape import _filter_shapes_layer
+from napari_sparrow.table._table import _back_sdata_table_to_zarr
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -90,7 +91,12 @@ def preprocess_anndata(
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
 
     # Is this the best way of doing it? Every time you subset your data, the polygons should be subsetted too!
-    sdata = _filter_shapes(sdata, filtered_name="low_counts")
+    indexes_to_keep = sdata.table.obs.index.values.astype(int)
+    sdata = _filter_shapes_layer(
+        sdata,
+        indexes_to_keep=indexes_to_keep,
+        prefix_filtered_shapes_layer="filtered_low_counts",
+    )
 
     # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
     _back_sdata_table_to_zarr(sdata)

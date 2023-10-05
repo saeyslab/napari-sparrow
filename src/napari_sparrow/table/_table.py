@@ -1,8 +1,10 @@
 from typing import Dict, Tuple
+
 import numpy as np
 import spatialdata
 from spatialdata import SpatialData
 
+from napari_sparrow.shape._shape import _filter_shapes_layer
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -51,45 +53,15 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
     ## TODO: Look for a better way of doing this!
     sdata.table = spatialdata.models.TableModel.parse(table)
 
-    sdata = _filter_shapes(sdata, filtered_name="size")
+    indexes_to_keep = sdata.table.obs.index.values.astype(int)
+    sdata = _filter_shapes_layer(
+        sdata,
+        indexes_to_keep=indexes_to_keep,
+        prefix_filtered_shapes_layer="filtered_size",
+    )
 
     filtered = start - table.shape[0]
-    log.info( f"{filtered} cells were filtered out based on size." )
-
-    return sdata
-
-
-def _filter_shapes(sdata: SpatialData, filtered_name: str):
-    for _shapes_layer in [*sdata.shapes]:
-        if "filtered" not in _shapes_layer:
-            #log.info(_shapes_layer)
-            sdata[_shapes_layer].index = list(map(str, sdata[_shapes_layer].index))
-            filtered_indexes = ~np.isin(
-                sdata[_shapes_layer].index.values.astype(int),
-                sdata.table.obs.index.values.astype(int),
-            )
-
-            if sum(filtered_indexes) != 0:
-                sdata.add_shapes(
-                    name=f"filtered_{_shapes_layer}_{filtered_name}",
-                    shapes=spatialdata.models.ShapesModel.parse(
-                        sdata[_shapes_layer][filtered_indexes]
-                    ),
-                    overwrite=True,
-                )
-
-            kept_indexes = np.isin(
-                sdata[_shapes_layer].index.values.astype(int),
-                sdata.table.obs.index.values.astype(int),
-            )
-            # we assume that sum(kept_indexes)!=0, i.e. that we did not filter all cells
-            sdata.add_shapes(
-                name=_shapes_layer,
-                shapes=spatialdata.models.ShapesModel.parse(
-                    sdata[_shapes_layer][kept_indexes]
-                ),
-                overwrite=True,
-            )
+    log.info(f"{filtered} cells were filtered out based on size.")
 
     return sdata
 

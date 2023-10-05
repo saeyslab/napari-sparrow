@@ -1,6 +1,5 @@
 """Define package version"""
 __version__ = "0.0.1"
-# TODO is __version__ needed/used?
 
 import os
 os.environ["USE_PYGEOS"] = "0"
