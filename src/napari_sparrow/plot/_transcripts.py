@@ -9,7 +9,7 @@ from pandas import DataFrame
 from scipy.stats import pearsonr
 from spatialdata import SpatialData
 
-from napari_sparrow.image._image import _get_boundary
+from napari_sparrow.image._image import _get_boundary, _get_spatial_element
 from napari_sparrow.plot import plot_shapes
 from napari_sparrow.utils.pylogger import get_pylogger
 
@@ -92,7 +92,8 @@ def analyse_genes_left_out(
         )
     if labels_layer is None:
         labels_layer = [*sdata.labels][-1]
-    crd = _get_boundary(sdata.labels[labels_layer])
+    se = _get_spatial_element(sdata, layer=labels_layer)
+    crd = _get_boundary(se)
 
     ddf = sdata.points[points_layer]
 
