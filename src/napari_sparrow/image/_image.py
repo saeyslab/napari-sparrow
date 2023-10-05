@@ -9,7 +9,7 @@ from spatial_image import SpatialImage
 from spatialdata import SpatialData
 from spatialdata.models import SpatialElement
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import BaseTransformation
+from spatialdata.transformations import BaseTransformation, Translation, Identity
 from spatialdata.transformations._utils import (
     _get_transformations,
     _get_transformations_xarray,
@@ -59,10 +59,21 @@ def _get_boundary(
 def _get_translation(
     spatial_image: Union[SpatialImage, MultiscaleSpatialImage, DataArray]
 ) -> Tuple[float, float]:
-    transform_matrix = _get_transformation(spatial_image).to_affine_matrix(
-        input_axes=("x", "y"), output_axes=("x", "y")
-    )
+    
+    translation=_get_transformation(spatial_image)
 
+    if not isinstance(  translation, (Translation, Identity) ):
+            raise ValueError( f"Currently only transformations of type Translation are supported, "
+                                f"while transformation associated with {spatial_image} is of type {type(translation)}.")
+
+    return _get_translation_values( translation )
+
+    
+def _get_translation_values( translation: Union[Translation, Identity]):
+    transform_matrix=translation.to_affine_matrix(
+            input_axes=("x", "y"), output_axes=("x", "y")
+        )
+    
     if (
         transform_matrix[0, 0] == 1.0
         and transform_matrix[0, 1] == 0.0
@@ -75,8 +86,7 @@ def _get_translation(
         return transform_matrix[0, 2], transform_matrix[1, 2]
     else:
         raise ValueError(
-            f"The provided transform matrix '{transform_matrix}' associated with the SpatialImage "
-            f"element with name '{spatial_image.name}' represents more than just a translation, which is not currently supported."
+            f"The provided transform matrix {transform_matrix} represents more than just a translation."
         )
 
 

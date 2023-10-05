@@ -9,8 +9,8 @@ from spatialdata import SpatialData
 from napari_sparrow.image._image import (
     _apply_transform,
     _get_boundary,
-    _unapply_transform,
     _get_spatial_element,
+    _unapply_transform,
 )
 from napari_sparrow.shape import intersect_rectangles
 from napari_sparrow.utils.pylogger import get_pylogger
@@ -57,8 +57,8 @@ def plot_image(
 
 def plot_shapes(
     sdata: SpatialData,
-    img_layer: str | Iterable[str] = None,
-    shapes_layer: str | Iterable[str] = None,
+    img_layer: Optional[str | Iterable[str]] = None,
+    shapes_layer: Optional[str | Iterable[str]] = None,
     channel: Optional[int | Iterable[int]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     figsize: Optional[Tuple[int, int]] = None,
@@ -165,7 +165,7 @@ def plot_shapes(
 
     # if channel is None, get the number of channels from the first img_layer given, maybe print a message about this.
     if channel is None:
-        se=_get_spatial_element( sdata, layer=img_layer[0] )
+        se = _get_spatial_element(sdata, layer=img_layer[0])
         channels = se.c.data
     else:
         channels = channel
@@ -222,7 +222,7 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     crd: Tuple[int, int, int, int] = None,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
-    plot_filtered: bool = False,
+    shapes_layer_filtered: Optional[str | Iterable[str]] = None,
     img_title: bool = False,
     shapes_title: bool = False,
     channel_title: bool = True,
@@ -255,8 +255,8 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
         Lower bound for color scale for continuous data. Given as a percentile.
     vmax : float or None, optional
         Upper bound for color scale for continuous data. Given as a percentile.
-    plot_filtered : bool, default=False
-        Whether to plot the cells that were filtered out in previous steps.
+    shapes_layer_filtered : str or Iterable[str], optional
+        Extra shapes layers to plot. E.g. shapes filtered out in previous preprocessing steps.
     img_title: bool, default=False
         A flag indicating whether the image layer's name should be added to the title of the plot.
     shapes_title: bool, default=False
@@ -278,7 +278,15 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 
-    se = _get_spatial_element( sdata, layer=img_layer )
+    if shapes_layer_filtered is not None:
+        shapes_layer_filtered = (
+            list(shapes_layer_filtered)
+            if isinstance(shapes_layer_filtered, Iterable)
+            and not isinstance(shapes_layer_filtered, str)
+            else [shapes_layer_filtered]
+        )
+
+    se = _get_spatial_element(sdata, layer=img_layer)
 
     # Update coords
     se, x_coords_orig, y_coords_orig = _apply_transform(se)
@@ -350,8 +358,8 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
         x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
     ).plot.imshow(cmap="gray", robust=True, ax=ax, add_colorbar=False)
 
-    if shapes_layer:
-        sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+    if shapes_layer is not None:
+        sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
             ax=ax,
             edgecolor="white",
             column=column,
@@ -363,18 +371,17 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
             vmax=vmax,  # np.percentile(column,vmax),
             vmin=vmin,  # np.percentile(column,vmin)
         )
-        if plot_filtered:
-            for i in [*sdata.shapes]:
-                if f"filtered_{shapes_layer}" in i:
-                    sdata[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
-                        ax=ax,
-                        edgecolor="red",
-                        linewidth=1,
-                        alpha=alpha,
-                        legend=True,
-                        aspect=1,
-                        cmap="gray",
-                    )
+        if shapes_layer_filtered is not None:
+            for i in shapes_layer_filtered:
+                sdata.shapes[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+                    ax=ax,
+                    edgecolor="red",
+                    linewidth=1,
+                    alpha=alpha,
+                    legend=True,
+                    aspect=1,
+                    cmap="gray",
+                )
     ax.axes.set_aspect(aspect)
     ax.set_xlim(crd[0], crd[1])
     ax.set_ylim(crd[2], crd[3])

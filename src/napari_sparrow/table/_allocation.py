@@ -9,8 +9,8 @@ from affine import Affine
 from anndata import AnnData
 from spatialdata import SpatialData
 
-from napari_sparrow.image._image import _get_translation
-from napari_sparrow.table._table import _filter_shapes
+from napari_sparrow.image._image import _get_spatial_element, _get_translation
+from napari_sparrow.shape._shape import _filter_shapes_layer
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -31,8 +31,8 @@ def allocate(
     sdata : SpatialData
         The SpatialData object.
     labels_layer : str, optional
-        The layer in `sdata` that contains the masks corresponding to the shapes layer 
-        (possible before performing operation on the shapes layer, such as calculating voronoi expansion). 
+        The layer in `sdata` that contains the masks corresponding to the shapes layer
+        (possible before performing operation on the shapes layer, such as calculating voronoi expansion).
         Used for determining offset.
     shapes_layer : str, optional
         The layer in `sdata` that contains the boundaries of the segmentation mask, by default "segmentation_mask_boundaries".
@@ -49,7 +49,7 @@ def allocate(
     # need to do this transformation,
     # because the polygons have same offset coords.x0 and coords.y0 as in segmentation_mask
     Coords = namedtuple("Coords", ["x0", "y0"])
-    s_mask = sdata[ labels_layer ]
+    s_mask = _get_spatial_element(sdata, layer=labels_layer)
     coords = Coords(*_get_translation(s_mask))
 
     transform = Affine.translation(coords.x0, coords.y0)
@@ -135,6 +135,11 @@ def allocate(
         adata, region_key="region", region=1, instance_key="instance"
     )
 
-    sdata = _filter_shapes(sdata, filtered_name="segmentation")
+    indexes_to_keep = sdata.table.obs.index.values.astype(int)
+    sdata = _filter_shapes_layer(
+        sdata,
+        indexes_to_keep=indexes_to_keep,
+        prefix_filtered_shapes_layer="filtered_segmentation",
+    )
 
     return sdata

@@ -4,13 +4,11 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import dask.array as da
 import numpy as np
-import spatialdata
 import torch
 from cellpose import models
 from dask.array import Array
 from dask.array.overlap import coerce_depth, ensure_minimum_chunksize
 from numpy.typing import NDArray
-from shapely.affinity import translate
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation
@@ -21,7 +19,7 @@ from napari_sparrow.image._image import (
     _get_translation,
     _substract_translation_crd,
 )
-from napari_sparrow.shape._shape import _mask_image_to_polygons
+from napari_sparrow.shape._shape import _add_shapes_layer
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -194,7 +192,7 @@ class SegmentationModel:
 
         translation = Translation([tx, ty], axes=("x", "y"))
 
-        sdata=_add_label_layer(
+        sdata = _add_label_layer(
             sdata,
             arr=x_labels,
             output_layer=output_labels_layer,
@@ -204,20 +202,16 @@ class SegmentationModel:
             overwrite=overwrite,
         )
 
-        # only calculate shapes layer if is specified
+        # only calculate shapes layer if it is specified
         if output_shapes_layer is not None:
             se_labels = _get_spatial_element(sdata, layer=output_labels_layer)
-            # now calculate the polygons
-            polygons = _mask_image_to_polygons(mask=se_labels.data)
 
-            x_translation, y_translation = _get_translation(se_labels)
-            polygons["geometry"] = polygons["geometry"].apply(
-                lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
-            )
-
-            sdata.add_shapes(
-                name=output_shapes_layer,
-                shapes=spatialdata.models.ShapesModel.parse(polygons),
+            # convert the labels to polygons and add them as shapes layer to sdata
+            sdata = _add_shapes_layer(
+                sdata,
+                input=se_labels.data,
+                output_layer=output_shapes_layer,
+                transformation=translation,
                 overwrite=overwrite,
             )
 
@@ -463,7 +457,6 @@ def _trim_masks(masks: Array, depth: Dict[int, int]) -> Array:
 
         # now convert back to non-overlapping coordinates.
 
-        # check if this is correct TODO, thinks so
         y_offset = max(0, y_start - (chunk_id[0] * 2 * depth[0] + depth[0]))
         x_offset = max(0, x_start - (chunk_id[1] * 2 * depth[1] + depth[1]))
 

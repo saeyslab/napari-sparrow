@@ -15,6 +15,7 @@ log = get_pylogger(__name__)
 def read_resolve_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
+    overwrite: bool = False,
 ) -> SpatialData:
     """
     Reads and adds Resolve transcript information to a SpatialData object.
@@ -26,6 +27,8 @@ def read_resolve_transcripts(
     path_count_matrix : str | Path
         Path to the file containing the transcripts information specific to Resolve.
         Expected to contain x, y coordinates and a gene name.
+    overwrite: bool, default=False
+        If True overwrites the element (points layer) if it already exists.
 
     Returns
     -------
@@ -39,6 +42,7 @@ def read_resolve_transcripts(
         "column_gene": 3,
         "delimiter": "\t",
         "header": None,
+        "overwrite": overwrite,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -49,6 +53,7 @@ def read_vizgen_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
     path_transform_matrix: str | Path,
+    overwrite: bool = False,
 ) -> SpatialData:
     """
     Reads and adds Vizgen transcript information to a SpatialData object.
@@ -62,6 +67,8 @@ def read_vizgen_transcripts(
         Expected to contain x, y coordinates and a gene name.
     path_transform_matrix : str | Path
         Path to the transformation matrix for the affine transformation.
+    overwrite: bool, default=False
+        If True overwrites the element (points layer) if it already exists.
 
     Returns
     -------
@@ -75,6 +82,7 @@ def read_vizgen_transcripts(
         "column_gene": 8,
         "delimiter": ",",
         "header": 0,
+        "overwrite": overwrite,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -84,6 +92,7 @@ def read_vizgen_transcripts(
 def read_stereoseq_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
+    overwrite: bool = False,
 ) -> SpatialData:
     """
     Reads and adds Stereoseq transcript information to a SpatialData object.
@@ -95,6 +104,8 @@ def read_stereoseq_transcripts(
     path_count_matrix : str | Path
         Path to the file containing the transcripts information specific to Stereoseq.
         Expected to contain x, y coordinates, gene name, and a midcount column.
+    overwrite: bool, default=False
+        If True overwrites the element (points layer) if it already exists.
 
     Returns
     -------
@@ -109,6 +120,7 @@ def read_stereoseq_transcripts(
         "column_midcount": 3,
         "delimiter": ",",
         "header": 0,
+        "overwrite": overwrite,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -222,7 +234,9 @@ def read_transcripts(
     # Reorder
     transformed_ddf = transformed_ddf[["pixel_x", "pixel_y", "gene"]]
 
-    sdata = _add_transcripts_to_sdata(sdata, transformed_ddf, points_layer, overwrite=overwrite)
+    sdata = _add_transcripts_to_sdata(
+        sdata, transformed_ddf, points_layer, overwrite=overwrite
+    )
 
     return sdata
 

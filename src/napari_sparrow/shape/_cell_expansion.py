@@ -10,7 +10,37 @@ def create_voronoi_boundaries(
     sdata: SpatialData,
     radius: int = 0,
     shapes_layer: str = "segmentation_mask_boundaries",
-):
+) -> SpatialData:
+    """
+    Create Voronoi boundaries from the shapes layer of the provided SpatialData object.
+
+    Given spatial data and a radius, this function calculates Voronoi boundaries
+    and expands these boundaries based on the radius.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The spatial data object on which Voronoi boundaries will be created.
+    radius : int, optional
+        The expansion radius for the Voronoi boundaries, by default 0.
+        If provided, Voronoi boundaries will be expanded by this radius.
+        Must be non-negative.
+    shapes_layer : str, optional
+        The name of the layer in `sdata` representing shapes used to derive
+        Voronoi boundaries. Default is "segmentation_mask_boundaries".
+
+    Returns
+    -------
+    SpatialData
+        Modified `sdata` object with the Voronoi boundaries created and
+        possibly expanded.
+
+    Raises
+    ------
+    ValueError
+        If the provided radius is negative.
+    """
+
     if radius < 0:
         raise ValueError(
             f"radius should be >0, provided value for radius is '{radius}'"
@@ -22,16 +52,16 @@ def create_voronoi_boundaries(
     # sdata[shape_layer].index = list(map(str, sdata[shape_layer].index))
 
     si = sdata[[*sdata.images][0]]
-    # need to add translation in x and y direction to size of the image, 
+    # need to add translation in x and y direction to size of the image,
     # to account for use case where si is already cropped
     tx, ty = _get_translation(si)
 
     boundary = Polygon(
         [
             (tx, ty),
-            (tx+si.sizes["x"], ty),
-            (tx+si.sizes["x"], ty+si.sizes["y"]),
-            (tx, ty+si.sizes["y"]),
+            (tx + si.sizes["x"], ty),
+            (tx + si.sizes["x"], ty + si.sizes["y"]),
+            (tx, ty + si.sizes["y"]),
         ]
     )
 
