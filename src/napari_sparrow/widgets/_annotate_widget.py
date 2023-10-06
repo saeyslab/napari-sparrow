@@ -77,7 +77,7 @@ def annotate_widget(
         )
 
     # need to load it back from zarr store, because otherwise not able to overwrite it
-    sdata = read_zarr(os.path.join(pipeline.cfg.paths.output_dir, "sdata.zarr"))
+    sdata = read_zarr(pipeline.cfg.paths.sdata)
 
     pipeline.cfg.dataset.markers = markers_file
     pipeline.cfg.annotate.del_celltypes = del_celltypes

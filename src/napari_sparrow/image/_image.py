@@ -1,4 +1,3 @@
-import warnings
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -37,7 +36,7 @@ def _substract_translation_crd(
     ]
 
     if crd[1] - crd[0] <= 0 or crd[3] - crd[2] <= 0:
-        warnings.warn(
+        log.warning(
             f"Crop param {_crd} after correction for possible translation on "
             f"SpatialImage object '{spatial_image.name}' is "
             f"'{crd}. Falling back to setting crd to 'None'."

@@ -7,7 +7,7 @@ import scanpy as sc
 import numpy as np
 
 from napari_sparrow.plot._plot import plot_shapes
-from napari_sparrow.image._image import _get_boundary
+from napari_sparrow.image._image import _get_boundary, _get_spatial_element
 
 
 def score_genes(
@@ -20,7 +20,7 @@ def score_genes(
     output: Optional[str] = None,
 ) -> None:
     """
-    Function generates following plots: 
+    Function generates following plots:
     - umap of assigned celltype next to umap of calculated cleanliness.
     - umap of assigned celltype next to umap of assigned leiden cluster.
     - assigned celltype for all cells in region of interest (crd).
@@ -59,10 +59,10 @@ def score_genes(
     """
     if img_layer is None:
         img_layer = [*sdata.images][-1]
-    si = sdata.images[img_layer]
 
     if crd is None:
-        crd = _get_boundary(si)
+        se = _get_spatial_element(sdata, layer=img_layer)
+        crd = _get_boundary(se)
 
     # Custom colormap:
     colors = np.concatenate(

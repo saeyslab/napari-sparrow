@@ -107,7 +107,6 @@ Next, update `configs/dataset/resolve_liver.yaml`, with the correct path to the 
 
 ```yaml
 data_dir: ${paths.data_dir}/resolve/resolve_liver
-dtype: tiff
 image: ${dataset.data_dir}/20272_slide1_A1-1_DAPI.tiff
 coords: ${dataset.data_dir}/20272_slide1_A1-1_results.txt
 markers: ${dataset.data_dir}/markerGeneListMartinNoLow.csv
