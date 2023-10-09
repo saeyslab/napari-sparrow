@@ -7,6 +7,7 @@ import warnings
 
 from omegaconf import DictConfig, ListConfig
 from spatialdata import SpatialData
+from spatialdata import read_zarr
 
 import napari_sparrow as nas
 
@@ -69,17 +70,38 @@ class SparrowPipeline:
         if isinstance(self.cfg.dataset.image, ListConfig):
             filename_pattern = list(self.cfg.dataset.image)
         else:
-            filename_pattern = self.cfg.dataset.image
+            filename_pattern = str(self.cfg.dataset.image)
 
-        log.info("Creating sdata.")
-        sdata = nas.io.create_sdata(
-            input=filename_pattern,
-            output_path=os.path.join(self.cfg.paths.output_dir, "sdata.zarr"),
-            img_layer=self.loaded_image_name,
-            crd=self.cfg.dataset.crop_param,
-            chunks=1024,  # TODO make chunks configurable
-        )
-        log.info("Finished creating sdata.")
+        if not isinstance(filename_pattern, list) and filename_pattern.endswith(
+            ".zarr"
+        ):
+            sdata = read_zarr(filename_pattern)
+            if isinstance(sdata, SpatialData):
+                img_layers = [*sdata.images]
+                if self.loaded_image_name not in img_layers:
+                    raise ValueError(
+                        f"Provided image layer '{self.loaded_image_name}' not in SpatialData object loaded from zarr."
+                    )
+                log.info(
+                    f"Applying SparrowPipeline on '{self.loaded_image_name}' image layer in provided SpatialData object."
+                )
+                return sdata
+            else:
+                raise ValueError(
+                    "Currently only zarr's of type SpatialData are supported"
+                )
+
+        else:
+            log.info("Creating sdata.")
+            sdata = nas.io.create_sdata(
+                input=filename_pattern,
+                output_path=self.cfg.paths.sdata,
+                img_layer=self.loaded_image_name,
+                crd=self.cfg.dataset.crop_param,
+                chunks=self.cfg.dataset.chunks,
+                scale_factors=self.cfg.dataset.scale_factors,
+            )
+            log.info("Finished creating sdata.")
 
         return sdata
 
@@ -107,6 +129,7 @@ class SparrowPipeline:
                 crd=self.cfg.clean.crop_param
                 if self.cfg.clean.crop_param is not None
                 else None,
+                scale_factors=self.cfg.dataset.scale_factors,
                 tile_size=self.cfg.clean.tile_size,
                 output_layer=output_layer,
                 overwrite=self.cfg.clean.overwrite,
@@ -160,6 +183,7 @@ class SparrowPipeline:
                 size_min_max_filter=list(self.cfg.clean.size_min_max_filter)
                 if isinstance(self.cfg.clean.size_min_max_filter, ListConfig)
                 else self.cfg.clean.size_min_max_filter,
+                scale_factors=self.cfg.dataset.scale_factors,
                 output_layer=output_layer,
                 overwrite=self.cfg.clean.overwrite,
             )
@@ -194,6 +218,7 @@ class SparrowPipeline:
                 chunks=self.cfg.clean.chunksize_clahe,
                 depth=self.cfg.clean.depth,
                 output_layer=output_layer,
+                scale_factors=self.cfg.dataset.scale_factors,
                 overwrite=self.cfg.clean.overwrite,
             )
 
@@ -242,6 +267,7 @@ class SparrowPipeline:
             crd=self.cfg.segmentation.crop_param
             if self.cfg.segmentation.crop_param is not None
             else None,
+            scale_factors=self.cfg.dataset.scale_factors,
             device=self.cfg.device,
             min_size=self.cfg.segmentation.min_size,
             flow_threshold=self.cfg.segmentation.flow_threshold,
@@ -421,6 +447,7 @@ class SparrowPipeline:
                 sdata,
                 img_layer=self.cleaned_image_name,
                 crd=self.cfg.segmentation.crop_param,
+                scale_factors=self.cfg.dataset.scale_factors,
                 output_layer=self.cfg.allocate.transcripts_density_img_layer_name,
                 overwrite=self.cfg.allocate.overwrite,
             )
@@ -521,12 +548,16 @@ class SparrowPipeline:
             output=self.cfg.paths.cluster_cleanliness,
         )
 
-        # calculate nhood enrichment
-        sdata = nas.tb.nhood_enrichment(sdata)
-        nas.pl.nhood_enrichment(
-            sdata,
-            output=self.cfg.paths.nhood,
-        )
+        # squidpy sometimes fails calculating/plotting nhood enrichement if a too small region is selected, therefore try add a try except.
+        try:
+            # calculate nhood enrichment
+            sdata = nas.tb.nhood_enrichment(sdata)
+            nas.pl.nhood_enrichment(
+                sdata,
+                output=self.cfg.paths.nhood,
+            )
+        except ValueError as e:
+            log.warning(f"Could not calculate nhood enrichment for this region. Reason: {e}. Try with a different area if a subset was selected.")
 
         return sdata
 

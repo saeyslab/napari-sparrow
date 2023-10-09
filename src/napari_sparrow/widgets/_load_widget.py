@@ -5,15 +5,15 @@ is to improve the image quality so that subsequent image segmentation
 will be more accurate.
 """
 
+import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, List
 
 import napari
 import napari.layers
 import napari.types
 import napari.utils
 import numpy as np
-import squidpy.im as sq
 from hydra import compose, initialize_config_dir
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
@@ -21,7 +21,10 @@ from napari.utils.notifications import show_info
 from pkg_resources import resource_filename
 from spatialdata import SpatialData
 
-import napari_sparrow.utils as utils
+from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
+
+from napari_sparrow import utils
+
 from napari_sparrow.image._image import _get_translation
 from napari_sparrow.pipeline import SparrowPipeline
 
@@ -56,12 +59,15 @@ def _load_worker(
 
 @magic_factory(
     call_button="Load",
+    path_zarr={"widget_type": "FileEdit", "mode": "d"},
     path_image={"widget_type": "FileEdit"},
     output_dir={"widget_type": "FileEdit", "mode": "d"},
 )
 def load_widget(
     viewer: napari.Viewer,
+    path_zarr: Path = Path(""),
     path_image: Path = Path(""),
+    image_layer: Optional[str] = utils.LOAD,
     output_dir: Path = Path(""),
     x_min: Optional[str] = "",
     x_max: Optional[str] = "",
@@ -77,18 +83,30 @@ def load_widget(
         cfg = compose(config_name="pipeline")
 
     cfg.paths.output_dir = str(output_dir)
+    # set default scale factors to this value. 
+    cfg.dataset.scale_factors = [ 2,2,2,2 ]
+
+    if str(path_zarr).endswith(".zarr"):
+        cfg.paths.sdata = str(path_zarr)
+        cfg.dataset.image = cfg.paths.sdata
+    elif path_image:
+        cfg.paths.sdata = os.path.join(cfg.paths.output_dir, "sdata.zarr")
+        cfg.dataset.image = path_image
+    else:
+        raise ValueError(
+            "Please provide either a path to a zarr store 'path_zarr', or an image 'path_image'"
+        )
 
     crd = [x_min, x_max, y_min, y_max]
     crd = [0 if val == "" else int(val) for val in crd]
 
     # TODO fix this. Should Replace None values with 0/size of image in create_sdata function
-    if sum( crd )==0:
-        crd=None
+    if sum(crd) == 0:
+        crd = None
 
     cfg.dataset.crop_param = crd
-    cfg.dataset.image = path_image
 
-    pipeline = SparrowPipeline(cfg)
+    pipeline = SparrowPipeline(cfg, image_name=image_layer)
 
     fn_kwargs: Dict[str, Any] = {"pipeline": pipeline}
 
@@ -109,9 +127,15 @@ def load_widget(
 
         offset_x, offset_y = _get_translation(sdata[pipeline.loaded_image_name])
 
+        if isinstance(sdata[pipeline.loaded_image_name], MultiscaleSpatialImage):
+            raster = utils._get_raster_multiscale(sdata[pipeline.loaded_image_name])
+        else:
+            raster = sdata[pipeline.loaded_image_name]
+
         # Translate image to appear on selected region
         viewer.add_image(
-            sdata[pipeline.loaded_image_name].data.squeeze(),
+            raster,
+            rgb=False,
             translate=[
                 offset_y,
                 offset_x,
@@ -120,8 +144,9 @@ def load_widget(
         )
 
         viewer.layers[layer_name].metadata["pipeline"] = pipeline
+        viewer.layers[layer_name].metadata["sdata"] = sdata
 
-        log.info(f"Added { layer_name } layer")
+        log.info(f"Added '{ layer_name }' layer")
 
         show_info("Loading finished")
 

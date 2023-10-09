@@ -1,6 +1,5 @@
-from napari_sparrow.utils._singletons import get_ic
 from napari_sparrow.utils.pylogger import get_pylogger
-from napari_sparrow.utils.utils import ic_to_da, parse_subset, _get_polygons_in_napari_format, extract, _export_config
+from napari_sparrow.utils.utils import _get_polygons_in_napari_format, _export_config, _get_raster_multiscale
 
 LOAD = "raw_image"
 IMAGE = "image"

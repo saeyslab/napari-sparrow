@@ -14,6 +14,7 @@ import napari.types
 import napari.utils
 import numpy as np
 from magicgui import magic_factory
+from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
 from spatialdata import SpatialData, read_zarr
@@ -79,7 +80,7 @@ def clean_widget(
     pipeline = viewer.layers[utils.LOAD].metadata["pipeline"]
 
     # need to load it back from zarr store, because otherwise not able to overwrite it
-    sdata = read_zarr(os.path.join(pipeline.cfg.paths.output_dir, "sdata.zarr"))
+    sdata = read_zarr(pipeline.cfg.paths.sdata)
 
     pipeline.cfg.clean.tilingCorrection = tiling_correction_step
     pipeline.cfg.clean.tile_size = tile_size
@@ -98,10 +99,10 @@ def clean_widget(
 
         coordinates = np.array(subset.data[0])
         crd = [
+            int(coordinates[:, 2].min()),
+            int(coordinates[:, 2].max()),
             int(coordinates[:, 1].min()),
             int(coordinates[:, 1].max()),
-            int(coordinates[:, 0].min()),
-            int(coordinates[:, 0].max()),
         ]
 
         pipeline.cfg.clean.crop_param = crd
@@ -110,6 +111,9 @@ def clean_widget(
         pipeline.cfg.clean.crop_param = None
 
     pipeline.cfg.clean.small_size_vis = pipeline.cfg.clean.crop_param
+
+    if pipeline.cfg.clean.crop_param is None:
+        pipeline.cfg.clean.small_size_vis = [0, 20000, 0, 20000]
 
     fn_kwargs: Dict[str, Any] = {
         "pipeline": pipeline,
@@ -131,9 +135,15 @@ def clean_widget(
 
         offset_x, offset_y = _get_translation(sdata[pipeline.cleaned_image_name])
 
+        if isinstance(sdata[pipeline.cleaned_image_name], MultiscaleSpatialImage):
+            raster = utils._get_raster_multiscale(sdata[pipeline.cleaned_image_name])
+        else:
+            raster = sdata[pipeline.cleaned_image_name]
+
         # Translate image to appear on selected region
         viewer.add_image(
-            sdata[pipeline.cleaned_image_name].data.squeeze(),
+            raster,
+            rgb=False,
             translate=[
                 offset_y,
                 offset_x,

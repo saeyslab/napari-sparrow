@@ -87,7 +87,7 @@ def segment_widget(
     pipeline = viewer.layers[utils.CLEAN].metadata["pipeline"]
 
     # need to load it back from zarr store, because otherwise not able to overwrite it
-    sdata=read_zarr( os.path.join( pipeline.cfg.paths.output_dir, "sdata.zarr" ))
+    sdata = read_zarr(pipeline.cfg.paths.sdata)
 
     if image.name == utils.CLEAN:
         log.info( f"Running segmentation on image layer '{utils.CLEAN}', "
@@ -114,10 +114,10 @@ def segment_widget(
 
         coordinates = np.array(subset.data[0])
         crd = [
+            int(coordinates[:, 2].min()),
+            int(coordinates[:, 2].max()),
             int(coordinates[:, 1].min()),
             int(coordinates[:, 1].max()),
-            int(coordinates[:, 0].min()),
-            int(coordinates[:, 0].max()),
         ]
 
         pipeline.cfg.segmentation.crop_param = crd

@@ -36,7 +36,7 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     _run_event_loop_until_worker_finishes(worker)
 
     assert "Finished creating sdata" in caplog.text
-    assert f"Added {utils.LOAD}" in caplog.text
+    assert f"Added '{utils.LOAD}'" in caplog.text
 
     # Start clean widget
     _clean_widget = clean_widget()

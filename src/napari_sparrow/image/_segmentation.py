@@ -1,4 +1,4 @@
-import itertools
+from itertools import product
 from types import MappingProxyType
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
@@ -174,9 +174,11 @@ class SegmentationModel:
         # crd is specified on original uncropped pixel coordinates
         # need to substract possible translation, because we use crd to crop dask array, which does not take
         # translation into account
-        if crd:
+        if crd is not None:
             crd = _substract_translation_crd(se, crd)
-            x = x[crd[2] : crd[3], crd[0] : crd[1], :]
+            if crd is not None:
+                x = x[crd[2] : crd[3], crd[0] : crd[1], :]
+                x = x.rechunk(x.chunksize)
 
         x_labels = self._segment(
             x,
@@ -186,7 +188,7 @@ class SegmentationModel:
 
         tx, ty = _get_translation(se)
 
-        if crd:
+        if crd is not None:
             tx = tx + crd[0]
             ty = ty + crd[2]
 
@@ -423,15 +425,19 @@ def _clean_up_masks(
 
 
 def _trim_masks(masks: Array, depth: Dict[int, int]) -> Array:
-    # now create final array
-    chunk_coords = list(
-        itertools.product(
-            *[range(0, s, cs) for s, cs in zip(masks.shape, masks.chunksize)]
-        )
-    )
-    chunk_ids = [
-        (y // masks.chunksize[0], x // masks.chunksize[1]) for (y, x) in chunk_coords
-    ]
+    def _chunks_to_coordinates_and_ids(
+        chunks: Tuple[Tuple[int, ...], Tuple[int, ...]]
+    ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+        # Calculate the starting coordinate for each chunk using cumulative sum
+        x_coords = np.cumsum(chunks[0]) - chunks[0]
+        y_coords = np.cumsum(chunks[1]) - chunks[1]
+
+        coordinates = [(x, y) for x, y in product(x_coords, y_coords)]
+        ids = [(i, j) for i, j in product(range(len(x_coords)), range(len(y_coords)))]
+
+        return coordinates, ids
+
+    chunk_coords, chunk_ids = _chunks_to_coordinates_and_ids(masks.chunks)
 
     chunks = _substract_depth_from_chunks_size(masks.chunks, depth=depth)
 
@@ -473,6 +479,8 @@ def _trim_masks(masks: Array, depth: Dict[int, int]) -> Array:
                 x_offset : x_offset + chunk.shape[1],
             ],
         )
+
+    masks_trimmed = masks_trimmed.rechunk(masks_trimmed.chunksize)
 
     return masks_trimmed
 

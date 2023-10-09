@@ -5,42 +5,13 @@ from typing import Any, List
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import squidpy as sq
-from anndata import AnnData
 from geopandas import GeoDataFrame
+from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
 from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
 from shapely.geometry import LineString, MultiLineString
-
-
-def parse_subset(subset):
-    """
-    e.g $ sparrow subset=\'0:100,0:100\'
-    >>> parse_subset('0:100,0:100')
-    return left corner and size ([0, 0], [100, 100])
-
-    """
-    left_corner = []
-    size = []
-    for x in subset.split(","):
-        left_corner.append(int(x.split(":")[0]))
-        size.append(int(x.split(":")[1]) - left_corner[-1])
-    return left_corner, size
-
-
-def ic_to_da(
-    ic, label="image", drop_dims=["z", "channels"], reduce_z=None, reduce_c=None
-):
-    """
-    Convert ImageContainer to dask array.
-    ImageContainer defaults to (x, y, z, channels (c if using xarray format)), most of the time we need just (x, y)
-    The c channel will be named c:0 after segmentation.
-    """
-    if reduce_z or reduce_c:
-        # TODO solve c:0 output when doing .isel(z=reduce_z, c=reduce_c)
-        return ic[label].isel({"z": reduce_z, "c:0": 0}).data
-    else:
-        return ic[label].squeeze(dim=drop_dims).data
+from spatialdata.models import get_axes_names
+from xarray import DataArray
 
 
 def linestring_to_arrays(geometries):
@@ -91,25 +62,28 @@ def _swap_coordinates(data: list[Any]) -> list[Any]:
     return [[(y, x) for x, y in sublist] for sublist in data]
 
 
-##TODO:rewrite this function
-def extract(ic: sq.im.ImageContainer, adata: AnnData) -> AnnData:
-    """This function performs segmentation feature extraction and adds cell area and mean intensity to the annData object under obsm segmentation_features."""
-    sq.im.calculate_image_features(
-        adata,
-        ic,
-        layer="raw",
-        features="segmentation",
-        key_added="segmentation_features",
-        features_kwargs={
-            "segmentation": {
-                "label_layer": "segment_cellpose",
-                "props": ["label", "area", "mean_intensity"],
-                "channels": [0],
-            }
-        },
-    )
+def _get_raster_multiscale(element: MultiscaleSpatialImage) -> list[DataArray]:
+    if not isinstance(element, MultiscaleSpatialImage):
+        raise TypeError(f"Unsupported type for images or labels: {type(element)}")
 
-    return adata
+    axes = get_axes_names(element)
+
+    if "c" in axes:
+        assert axes.index("c") == 0
+
+    # sanity check
+    scale_0 = element.__iter__().__next__()
+    v = element[scale_0].values()
+    assert len(v) == 1
+
+    list_of_xdata = []
+    for k in element:
+        v = element[k].values()
+        assert len(v) == 1
+        xdata = v.__iter__().__next__()
+        list_of_xdata.append(xdata)
+
+    return list_of_xdata
 
 
 def color(_) -> matplotlib.colors.Colormap:

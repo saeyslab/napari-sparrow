@@ -92,7 +92,7 @@ def allocate_widget(
         )
 
     # need to load it back from zarr store, because otherwise not able to overwrite it
-    sdata = read_zarr(os.path.join(pipeline.cfg.paths.output_dir, "sdata.zarr"))
+    sdata = read_zarr(pipeline.cfg.paths.sdata)
 
     # need to add original unfiltered shapes to sdata object at the beginning of the allocation step.
     # otherwise polygons that were filtered out would not be available any more if you do a rerun of the allocation step.

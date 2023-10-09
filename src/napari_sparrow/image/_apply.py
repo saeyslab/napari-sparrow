@@ -193,7 +193,7 @@ def apply(
             raise ValueError(
                 f"Array is of dimension {arr.shape}, currently only 2D images are supported."
             )
-        if crd:
+        if crd is not None:
             arr = arr[crd[2] : crd[3], crd[0] : crd[1]]
         # passing correct value from fn_kwargs to apply_func
         arr = apply_func(func, arr, _fn_kwargs)
