@@ -548,12 +548,16 @@ class SparrowPipeline:
             output=self.cfg.paths.cluster_cleanliness,
         )
 
-        # calculate nhood enrichment
-        sdata = nas.tb.nhood_enrichment(sdata)
-        nas.pl.nhood_enrichment(
-            sdata,
-            output=self.cfg.paths.nhood,
-        )
+        # squidpy sometimes fails calculating/plotting nhood enrichement if a too small region is selected, therefore try add a try except.
+        try:
+            # calculate nhood enrichment
+            sdata = nas.tb.nhood_enrichment(sdata)
+            nas.pl.nhood_enrichment(
+                sdata,
+                output=self.cfg.paths.nhood,
+            )
+        except ValueError as e:
+            log.warning(f"Could not calculate nhood enrichment for this region. Reason: {e}. Try with a different area if a subset was selected.")
 
         return sdata
 

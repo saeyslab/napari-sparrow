@@ -9,4 +9,4 @@ from . import image as im
 from . import shape as sh
 from . import table as tb
 from . import plot as pl
-from . import utils   # TODO do we want to keep utils? do we want to make utils actually _utils to indicate it is not guaranteed to be stable?
+from . import utils

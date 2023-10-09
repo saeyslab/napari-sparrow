@@ -133,7 +133,6 @@ def clean_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        # TODO check why fails for pipeline.loaded_image_name
         offset_x, offset_y = _get_translation(sdata[pipeline.cleaned_image_name])
 
         if isinstance(sdata[pipeline.cleaned_image_name], MultiscaleSpatialImage):
