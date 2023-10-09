@@ -110,7 +110,8 @@ def create_sdata(
         if output_path is not None:
             sdata.write(output_path)
 
-        if crd:
+        if crd is not None:
+            crd = _fix_crd(crd, dask_array)
             tx = crd[0]
             ty = crd[2]
 
@@ -294,3 +295,21 @@ def _fix_dimensions(
     array = array.transpose(*target_order)
 
     return array
+
+
+def _fix_crd(
+    crd: Tuple[int, int, int, int], arr: da.Array
+) -> Tuple[int, int, int, int]:
+    x1, x2, y1, y2 = crd
+
+    # dask array has dimension c,y,x
+    # Get the shape of the array
+    _, max_y, max_x = arr.shape
+
+    # Update the coordinates based on the conditions
+    x1 = 0 if x1 is None else x1
+    y1 = 0 if y1 is None else y1
+    x2 = max_x if x2 is None else x2
+    y2 = max_y if y2 is None else y2
+
+    return (x1, x2, y1, y2)

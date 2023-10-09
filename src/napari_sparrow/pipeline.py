@@ -88,7 +88,7 @@ class SparrowPipeline:
                 return sdata
             else:
                 raise ValueError(
-                    "Currently only zarr's of type SpatialData are supported"
+                    "Currently only zarr's of type SpatialData are supported."
                 )
 
         else:

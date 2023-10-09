@@ -98,11 +98,7 @@ def load_widget(
         )
 
     crd = [x_min, x_max, y_min, y_max]
-    crd = [0 if val == "" else int(val) for val in crd]
-
-    # TODO fix this. Should Replace None values with 0/size of image in create_sdata function
-    if sum(crd) == 0:
-        crd = None
+    crd = [None if val == "" else int(val) for val in crd]
 
     cfg.dataset.crop_param = crd
 
