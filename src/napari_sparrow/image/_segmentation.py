@@ -425,7 +425,9 @@ def _clean_up_masks(
 
 
 def _trim_masks(masks: Array, depth: Dict[int, int]) -> Array:
-    def _chunks_to_coordinates_and_ids(chunks: Tuple[Tuple[int, ...], Tuple[int, ...]]):
+    def _chunks_to_coordinates_and_ids(
+        chunks: Tuple[Tuple[int, ...], Tuple[int, ...]]
+    ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
         # Calculate the starting coordinate for each chunk using cumulative sum
         x_coords = np.cumsum(chunks[0]) - chunks[0]
         y_coords = np.cumsum(chunks[1]) - chunks[1]
