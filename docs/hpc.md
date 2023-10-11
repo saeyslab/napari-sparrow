@@ -1,10 +1,6 @@
 # High Performance Computing
 
-Running in a cluster environment is complicated.
-We support the HPC environment of [VSC](https://www.ugent.be/hpc/en).
-It uses [EasyBuild](https://docs.easybuild.io/en/latest/) for software installation and [SLURM](https://slurm.schedmd.com/documentation.html) for workload managment.
-
-For basic HPC setup, follow the [manual](https://www.ugent.be/hpc/en/support/documentation.htm) of your HPC administration.
+For basic HPC setup, follow the manual of your HPC administration.
 
 ## Setup your environment on the cluster
 
@@ -17,8 +13,7 @@ hpc$ ml switch cluster/slaking
 hpc$ ml load CUDA
 hpc$ mamba env update -f environment.yml
 hpc$ conda activate napari-sparrow
-hpc$ pip install -e .
-hpc$ pip install hydra-submitit-launcher
+hpc$ pip install -e ".[cli]"
 ```
 
 If you do not have your data yet on the HPC, Rsync your local data folder to the hpc and possibly symlink it to your project folder in VS Code.
@@ -29,7 +24,7 @@ hpc$ ln -s /path/to/data/folder ./
 
 ## HPC config
 
-Follow the instructions as given in the [README.md](../README.md), in the section *(Hydra) CLI*. Please update the `configs/default.yaml` file in the configs folder downloaded locally (we assume this path is `/Path/to/local/configs` in the remainder of this document):
+Follow the instructions as given in the [usage.md](usage.md), in the section *(Hydra) CLI*. Please update the `configs/default.yaml` file in the configs folder downloaded locally (we assume this path is `/Path/to/local/configs` in the remainder of this document):
 
 
 ```yaml

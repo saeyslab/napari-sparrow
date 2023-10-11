@@ -25,7 +25,7 @@ def preprocess_anndata(
     sdata : SpatialData
         The input SpatialData object.
     shapes_layer : str, optional
-        The shapes_layer of the SpatialData object that will be used to calculate nucleus size for normalization
+        The shapes_layer of `sdata` that will be used to calculate nucleus size for normalization
         (or cell size if shapes_layer holds cell shapes).
         If not specified, the last shapes layer is chosen.
     min_counts : int, default=10
@@ -40,7 +40,7 @@ def preprocess_anndata(
     Returns
     -------
     SpatialData
-        The preprocessed SpatialData object containg the preprocessed AnnData object as an attribute (sdata.table).
+        The preprocessed `sdata` containg the preprocessed AnnData object as an attribute (sdata.table).
 
     Notes
     -----

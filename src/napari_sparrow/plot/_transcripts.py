@@ -160,7 +160,7 @@ def transcript_density(
 
     This function wraps around the `plot_shapes` function to showcase transcript density.
 
-    Parameters:
+    Parameters
     ----------
     sdata: SpatialData
         Data containing spatial information for plotting.
@@ -177,7 +177,7 @@ def transcript_density(
     output: Optional[str | Path], default=None
         Path to save the output image. If None, the image will not be saved and will be displayed instead.
 
-    Returns:
+    Returns
     -------
     None
 

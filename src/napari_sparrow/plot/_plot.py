@@ -70,6 +70,7 @@ def plot_shapes(
     The number of provided 'img_layer' and 'shapes_layer' should be equal if both are iterables and if their length is greater than 1.
 
     Examples:
+    
     1. For `img_layer=['raw_image', 'clahe']` and `shapes_layer=['segmentation_mask_boundaries', 'expanded_cells20']`:
     Subplots:
     - Column 1: 'raw_image' with 'segmentation_mask_boundaries'
@@ -117,11 +118,11 @@ def plot_shapes(
     output : str or Path, optional
         Path to save the plot. If not provided, plot will be displayed.
     **kwargs : dict
-        Additional arguments to be passed to the internal _plot_shapes function.
+        Additional arguments to be passed to the internal `_plot_shapes` function.
 
     Notes
     -----
-    - This function offers advanced visualization options for spatial data with support for multiple image layers, shape layers, and channels.
+    - This function offers advanced visualization options for `sdata` with support for multiple image layers, shape layers, and channels.
     """
     # need this to be able to determine the number of channels if channels would be None
     if img_layer is None:
