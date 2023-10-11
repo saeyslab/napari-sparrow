@@ -25,20 +25,14 @@ https://napari.org/plugins/index.html
 
 ## Installation
 
-There are three different installation methods:
+There are two different installation methods:
 
-1. Using the napari plugin installer (TODO)
-```
-napari > Plugins > Install/Uninstall Plugins... > Filter on 'napari-sparrow'
-Click 'Install' button next to the plugin
-```
-
-2. Using the Python package manager pip (TODO)
+1. Using the Python package manager pip (TODO)
 ```
 pip install napari-sparrow
 ```
 
-3. Installation from sources
+2. Installation from source
 
 First clone this GitHub repo and set it as the current directory:
 ```bash
@@ -47,7 +41,6 @@ cd napari-sparrow
 ```
 
 Depending on your hardware, you may need to adapt the Conda `environment.yml` file as follows:
-- For GPU support other than CUDA, comment out the `cudatoolkit` line in `environment.yml` and follow the [PyTorch](https://pytorch.org/get-started/locally/) instructions.
 - On Windows comment out the line `basicpy==1.0.0`. We will install `basicpy` manually, see below.
 
 Now create the conda environment
@@ -71,11 +64,47 @@ Finally, install `napari-sparrow`
 pip install -e .
 ```
 
+## Additional dependencies
+
+To use the plugin, run
+
+```bash
+pip install "napari-sparrow[plugin]"
+```
+
+or when build from source:
+
+```bash
+pip install -e ".[plugin]"
+```
+
+To run `sparrow` from the `cli`:
+
+```bash
+pip install "napari-sparrow[cli]"
+```
+
+or when build from source:
+
+```bash
+pip install -e ".[cli]"
+```
+
+
 ## Input data
 
-Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.irc.ugent.be/public/index.php/s/HrXG9WKqjqHBEzS). The dataset used in the examples is mouse liver A1-1. Please download the DAPI-stained image and the txt file.
+Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.irc.ugent.be/public/index.php/s/HrXG9WKqjqHBEzS). The dataset used in the examples is mouse liver A1-1. Please download the DAPI-stained image and the .txt file.
 
 ## Usage
+
+### Jupyter notebooks
+
+Check the notebooks in `experiments`.
+
+### napari
+You can run the plugin by first starting napari, and starting the plugin from napari's menu bar: `napari > Plugins > napari-sparrow`.
+
+Use the plugin to tune the parameters of sparrow for the different steps of the pipeline. Tuning can be done on small crops of the image. After every step, a corresponding configuration *.yaml* file will be saved in the output directory chosen by the user. We refer to the [hpc](docs/hpc.md) documentation for information on how to use these generated configuration files via the CLI.
 
 ### (Hydra) CLI
 
@@ -131,18 +160,10 @@ The default values for all parameters for each step of the pipeline can be found
 
 For more info on configuring experiments, we refer to the [hpc](docs/hpc.md) documentation.
 
-### napari
-You can run the plugin by first starting napari, and starting the plugin from napari's menu bar: `napari > Plugins > napari-sparrow`.
-
-Use the plugin to tune the parameters of sparrow for the different steps of the pipeline. Tuning can be done on small crops of the image. After every step, a corresponding configuration *.yaml* file will be saved in the output directory chosen by the user. We refer to the [hpc](docs/hpc.md) documentation for information on how to use these generated configuration files via the CLI.
-
-### Jupyter notebooks
-
-Check the notebooks in `experiments`, they also can import the Hydra configs.
 
 ## Contributing
 
-Find more information and development instructions in the `docs/` folder.
+Find more information and instructions in the `docs/` folder.
 
 ## References
 
