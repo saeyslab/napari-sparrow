@@ -63,8 +63,10 @@ conda activate napari-sparrow
 On Windows one must manually install `basicpy` and `jax` as follows:
 ```
 pip install "jax[cpu]===0.4.10" -f https://whls.blob.core.windows.net/unstable/index.html --use-deprecated legacy-resolver
+pip install ml_dtypes==0.2.0
 pip install basicpy==1.0.0
 ```
+The manual installation of ml_dtypes used by jax is needed because of [this issue](https://developer.apple.com/forums/thread/737890).
 
 Finally, install `napari-sparrow`
 ```
