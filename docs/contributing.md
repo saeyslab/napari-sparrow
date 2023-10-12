@@ -9,7 +9,7 @@ git clone https://github.com/saeyslab/napari-sparrow.git
 cd napari-sparrow
 ```
 
-Then set up a conda virtual environment and install the plugin. For GPU support other than CUDA, comment out the `cudatoolkit` line in `environment.yml` and follow the [PyTorch](https://pytorch.org/get-started/locally/) instructions.
+Then set up a conda virtual environment and install the `napari-sparrow`.
 
 ```bash
 # or Conda
@@ -18,15 +18,7 @@ conda env create -f environment.yml
 mamba env update -f environment.yml --prune
 
 conda activate napari-sparrow
-pip install -e '.[testing]'
-```
-
-Use a local data folder at `data/` or point to a different location by overwriting `paths.data_dir` using the CLI (`... paths.data_dir=/srv/scratch/data/spatial/`) or using an untracked local config at `configs/local/default.yaml`:
-```yaml
-# @package _global_
-
-paths:
-  data_dir: /srv/scratch/data/spatial/
+pip install -e '.[testing,docs]'
 ```
 
 This development environment is supported for:
@@ -35,12 +27,20 @@ This development environment is supported for:
 - MacOS 12.3 with an M1 Pro
 
 ## Testing
-### Script testing
-In order to run the test suite, we use the package pytest. The config file is part of `pyproject.yaml` and specifies the paths of the folders and files to be tested.
-You can run all tests by executing the command ```pytest``` in the root of the project.
-The default configuration uses `-n=auto` for parallel testing.
-Test certain notebooks as well using the option `pytest --nbmake`.
-In order to get detail error readings and logs of the test, execute ```pytest -rx```.
+
+To run unit tests for the pipeline, run the following from the root of the project:
+
+```bash
+pytest src/napari_sparrow/_tests/test_pipeline.py
+```
+
+And to run unit tests for the plugin:
+
+```bash
+pytest src/napari_sparrow/_tests/test_widget.py
+```
+
+Continuous integration will automatically run the tests on all pull requests.
 
 ### Type testing
 Do a type test:
@@ -55,7 +55,6 @@ Install a pre-commit hook to run all configured checks in `.pre-commit-config.ya
 pre-commit install
 pre-commit run -a
 ```
-
 
 ## Debugging
 

@@ -21,6 +21,7 @@ def score_genes(
 ) -> None:
     """
     Function generates following plots:
+    
     - umap of assigned celltype next to umap of calculated cleanliness.
     - umap of assigned celltype next to umap of assigned leiden cluster.
     - assigned celltype for all cells in region of interest (crd).

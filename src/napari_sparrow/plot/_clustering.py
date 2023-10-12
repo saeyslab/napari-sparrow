@@ -22,10 +22,6 @@ def cluster(sdata: SpatialData, output: Optional[str] = None) -> None:
     Returns
     -------
     None
-
-    See Also
-    --------
-    - tl.cluster : Calculate clustering and differential gene expression.
     """
 
     # Plot Leiden clusters on a UMAP

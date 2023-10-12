@@ -44,22 +44,34 @@ def create_sdata(
 
     The input parameter can be formatted in four ways:
 
-    - A path to a single image, either grayscale or multiple channels.
-        Examples:
-        input=DAPI_z3.tif -> single channel
-        input=DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
-    - A pattern representing a collection of z-stacks (if this is the case, a z-projection
-    is performed which selects the maximum intensity value across the z-dimension).
-        Examples:
-        input=DAPI_z*.tif -> z-projection performed
-        input=DAPI_Poly_z*.tif -> z-projection performed
-    - A list of filename patterns (where each list item corresponds to a different channel)
-        Examples
-        input=[ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
-        input[ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
-    - A single numpy or dask array. The dims parameter should specify its dimension, e.g. ['y','x']
-    for a 2D array or [ 'c', 'y', 'x', 'z' ] for a 4D array with channels.
-    If a z-dimension >1 is present, a z-projection is performed.
+    - Path to a single image, either grayscale or multiple channels.
+
+      Examples:
+
+      input=DAPI_z3.tif -> single channel
+
+      input=DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
+
+    - Pattern representing a collection of z-stacks 
+      (if this is the case, a z-projection is performed which selects the maximum intensity value across the z-dimension).
+
+      Examples:
+
+      input=DAPI_z*.tif -> z-projection performed
+
+      input=DAPI_Poly_z*.tif -> z-projection performed
+
+    - List of filename patterns (where each list item corresponds to a different channel)
+
+      Examples:
+
+      input=[ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
+
+      input[ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
+
+    - Single numpy or dask array. 
+      The dims parameter should specify its dimension, e.g. ['y','x'] for a 2D array or 
+      [ 'c', 'y', 'x', 'z' ] for a 4D array with channels. If a z-dimension >1 is present, a z-projection is performed.
 
     Parameters
     ----------
@@ -89,7 +101,7 @@ def create_sdata(
     Returns
     -------
     SpatialData
-        The constructed SpatialData object containing image layer with name 'layer_name' with dimension (c,y,x)
+        The constructed SpatialData object containing image layer with name 'img_layer' with dimension (c,y,x)
 
     Notes
     -----
