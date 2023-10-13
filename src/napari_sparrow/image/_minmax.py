@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Iterable, List, Optional, Tuple
 
 from dask.array import Array

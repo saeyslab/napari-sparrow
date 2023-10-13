@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -6,7 +8,8 @@ from dask.array import Array
 from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
 from spatial_image import SpatialImage
 from spatialdata import SpatialData
-from spatialdata.models import SpatialElement
+from geopandas import GeoDataFrame
+from dask.dataframe import DataFrame as DaskDataFrame
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import BaseTransformation, Translation, Identity
 from spatialdata.transformations._utils import (
@@ -58,21 +61,22 @@ def _get_boundary(
 def _get_translation(
     spatial_image: Union[SpatialImage, MultiscaleSpatialImage, DataArray]
 ) -> Tuple[float, float]:
-    
-    translation=_get_transformation(spatial_image)
+    translation = _get_transformation(spatial_image)
 
-    if not isinstance(  translation, (Translation, Identity) ):
-            raise ValueError( f"Currently only transformations of type Translation are supported, "
-                                f"while transformation associated with {spatial_image} is of type {type(translation)}.")
-
-    return _get_translation_values( translation )
-
-    
-def _get_translation_values( translation: Union[Translation, Identity]):
-    transform_matrix=translation.to_affine_matrix(
-            input_axes=("x", "y"), output_axes=("x", "y")
+    if not isinstance(translation, (Translation, Identity)):
+        raise ValueError(
+            f"Currently only transformations of type Translation are supported, "
+            f"while transformation associated with {spatial_image} is of type {type(translation)}."
         )
-    
+
+    return _get_translation_values(translation)
+
+
+def _get_translation_values(translation: Union[Translation, Identity]):
+    transform_matrix = translation.to_affine_matrix(
+        input_axes=("x", "y"), output_axes=("x", "y")
+    )
+
     if (
         transform_matrix[0, 0] == 1.0
         and transform_matrix[0, 1] == 0.0
@@ -139,14 +143,16 @@ def _get_spatial_element(
         # get the name of the unscaled image
         # TODO maybe add some other checks here
         scale_0 = si.__iter__().__next__()
-        name=si[scale_0].__iter__().__next__()
+        name = si[scale_0].__iter__().__next__()
         return si[scale_0][name]
     else:
         raise ValueError(f"Not implemented for layer '{layer}' of type {type(si)}.")
 
 
 def _get_transformation(
-    element: Union[SpatialElement, DataArray],
+    element: Union[
+        SpatialImage, MultiscaleSpatialImage, GeoDataFrame, DaskDataFrame, DataArray
+    ],
     to_coordinate_system: Optional[str] = None,
     get_all: bool = False,
 ) -> Union[BaseTransformation, dict[str, BaseTransformation]]:
@@ -176,7 +182,9 @@ def _get_transformation(
     """
     from spatialdata.models._utils import DEFAULT_COORDINATE_SYSTEM
 
-    if isinstance(element, SpatialElement):
+    if isinstance(
+        element, (SpatialImage, MultiscaleSpatialImage, GeoDataFrame, DaskDataFrame)
+    ):
         transformations = _get_transformations(element)
     elif isinstance(element, DataArray):
         transformations = _get_transformations_xarray(element)
@@ -218,6 +226,7 @@ def _add_image_layer(
     )
 
     return sdata
+
 
 def _add_label_layer(
     sdata: SpatialData,
