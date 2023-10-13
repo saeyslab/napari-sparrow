@@ -1,11 +1,11 @@
+from __future__ import annotations
+
 from itertools import product
 from types import MappingProxyType
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import dask.array as da
 import numpy as np
-import torch
-from cellpose import models
 from dask.array import Array
 from dask.array.overlap import coerce_depth, ensure_minimum_chunksize
 from numpy.typing import NDArray
@@ -13,12 +13,14 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation
 
+
 from napari_sparrow.image._image import (
     _add_label_layer,
     _get_spatial_element,
     _get_translation,
     _substract_translation_crd,
 )
+from napari_sparrow.image.segmentation_models._cellpose import _cellpose as _model
 from napari_sparrow.shape._shape import _add_shapes_layer
 from napari_sparrow.utils.pylogger import get_pylogger
 
@@ -26,34 +28,10 @@ log = get_pylogger(__name__)
 
 _SEG_DTYPE = np.uint32
 
-
-def _cellpose(
-    img: NDArray,
-    min_size: int = 80,
-    cellprob_threshold: int = 0,
-    flow_threshold: float = 0.6,
-    diameter: int = 55,
-    model_type: str = "nuclei",
-    channels: List[int] = [0, 0],
-    device: str = "cpu",
-) -> NDArray:
-    gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
-    model = models.Cellpose(gpu=gpu, model_type=model_type, device=torch.device(device))
-    masks, _, _, _ = model.eval(
-        img,
-        diameter=diameter,
-        channels=channels,
-        min_size=min_size,
-        flow_threshold=flow_threshold,
-        cellprob_threshold=cellprob_threshold,
-    )
-    return masks
-
-
 def segment(
     sdata: SpatialData,
     img_layer: Optional[str] = None,
-    model: Callable[..., NDArray] = _cellpose,
+    model: Callable[..., NDArray] = _model,
     output_labels_layer: str = "segmentation_mask",
     output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
     depth: Tuple[int, int] = (100, 100),
@@ -76,7 +54,8 @@ def segment(
     img_layer : Optional[str], default=None
         The image layer in `sdata` to be segmented. If not provided, the last image layer in `sdata` is used.
     model : Callable[..., NDArray], default=_cellpose
-        The segmentation model function used to process the images.
+        The segmentation model function used to process the images. 
+        Should take as input arrays of dimension (y,x,c) and return labels of dimension (y,x)
     output_labels_layer : str, default="segmentation_mask"
         Name of the label layer in which segmentation results will be stored in `sdata`.
     output_shapes_layer : Optional[str], default="segmentation_mask_boundaries"
