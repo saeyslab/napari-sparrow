@@ -11,10 +11,10 @@ except ImportError:
     DEEPCELL_AVAILABLE = False
 
 if DEEPCELL_AVAILABLE:
+    # download model weights from https://deepcell-data.s3-us-west-1.amazonaws.com/saved-models/MultiplexSegmentation-9.tar.gz
     app = Mesmer()
 else:
     app = None
-
 
 def _mesmer(
     img: NDArray,
