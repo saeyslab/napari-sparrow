@@ -114,7 +114,8 @@ def combine(
                 f"Array is of dimension {arr.shape}, currently only 2D images are supported."
             )
         if crd is not None:
-            arr = arr[crd[2] : crd[3], crd[0] : crd[1]]
+            arr = arr[:,crd[2] : crd[3], crd[0] : crd[1]]
+            arr=arr.rechunk( arr.chunksize )
         arr = arr.sum(axis=0)
         arr = arr[None, ...]
         return arr
