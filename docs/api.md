@@ -48,6 +48,7 @@ Operations on images.
     im.min_max_filtering
     im.segment
     im.transcript_density
+    im.combine
 ```
 
 ## Shape
