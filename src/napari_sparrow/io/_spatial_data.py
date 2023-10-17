@@ -33,6 +33,7 @@ def create_sdata(
     dims: Optional[List[str]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
+    c_coords: Optional[List[str]] = None
 ) -> SpatialData:
     """
     Convert input images or arrays into a SpatialData object.
@@ -75,7 +76,7 @@ def create_sdata(
 
     Parameters
     ----------
-    input : Union[str, Path, List[Union[str, Path]]]
+    input : Union[str, Path, np.ndarray, da.Array, List[Union[str, Path, np.ndarray, da.Array]]]
         The filename pattern, path or list of filename patterns to the images that
         should be loaded. In case of a list, each list item should represent a different
         channel, and each image corresponding to a filename pattern should represent.
@@ -97,6 +98,11 @@ def create_sdata(
         SpatialData object.
     scale_factors
         Scale factors to apply for multiscale.
+    c_coords : Optional[List[str]]
+        Names of the channels in the input image. This is useful if the input image data is specified as an array,
+        if the image does not have channel names metadata, or if sparrow does not support reading channel names
+        from the input image files. If c_coords is provided, it will replace channel names metadata
+        that was read from the input image files.
 
     Returns
     -------
@@ -139,6 +145,7 @@ def create_sdata(
             chunks=chunks,
             transformation=translation,
             scale_factors=scale_factors,
+            c_coords=c_coords,
             overwrite=False,
         )
 

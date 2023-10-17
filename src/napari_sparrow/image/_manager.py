@@ -2,7 +2,7 @@ import os
 import shutil
 import uuid
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import spatialdata
 from dask.array import Array
@@ -26,6 +26,7 @@ class LayerManager(ABC):
         chunks: Optional[str | Tuple[int, ...] | int] = None,
         transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
         scale_factors: Optional[ScaleFactors_t] = None,
+        c_coords: Optional[List[str]] = None,
         overwrite: bool = False,
     ) -> SpatialData:
         self.arr = arr
@@ -34,6 +35,7 @@ class LayerManager(ABC):
         self.transformation = transformation
         self.scale_factors = scale_factors
         self.overwrite = overwrite
+        self.c_coords = c_coords
 
         self.validate_input()
 
@@ -45,6 +47,7 @@ class LayerManager(ABC):
                     dims=self.get_dims(),
                     scale_factors=None,
                     chunks=self.chunks,
+                    c_coords=self.c_coords
                 )
                 if self.transformation:
                     set_transformation(spatial_element, self.transformation)
@@ -75,6 +78,7 @@ class LayerManager(ABC):
             dims=self.get_dims(),
             scale_factors=self.scale_factors,
             chunks=self.chunks,
+            c_coords=self.c_coords
         )
 
         if self.transformation:
@@ -114,6 +118,7 @@ class LayerManager(ABC):
         dims: Tuple[int, ...],
         scale_factors: Optional[ScaleFactors_t] = None,
         chunks: Optional[str | Tuple[int, ...] | int] = None,
+        c_coords: Optional[List[str]] = None
     ) -> Union[SpatialImage, MultiscaleSpatialImage]:
         pass
 
@@ -163,9 +168,10 @@ class ImageLayerManager(LayerManager):
         dims: Tuple[str, str, str],
         scale_factors: Optional[ScaleFactors_t] = None,
         chunks: Optional[str | Tuple[int, int, int] | int] = None,
+        c_coords: Optional[List[str]] = None
     ) -> Union[SpatialImage, MultiscaleSpatialImage]:
         return spatialdata.models.Image2DModel.parse(
-            arr, dims=dims, scale_factors=scale_factors, chunks=chunks
+            arr, dims=dims, scale_factors=scale_factors, chunks=chunks, c_coords=c_coords
         )
 
     def get_dims(self) -> Tuple[str, str, str]:
@@ -201,9 +207,10 @@ class LabelLayerManager(LayerManager):
         dims: Tuple[str, str],
         scale_factors: Optional[ScaleFactors_t] = None,
         chunks: Optional[str | Tuple[int, int] | int] = None,
+        c_coords: Optional[List[str]] = None
     ) -> Union[SpatialImage, MultiscaleSpatialImage]:
         return spatialdata.models.Labels2DModel.parse(
-            arr, dims=dims, scale_factors=scale_factors, chunks=chunks
+            arr, dims=dims, scale_factors=scale_factors, chunks=chunks, c_coords=c_coords
         )
 
     def get_dims(self) -> Tuple[str, str]:
