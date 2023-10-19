@@ -86,6 +86,8 @@ Operations on tables (`AnnData` object).
     tb.correct_marker_genes
     tb.cluster_cleanliness
     tb.nhood_enrichment
+    tb.allocate_intensity
+    tb.add_regionprop_features
 ```
 
 ## Plotting
