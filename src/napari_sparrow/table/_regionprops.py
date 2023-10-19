@@ -11,6 +11,9 @@ from spatialdata import SpatialData
 
 from napari_sparrow.image._image import _get_spatial_element
 from napari_sparrow.table._table import _back_sdata_table_to_zarr
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def add_regionprop_features(
@@ -50,6 +53,13 @@ def add_regionprop_features(
     - Computed properties are joined with the existing observations within the SpatialData's table, expanding the
       dataset's feature set.
     """
+
+    if labels_layer is None:
+        labels_layer = [*sdata.labels][-1]
+        log.warning(
+            f"No labels layer specified. "
+            f"Using mask from labels layer '{labels_layer}' of the provided SpatialData object."
+        )
 
     se = _get_spatial_element(sdata, layer=labels_layer)
 
