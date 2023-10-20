@@ -1,5 +1,16 @@
 {
     "labels": [
-        "masks_whole"
+        "masks_whole",
+        "masks_whole",
+        "masks_nuclear",
+        "masks_nuclear_aligned",
+        "masks_nuclear_aligned",
+        "masks_nuclear_aligned",
+        "masks_nuclear_aligned",
+        "masks_nuclear_aligned",
+        "masks_nuclear_aligned",
+        "masks_nuclear_aligned",
+        "masks_nuclear_aligned",
+        "masks_nuclear_aligned"
     ]
 }
