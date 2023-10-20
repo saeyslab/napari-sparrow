@@ -12,7 +12,7 @@ from dask.array import Array, unique
 from numpy.typing import NDArray
 from spatialdata import SpatialData
 
-from napari_sparrow.image._image import _get_spatial_element
+from napari_sparrow.image._image import _get_spatial_element, _get_translation
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -89,9 +89,21 @@ def allocate_intensity(
         )
 
     # currently this function will only work if img_layer and labels_layer have the same shape.
-    # And are in same position, i.e. if one is translated, other should be translated
+    # And are in same position, i.e. if one is translated, other should be translated with same offset
     se_image = _get_spatial_element(sdata, layer=img_layer)
     se_labels = _get_spatial_element(sdata, layer=labels_layer)
+
+    assert (
+        se_image.data.shape[1:] == se_labels.data.shape
+    ), "Only arrays with same spatial shape are currently supported, "
+    f"but image layer with name {img_layer} has shape {se_image.data.shape}, "
+    f"while labels layer with name {labels_layer} has shape {se_labels.data.shape}  "
+
+    t1x, t1y = _get_translation(se_image)
+    t2x, t2y = _get_translation(se_labels)
+
+    assert ((t1x, t1y) == (t2x, t2y)), f"image layer with name {img_layer} should "
+    f"have same translation as labels layer with name {labels_layer}"
 
     if channels is None:
         channels = se_image.c.data
