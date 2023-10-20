@@ -15,5 +15,5 @@ def test_align_labels_layers(sdata_multi_c):
         depth=100,
     )
 
-    assert 'masks_nuclear_aligned' in sdata_multi_c.labels
+    assert "masks_nuclear_aligned" in sdata_multi_c.labels
     assert isinstance(sdata_multi_c, SpatialData)
