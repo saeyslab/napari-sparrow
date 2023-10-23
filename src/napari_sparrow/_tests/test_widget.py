@@ -3,22 +3,21 @@ import unittest
 
 import tifffile as tiff
 from hydra.core.hydra_config import HydraConfig
-from PyQt5.QtCore import QEventLoop
 
-from napari_sparrow import utils as utils
-from napari_sparrow.widgets import (
-    allocate_widget,
-    annotate_widget,
-    clean_widget,
-    load_widget,
-    segment_widget,
-)
 
 @unittest.skip
 def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     """
     Integration test for sparrow plugin in napari
     """
+    from napari_sparrow import utils as utils
+    from napari_sparrow.widgets import (
+        allocate_widget,
+        annotate_widget,
+        clean_widget,
+        load_widget,
+        segment_widget,
+    )
 
     HydraConfig().set_config(cfg_pipeline)
 
@@ -90,6 +89,11 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
 @unittest.skip
 def test_load_widget(make_napari_viewer, cfg_pipeline, caplog):
     """Test if the load works."""
+    from napari_sparrow import utils as utils
+    from napari_sparrow.widgets import (
+        load_widget,
+    )
+
     HydraConfig().set_config(cfg_pipeline)
 
     viewer = make_napari_viewer()
@@ -111,6 +115,11 @@ def test_load_widget(make_napari_viewer, cfg_pipeline, caplog):
 @unittest.skip
 def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
     """Tests if the clean widget works."""
+
+    from napari_sparrow import utils as utils
+    from napari_sparrow.widgets import (
+        clean_widget,
+    )
 
     HydraConfig().set_config(cfg_pipeline)
 
@@ -136,6 +145,7 @@ def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
 
 
 def _run_event_loop_until_worker_finishes(worker):
+    from PyQt5.QtCore import QEventLoop
     loop = QEventLoop()
     worker.finished.connect(loop.quit)
     loop.exec_()
