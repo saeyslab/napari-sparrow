@@ -103,7 +103,6 @@ def align_labels_layers(
     Examples
     --------
     >>> sdata = align_labels_layers(sdata, 'layer_1', 'layer_2', depth=(50, 50), overwrite=True)
-    >>> # 'sdata' now has aligned 'layer_1' and 'layer_2', potentially with new layers based on the alignment.
     """
 
     se_1 = _get_spatial_element(sdata, layer=labels_layer_1)
