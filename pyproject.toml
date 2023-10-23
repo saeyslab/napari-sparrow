@@ -4,4 +4,4 @@ build-backend = "setuptools.build_meta"
 
 # pyproject.toml file content
 [tool.coverage.run]
-omit = ["src/napari_sparrow/_tests/*", "experiments/*"]
+omit = ["src/napari_sparrow/_tests/*", "experiments/*", "src/napari_sparrow/widgets/*" ]
