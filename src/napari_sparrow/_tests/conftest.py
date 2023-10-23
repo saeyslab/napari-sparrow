@@ -6,6 +6,7 @@ from hydra import compose, initialize
 from hydra.core.global_hydra import GlobalHydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
+from spatialdata import read_zarr
 
 
 @pytest.fixture(scope='function')
@@ -48,3 +49,12 @@ def cfg_pipeline(cfg_pipeline_global, tmp_path) -> DictConfig:
     yield cfg
 
     GlobalHydra.instance().clear()
+
+
+@pytest.fixture
+def sdata_multi_c():
+    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
+    path = f"{root}/src/napari_sparrow/_tests/test_data/multi_channel_zarr"
+    sdata_path = os.path.join(path, "sdata.zarr")
+    sdata = read_zarr(sdata_path)
+    yield sdata 

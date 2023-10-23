@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 
 import cv2
 import dask.array as da
+import jax.numpy as jnp
 import numpy as np
 import squidpy as sq
 from basicpy import BaSiC
@@ -97,7 +98,7 @@ def tiling_correction(
         tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
         black = np.array(
             [1 if ~np.any(tile - 1) else 0 for tile in tiles]
-        )  # determine if
+        )
 
         # create the masks for inpainting
         i_mask = (
@@ -109,15 +110,17 @@ def tiling_correction(
             ).astype(np.uint16)
             == 0
         )
-        if tiles.shape[0] < 5:
-            log.info(
-                "There aren't enough tiles to perform tiling correction (less than 5). This step will be skipped."
+
+        basic = BaSiC(smoothness_flatfield=1)
+        basic.fit(tiles)
+        if jnp.isnan(basic._reweight_score).item():
+            log.warning(
+                "Basicpy model used for illumination correction did not converge. "
+                "Illumination correction will be skipped. Continuing with inpainting. Please consider using a larger image ( more tiles )."
             )
-            tiles_corrected = tiles
             flatfields.append(None)
+            tiles_corrected = tiles
         else:
-            basic = BaSiC(smoothness_flatfield=1)
-            basic.fit(tiles)
             flatfields.append(basic.flatfield)
             tiles_corrected = basic.transform(tiles)
 
@@ -137,6 +140,7 @@ def tiling_correction(
         ).astype(np.uint16)
 
         ic = sq.im.ImageContainer(i_new, layer=img_layer)
+
         ic.add_img(
             i_mask.astype(np.uint8),
             layer="mask_black_lines",
@@ -177,7 +181,7 @@ def tiling_correction(
 
     translation = Translation([tx, ty], axes=("x", "y"))
 
-    sdata=_add_image_layer(
+    sdata = _add_image_layer(
         sdata,
         arr=result,
         output_layer=output_layer,
