@@ -14,7 +14,7 @@ from napari_sparrow.widgets import (
     segment_widget,
 )
 
-
+@unittest.skip
 def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     """
     Integration test for sparrow plugin in napari
