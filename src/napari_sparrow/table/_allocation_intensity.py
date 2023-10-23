@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Iterable
+from typing import Iterable, Optional
 
 import dask.array as da
 import numpy as np
@@ -22,8 +22,10 @@ def allocate_intensity(
     sdata: SpatialData,
     img_layer: Optional[str] = None,
     labels_layer: Optional[str] = None,
-    channels: Optional[int | str | Iterable[int] | Iterable[str] ] = None,
+    channels: Optional[int | str | Iterable[int] | Iterable[str]] = None,
     chunks: Optional[str | int | tuple[int, ...]] = 10000,
+    append: bool = False,
+    append_labels_layer_name: bool = True,
 ) -> SpatialData:
     """
     Allocates intensity values from a specified image layer to corresponding cells in a SpatialData object and
@@ -44,11 +46,20 @@ def allocate_intensity(
         The name of the layer in `sdata` containing the labels (segmentation) used to define the boundaries of cells.
         These labels correspond with regions in the `img_layer`. If not provided, will use last labels_layer.
     channels : int or str or Iterable[int] or Iterable[str], optional
-        Specifies the channels to be considered when extracting intensity information from the `img_layer`. 
+        Specifies the channels to be considered when extracting intensity information from the `img_layer`.
         This parameter can take a single integer or string or an iterable of integers or strings representing specific channels.
         If set to None (the default), intensity data will be aggregated from all available channels within the image layer.
     chunks : str | int | tuple[int, ...], optional
         The chunk size for processing the image data.
+    append: bool, optional.
+        If set to True, the intensity values extracted during the current function call will be appended to any existing intensity data
+        within the SpatialData object's table attribute. If False, any existing data in `sdata.table` will be overwritten by the newly extracted intensity values.
+    append_labels_layer_name: bool, optional.
+        Determines whether the labels layer name is added as suffix to the channel names in the resulting AnnData object at `sdata.table`.
+        This is especially relevant when multiple label layers are used, helping keep the origin of the data clear.
+        When set to True, the channel names in the 'var' DataFrame of `sdata.table` will be in the format "{channel}_{labels_layer}".
+        For example, if dealing with a labels layer named "layer1", and channel "channelA", the resulting channel name in `sdata.table` would be "channelA_layer1".
+        If False, the original channel names are preserved without modification.
 
     Returns
     -------
@@ -102,7 +113,7 @@ def allocate_intensity(
     t1x, t1y = _get_translation(se_image)
     t2x, t2y = _get_translation(se_labels)
 
-    assert ((t1x, t1y) == (t2x, t2y)), f"image layer with name {img_layer} should "
+    assert (t1x, t1y) == (t2x, t2y), f"image layer with name {img_layer} should "
     f"have same translation as labels layer with name {labels_layer}"
 
     if channels is None:
@@ -124,18 +135,47 @@ def allocate_intensity(
     cells.index = cells.index.map(str)
     cells.index.name = "cells"
 
+    channels = list(map(str, channels))
+    if append_labels_layer_name:
+        channels = [f"{channel}_{labels_layer}" for channel in channels]
     var = pd.DataFrame(index=channels)
     var.index = var.index.map(str)
     var.index.name = "channels"
 
     adata = AnnData(X=channel_intensities, obs=cells, var=var)
-
     adata.obs["region"] = 1
     adata.obs["instance"] = 1
 
-    if sdata.table:
-        del sdata.table
+    if sdata.table is None:
+        sdata.table = spatialdata.models.TableModel.parse(
+            adata, region_key="region", region=1, instance_key="instance"
+        )
 
+        return sdata
+
+    def _sort_str_index(df):
+        df.index = df.index.astype(int)  # convert index to integer
+        df = df.sort_index()
+        df.index = df.index.astype(str)
+        return df
+
+    if append:
+        df_joined = adata.to_df().join(
+            sdata.table.to_df(), how="outer"
+        )  # we do not want to throw away cells
+        df_joined = _sort_str_index(df_joined)
+        # we do not want to loose already computed obs
+        # remove column region and instance, because otherwise we can not do a join
+        # TODO handle this more carefully if multiple adata will be supported in spatialdata.
+        left = adata.obs.drop(columns=["region", "instance"])
+        right = sdata.table.obs.drop(columns=["region", "instance"])
+        obs_joined = left.join(right, how="outer")
+        obs_joined = _sort_str_index(obs_joined)
+        adata = AnnData(X=df_joined, obs=obs_joined)
+        adata.obs["region"] = 1
+        adata.obs["instance"] = 1
+
+    del sdata.table
     sdata.table = spatialdata.models.TableModel.parse(
         adata, region_key="region", region=1, instance_key="instance"
     )

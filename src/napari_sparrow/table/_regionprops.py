@@ -19,6 +19,7 @@ log = get_pylogger(__name__)
 def add_regionprop_features(
     sdata: SpatialData,
     labels_layer: Optional[str] = None,
+    append_labels_layer_name: bool = True,
 ):
     """
     Enhances a SpatialData object with region property features calculated from the specified labels layer,
@@ -39,6 +40,9 @@ def add_regionprop_features(
         The name of the layer in `sdata` that contains the labeled regions, typically derived from a segmentation
         process. Each distinct label corresponds to a different cell, and properties will be calculated for these
         labeled regions. If not provided, the function will infer or require a default layer.
+    append_labels_layer_name: bool, optional.
+        If set to True, labels_layer will be added as suffix to the name of the region property features in the sdata.table.obs
+        Dataframe.
 
     Returns
     -------
@@ -63,12 +67,27 @@ def add_regionprop_features(
 
     se = _get_spatial_element(sdata, layer=labels_layer)
 
-    # pull masks in in memory. regionprops does not work with lazy objects.
+    # pull masks in in memory. skimage.measure.regionprops does not work with lazy objects.
     masks = se.data.compute()
 
     cell_props = _calculate_regionprop_features(masks)
 
-    # keep all cells in sdata.table, but append properties to .obs
+    if append_labels_layer_name:
+        new_columns = [f"{col}_{labels_layer}" for col in cell_props.columns]
+        cell_props.columns = new_columns
+
+    # keep all cells in sdata.table, but append properties to .obs  # left or outer??
+    # add a warning if cell_props contains more cells than sdata.table.obs
+
+    extra_cells = cell_props.index.difference(sdata.table.obs.index)
+    if not extra_cells.empty:
+        log.warning(
+            f"Calculated properties of { len( extra_cells ) } cells/nuclei obtained from labels layer '{labels_layer}' "
+            "will not be added to 'sdata.table.obs', because their indicices are not in 'sdata.table'. "
+            "Please first append their intensities with the 'allocate_intensity' function "
+            "if they should be included."
+        )
+
     sdata.table.obs = sdata.table.obs.join(cell_props, how="left")
 
     _back_sdata_table_to_zarr(sdata=sdata)

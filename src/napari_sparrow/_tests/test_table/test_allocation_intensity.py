@@ -3,10 +3,48 @@ import numpy as np
 from anndata import AnnData
 from spatialdata import SpatialData
 
-from napari_sparrow.table._allocation_intensity import (
-    _calculate_intensity,
-    allocate_intensity,
-)
+from napari_sparrow.image.segmentation._align_masks import align_labels_layers
+from napari_sparrow.table._allocation_intensity import (_calculate_intensity,
+                                                        allocate_intensity)
+from napari_sparrow.table._regionprops import add_regionprop_features
+
+
+def test_integration_allocate_intensity(sdata_multi_c):
+
+    # integration test for process of aligning masks, allocate intensities and add regionprop features to 
+    # sdata.table.obs
+
+    sdata_multi_c = align_labels_layers(
+        sdata_multi_c,
+        labels_layer_1="masks_nuclear",
+        labels_layer_2="masks_whole",
+        output_labels_layer="masks_nuclear_aligned",
+        output_shapes_layer=None,
+        overwrite=True,
+        chunks=256,
+        depth=100,
+    )
+
+    assert "masks_nuclear_aligned" in sdata_multi_c.labels
+
+    sdata_multi_c = allocate_intensity(
+        sdata_multi_c, img_layer="raw_image", labels_layer="masks_whole", chunks=100
+    )
+
+    sdata_multi_c = allocate_intensity(
+        sdata_multi_c, img_layer="raw_image", labels_layer="masks_nuclear_aligned", chunks=100
+    )
+
+    sdata_multi_c = add_regionprop_features(sdata_multi_c, labels_layer="masks_whole")
+
+    sdata_multi_c = add_regionprop_features(sdata_multi_c, labels_layer="masks_nuclear_aligned")
+
+    assert isinstance(sdata_multi_c, SpatialData)
+
+    assert isinstance(sdata_multi_c.table, AnnData)
+    # clean up
+    del sdata_multi_c.table
+
 
 
 def test_allocate_intensity(sdata_multi_c):
@@ -47,6 +85,7 @@ def test_calculate_intensity():
         chunks=chunk_size,
     )
 
+    # intensity from label==0, label==1 and label==3
     expected_result = np.array([[51.5], [70.5], [6.0]])
 
     assert np.array_equal(sum_of_chunks, expected_result)
