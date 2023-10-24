@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Iterable
 
 import dask.array as da
 import numpy as np
@@ -35,6 +35,7 @@ def create_sdata(
     dims: Optional[List[str]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
+    c_coords: Optional[int | str | Iterable[int | str ]] = None,
 ) -> SpatialData:
     """
     Convert input images or arrays into a SpatialData object.
@@ -54,7 +55,7 @@ def create_sdata(
 
       input=DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
 
-    - Pattern representing a collection of z-stacks 
+    - Pattern representing a collection of z-stacks
       (if this is the case, a z-projection is performed which selects the maximum intensity value across the z-dimension).
 
       Examples:
@@ -71,13 +72,13 @@ def create_sdata(
 
       input[ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
 
-    - Single numpy or dask array. 
-      The dims parameter should specify its dimension, e.g. ['y','x'] for a 2D array or 
+    - Single numpy or dask array.
+      The dims parameter should specify its dimension, e.g. ['y','x'] for a 2D array or
       [ 'c', 'y', 'x', 'z' ] for a 4D array with channels. If a z-dimension >1 is present, a z-projection is performed.
 
     Parameters
     ----------
-    input : Union[str, Path, List[Union[str, Path]]]
+    input : Union[str, Path, np.ndarray, da.Array, List[Union[str, Path, np.ndarray, da.Array]]]
         The filename pattern, path or list of filename patterns to the images that
         should be loaded. In case of a list, each list item should represent a different
         channel, and each image corresponding to a filename pattern should represent.
@@ -99,6 +100,8 @@ def create_sdata(
         SpatialData object.
     scale_factors
         Scale factors to apply for multiscale.
+    c_coords : int | str | Iterable[ int | str], optional
+        Names of the channels in the input image. If None, channel names will be named sequentially as 0,1,...
 
     Returns
     -------
@@ -117,6 +120,22 @@ def create_sdata(
         dask_array = _load_image_to_dask(
             input=input, chunks=chunks, dims=dims, crd=crd, output_dir=tmp_dir
         )
+
+        if c_coords is not None:
+            c_coords = (
+                list(c_coords)
+                if isinstance(c_coords, Iterable) and not isinstance(c_coords, str)
+                else [c_coords]
+            )
+
+            assert dask_array.shape[0] == len(c_coords), (
+                "Length of c_coords should match number of channels provided, "
+                f"while provided c_coords is '{c_coords}' with len '{len( c_coords ) }', "
+                f"and number of channels read from input is '{dask_array.shape[0]}'"
+            )
+
+            if len(set(c_coords)) != len(c_coords):
+                raise ValueError("Each value in c_coords must be unique.")
 
         sdata = spatialdata.SpatialData()
 
@@ -141,6 +160,7 @@ def create_sdata(
             chunks=chunks,
             transformation=translation,
             scale_factors=scale_factors,
+            c_coords=c_coords,
             overwrite=False,
         )
 
@@ -231,7 +251,7 @@ def _load_image_to_dask(
             # dask_image does not add channel dim for grayscale images
             dims = ["z", "y", "x"]
             dask_array = _fix_dimensions(dask_array, dims=dims)
-        elif len(dask_array.shaep) == 2:
+        elif len(dask_array.shape) == 2:
             dims = ["y", "x"]
             dask_array = _fix_dimensions(dask_array, dims=dims)
         else:

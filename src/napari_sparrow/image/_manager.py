@@ -4,7 +4,7 @@ import os
 import shutil
 import uuid
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import spatialdata
 from dask.array import Array
@@ -29,29 +29,25 @@ class LayerManager(ABC):
         transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
         scale_factors: Optional[ScaleFactors_t] = None,
         overwrite: bool = False,
+        **kwargs: Any,  # kwargs passed to create_spatial_element
     ) -> SpatialData:
-        self.arr = arr
-        self.output_layer = output_layer
-        self.chunks = chunks or arr.chunksize
-        self.transformation = transformation
-        self.scale_factors = scale_factors
-        self.overwrite = overwrite
-
-        self.validate_input()
+        chunks = chunks or arr.chunksize
+        self.validate_input(arr)
 
         intermediate_output_layer = None
-        if self.scale_factors:
+        if scale_factors is not None:
             if sdata.is_backed():
                 spatial_element = self.create_spatial_element(
-                    self.arr,
+                    arr,
                     dims=self.get_dims(),
                     scale_factors=None,
-                    chunks=self.chunks,
+                    chunks=chunks,
+                    **kwargs,
                 )
-                if self.transformation:
-                    set_transformation(spatial_element, self.transformation)
+                if transformation is not None:
+                    set_transformation(spatial_element, transformation)
 
-                intermediate_output_layer = f"{uuid.uuid4()}_{self.output_layer}"
+                intermediate_output_layer = f"{uuid.uuid4()}_{output_layer}"
                 log.info(
                     f"Writing intermediate non-multiscale results to layer '{intermediate_output_layer}'"
                 )
@@ -61,34 +57,33 @@ class LayerManager(ABC):
                     spatial_element=spatial_element,
                     overwrite=False,
                 )
-                self.arr = self.retrieve_data_from_sdata(
-                    sdata, intermediate_output_layer
-                )
+                arr = self.retrieve_data_from_sdata(sdata, intermediate_output_layer)
             else:
-                self.arr = self.arr.persist()
+                arr = arr.persist()
 
         elif not sdata.is_backed():
             # if sdata is not backed, and if no scale factors, we also need to do a persist
             # to prevent recomputation
-            self.arr = self.arr.persist()
+            arr = arr.persist()
 
         spatial_element = self.create_spatial_element(
-            self.arr,
+            arr,
             dims=self.get_dims(),
-            scale_factors=self.scale_factors,
-            chunks=self.chunks,
+            scale_factors=scale_factors,
+            chunks=chunks,
+            **kwargs,
         )
 
-        if self.transformation:
-            set_transformation(spatial_element, self.transformation)
+        if transformation is not None:
+            set_transformation(spatial_element, transformation)
 
-        log.info(f"Writing results to layer '{self.output_layer}'")
+        log.info(f"Writing results to layer '{output_layer}'")
 
         sdata = self.add_to_sdata(
             sdata,
-            output_layer=self.output_layer,
+            output_layer=output_layer,
             spatial_element=spatial_element,
-            overwrite=self.overwrite,
+            overwrite=overwrite,
         )
 
         if intermediate_output_layer:
@@ -106,7 +101,7 @@ class LayerManager(ABC):
         return sdata
 
     @abstractmethod
-    def validate_input(self):
+    def validate_input(self, arr: Array):
         pass
 
     @abstractmethod
@@ -116,6 +111,7 @@ class LayerManager(ABC):
         dims: Tuple[int, ...],
         scale_factors: Optional[ScaleFactors_t] = None,
         chunks: Optional[str | Tuple[int, ...] | int] = None,
+        **kwargs: Any,
     ) -> Union[SpatialImage, MultiscaleSpatialImage]:
         pass
 
@@ -154,10 +150,8 @@ class LayerManager(ABC):
 
 
 class ImageLayerManager(LayerManager):
-    def validate_input(self):
-        assert (
-            len(self.arr.shape) == 3
-        ), "Only 2D images (c,y,x) are currently supported."
+    def validate_input(self, arr: Array):
+        assert len(arr.shape) == 3, "Only 2D images (c,y,x) are currently supported."
 
     def create_spatial_element(
         self,
@@ -165,9 +159,14 @@ class ImageLayerManager(LayerManager):
         dims: Tuple[str, str, str],
         scale_factors: Optional[ScaleFactors_t] = None,
         chunks: Optional[str | Tuple[int, int, int] | int] = None,
+        c_coords: Optional[List[str]] = None,
     ) -> Union[SpatialImage, MultiscaleSpatialImage]:
         return spatialdata.models.Image2DModel.parse(
-            arr, dims=dims, scale_factors=scale_factors, chunks=chunks
+            arr,
+            dims=dims,
+            scale_factors=scale_factors,
+            chunks=chunks,
+            c_coords=c_coords,
         )
 
     def get_dims(self) -> Tuple[str, str, str]:
@@ -192,9 +191,9 @@ class ImageLayerManager(LayerManager):
 
 
 class LabelLayerManager(LayerManager):
-    def validate_input(self):
+    def validate_input(self, arr: Array):
         assert (
-            len(self.arr.shape) == 2
+            len(arr.shape) == 2
         ), "Only 2D labels layers (y,x) are currently supported."
 
     def create_spatial_element(
@@ -205,7 +204,10 @@ class LabelLayerManager(LayerManager):
         chunks: Optional[str | Tuple[int, int] | int] = None,
     ) -> Union[SpatialImage, MultiscaleSpatialImage]:
         return spatialdata.models.Labels2DModel.parse(
-            arr, dims=dims, scale_factors=scale_factors, chunks=chunks
+            arr,
+            dims=dims,
+            scale_factors=scale_factors,
+            chunks=chunks,
         )
 
     def get_dims(self) -> Tuple[str, str]:

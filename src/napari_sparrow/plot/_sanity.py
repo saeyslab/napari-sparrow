@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
 from dask.dataframe.core import DataFrame as DaskDataFrame
@@ -23,7 +25,7 @@ def sanity_plot_transcripts_matrix(
     img_layer: Optional[str] = None,
     points_layer: str = "transcripts",
     shapes_layer: Optional[str] = None,
-    channel: Optional[int] = None,
+    channel: Optional[int | str ] = None,
     plot_cell_number: bool = False,
     n_sample: Optional[int] = None,
     name_x: str = "x",
@@ -32,7 +34,7 @@ def sanity_plot_transcripts_matrix(
     gene: Optional[str] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     cmap: str = "gray",
-    output: Optional[Union[Path, str]] = None,
+    output: Optional[ Path | str] = None,
 ) -> None:
     """
     Produce a sanity plot to visualize spatial transcriptomics data on top of an image.
@@ -51,7 +53,7 @@ def sanity_plot_transcripts_matrix(
         The points layer in the SpatialData object representing transcripts.
     shapes_layer : Optional[str], default=None
         The layer in the SpatialData object representing cell boundaries. If None, no cell boundaries are plotted.
-    channel : int or None, optional
+    channel : int or str or None, optional
         Channel to display from the img_layer. If none provided, or if provided channel could not be found, first channel is plot.
     plot_cell_number : bool, default=False
         Whether to annotate cells with their numbers on the plot.
@@ -123,7 +125,8 @@ def sanity_plot_transcripts_matrix(
         # if channel is None, plot the first channel
         channel = se.c.data[0]
 
-    se.isel(c=channel).squeeze().sel(
+    channel_idx = list(se.c.data).index(channel)
+    se.isel(c=channel_idx).squeeze().sel(
         x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
     ).plot.imshow(cmap=cmap, robust=True, ax=ax, add_colorbar=False)
 

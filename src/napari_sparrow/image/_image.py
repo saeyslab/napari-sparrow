@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import xarray as xr
@@ -212,6 +212,7 @@ def _add_image_layer(
     chunks: Optional[str | tuple[int, int, int] | int] = None,
     transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
+    c_coords: Optional[List[str]] = None,
     overwrite: bool = False,
 ):
     manager = ImageLayerManager()
@@ -222,6 +223,7 @@ def _add_image_layer(
         chunks=chunks,
         transformation=transformation,
         scale_factors=scale_factors,
+        c_coords=c_coords,
         overwrite=overwrite,
     )
 

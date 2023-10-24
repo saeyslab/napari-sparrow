@@ -1,11 +1,11 @@
 """This file tests the napari widgets and should be used for development purposes."""
-import unittest
+import pytest
 
 import tifffile as tiff
 from hydra.core.hydra_config import HydraConfig
 
 
-@unittest.skip
+@pytest.mark.skip
 def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     """
     Integration test for sparrow plugin in napari
@@ -85,8 +85,7 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
         assert "Annotation metadata added" in caplog.text
 
 
-
-@unittest.skip
+@pytest.mark.skip
 def test_load_widget(make_napari_viewer, cfg_pipeline, caplog):
     """Test if the load works."""
     from napari_sparrow import utils as utils
@@ -112,7 +111,7 @@ def test_load_widget(make_napari_viewer, cfg_pipeline, caplog):
     assert f"Added {utils.LOAD}" in caplog.text
 
 
-@unittest.skip
+@pytest.mark.skip
 def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
     """Tests if the clean widget works."""
 

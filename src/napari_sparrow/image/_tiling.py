@@ -91,14 +91,13 @@ def tiling_correction(
     flatfields = []
 
     for channel in se.c.data:
-        ic = sq.im.ImageContainer(se.isel(c=channel), layer=img_layer)
+        channel_idx = list(se.c.data).index(channel)
+        ic = sq.im.ImageContainer(se.isel(c=channel_idx), layer=img_layer)
 
         # Create the tiles
         tiles = ic.generate_equal_crops(size=tile_size, as_array=img_layer)
         tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
-        black = np.array(
-            [1 if ~np.any(tile - 1) else 0 for tile in tiles]
-        )
+        black = np.array([1 if ~np.any(tile - 1) else 0 for tile in tiles])
 
         # create the masks for inpainting
         i_mask = (
@@ -115,7 +114,7 @@ def tiling_correction(
         basic.fit(tiles)
         if jnp.isnan(basic._reweight_score).item():
             log.warning(
-                "Basicpy model used for illumination correction did not converge. "
+                f"Basicpy model used for illumination correction for channel '{channel}' did not converge. "
                 "Illumination correction will be skipped. Continuing with inpainting. Please consider using a larger image ( more tiles )."
             )
             flatfields.append(None)
@@ -188,6 +187,7 @@ def tiling_correction(
         chunks=result.chunksize,
         transformation=translation,
         scale_factors=scale_factors,
+        c_coords=se.c.data,
         overwrite=overwrite,
     )
 

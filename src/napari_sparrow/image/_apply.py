@@ -190,7 +190,8 @@ def apply(
         crd = _substract_translation_crd(se, crd)
 
     for ch, _fn_kwargs in zip(channel, _fn_kwargs_channel):
-        arr = se.isel(c=ch).data
+        channel_idx = list(se.c.data).index(ch)
+        arr = se.isel(c=channel_idx).data
         if len(arr.shape) != 2:
             raise ValueError(
                 f"Array is of dimension {arr.shape}, currently only 2D images are supported."
@@ -218,6 +219,7 @@ def apply(
         chunks=arr.chunksize,
         transformation=translation,
         scale_factors=scale_factors,
+        c_coords=channel,
         overwrite=overwrite,
     )
 
