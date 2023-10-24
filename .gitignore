@@ -31,6 +31,8 @@ notebooks
 !configs/segmentation/cellpose_vizgen_example.yaml
 !configs/visualize/resolve_liver.yaml
 
+src/napari_sparrow/_tests/test_widget.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
