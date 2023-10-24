@@ -25,14 +25,14 @@ def combine(
     sdata: SpatialData,
     img_layer: Optional[str] = None,
     output_layer: Optional[str] = None,
-    nuc_channels: Optional[int | Iterable[int]] = None,
-    mem_channels: Optional[int | Iterable[int]] = None,
+    nuc_channels: Optional[int | str | Iterable[int | str]] = None,
+    mem_channels: Optional[int | str | Iterable[int | str]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
-    Combines specific channels within an image layer of a SpatialData object. 
+    Combines specific channels within an image layer of a SpatialData object.
     When given, nuc_channels are aggregated together, as are mem_channels.
 
     Parameters
@@ -43,9 +43,9 @@ def combine(
         The image layer in `sdata` to process. If not provided, the last image layer in `sdata` is used.
     output_layer : Optional[str]
         The name of the output layer where results will be stored. This must be specified.
-    nuc_channels : Optional[int | Iterable[int]], default=None
+    nuc_channels : Optional[int | str | Iterable[int | str ]], default=None
         Specifies which channel(s) to consider as nuclear channels.
-    mem_channels : Optional[int | Iterable[int]], default=None
+    mem_channels : Optional[int | str | Iterable[int | str ]], default=None
         Specifies which channel(s) to consider as membrane channels.
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
@@ -108,14 +108,25 @@ def combine(
             if isinstance(channels, Iterable) and not isinstance(channels, str)
             else [channels]
         )
-        arr = se.isel(c=channels).data
+
+        all_channels = list(se.c.data)
+        ch_indices = [
+            all_channels.index(_ch) for _ch in channels if _ch in all_channels
+        ]
+
+        if len(ch_indices) == 0:
+            raise ValueError(
+                f"No matching channels between provided channels '{channels}' and channels in '{img_layer}':  '{all_channels}'."
+            )
+
+        arr = se.isel(c=ch_indices).data
         if len(arr.shape) != 3:
             raise ValueError(
                 f"Array is of dimension {arr.shape}, currently only 2D images are supported."
             )
         if crd is not None:
-            arr = arr[:,crd[2] : crd[3], crd[0] : crd[1]]
-            arr=arr.rechunk( arr.chunksize )
+            arr = arr[:, crd[2] : crd[3], crd[0] : crd[1]]
+            arr = arr.rechunk(arr.chunksize)
         arr = arr.sum(axis=0)
         arr = arr[None, ...]
         return arr

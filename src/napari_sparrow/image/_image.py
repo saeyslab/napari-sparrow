@@ -237,7 +237,6 @@ def _add_label_layer(
     chunks: Optional[str | tuple[int, int] | int] = None,
     transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
-    c_coords: Optional[List[str]] = None,
     overwrite: bool = False,
 ):
     manager = LabelLayerManager()
@@ -248,7 +247,6 @@ def _add_label_layer(
         chunks=chunks,
         transformation=transformation,
         scale_factors=scale_factors,
-        c_coords=c_coords,
         overwrite=overwrite,
     )
 

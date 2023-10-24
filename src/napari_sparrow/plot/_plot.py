@@ -23,7 +23,7 @@ log = get_pylogger(__name__)
 def plot_image(
     sdata: SpatialData,
     img_layer: str = "raw_image",
-    channel: Optional[int | Iterable[int]] = None,
+    channel: Optional[int | str | Iterable[int | str]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
@@ -37,7 +37,7 @@ def plot_image(
         Data containing spatial information for plotting.
     img_layer : str, optional
         Image layer to be plotted. Default is "raw_image".
-    channel : int or Iterable[int], optional
+    channel : int or str or Iterable[int] or Iterable[str], optional
         Channel(s) to be displayed from the image.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
@@ -61,7 +61,7 @@ def plot_shapes(
     sdata: SpatialData,
     img_layer: Optional[str | Iterable[str]] = None,
     shapes_layer: Optional[str | Iterable[str]] = None,
-    channel: Optional[int | Iterable[int]] = None,
+    channel: Optional[int | str | Iterable[int] | Iterable[str]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     figsize: Optional[Tuple[int, int]] = None,
     output: Optional[str | Path] = None,
@@ -72,7 +72,7 @@ def plot_shapes(
     The number of provided 'img_layer' and 'shapes_layer' should be equal if both are iterables and if their length is greater than 1.
 
     Examples:
-    
+
     1. For `img_layer=['raw_image', 'clahe']` and `shapes_layer=['segmentation_mask_boundaries', 'expanded_cells20']`:
     Subplots:
     - Column 1: 'raw_image' with 'segmentation_mask_boundaries'
@@ -110,7 +110,7 @@ def plot_shapes(
     shapes_layer : str or Iterable[str], optional
         Specifies which shapes to plot. If set to None, no shapes_layer is plotted.
         Displayed as columns in the plot, if multiple are provided.
-    channel : int or Iterable[int], optional
+    channel : int or str or Iterable[int] or Iterable[str], optional
         Channel(s) to be displayed from the image. Displayed as rows in the plot.
         If channel is None, get the number of channels from the first img_layer given as input.
     crd : tuple of int, optional
@@ -220,7 +220,7 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
     cmap: str = "magma",
     img_layer: Optional[str] = None,
     shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-    channel: Optional[int] = None,
+    channel: Optional[int | str] = None,
     alpha: float = 0.5,
     crd: Tuple[int, int, int, int] = None,
     vmin: Optional[float] = None,
@@ -248,7 +248,7 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
         Image layer to be plotted. By default, the last added image layer is plotted.
     shapes_layer : str or None, optional
         Specifies which shapes to plot. Default is 'segmentation_mask_boundaries'. If set to None, no shapes_layer is plot.
-    channel : int or None, optional
+    channel : int or str or None, optional
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
     alpha : float, default=0.5
         Transparency level for the cells, given by the alpha parameter of matplotlib.
@@ -357,7 +357,8 @@ def _plot_shapes(  # FIXME: rename, this does not always plot a shapes layer any
 
     channel_name = se.c.name
 
-    se.isel(c=channel).squeeze().sel(
+    channel_idx = list(se.c.data).index(channel)
+    se.isel(c=channel_idx).squeeze().sel(
         x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
     ).plot.imshow(cmap="gray", robust=True, ax=ax, add_colorbar=False)
 
