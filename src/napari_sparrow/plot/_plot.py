@@ -65,7 +65,7 @@ def plot_labels(
     **kwargs: Dict[str, Any],
 ) -> None:
     """
-    Plot an image based on given parameters.
+    Plot a labels layer (masks) based on given parameters.
 
     Parameters
     ----------
