@@ -190,11 +190,12 @@ def _align_dask_arrays(
     _check_boundary(boundary)
 
     # make depth uniform + rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
+    # TODO check if this still works
     x_label_1, depth = _rechunk_overlap(
-        x_label_1, depth=depth, chunks=chunks, spatial_dims=x_label_1.ndim
+        x_label_1, depth=depth, chunks=chunks, dims=( "y", "x" ),
     )
     x_label_2, depth = _rechunk_overlap(
-        x_label_2, depth=depth, chunks=chunks, spatial_dims=x_label_2.ndim
+        x_label_2, depth=depth, chunks=chunks, dims=( "y", "x" )
     )
 
     # output_chunks can be derived from either x_label_1 or x_label_2

@@ -25,6 +25,7 @@ class LayerManager(ABC):
         sdata: SpatialData,
         arr: Array,
         output_layer: str,
+        dims: Optional[Tuple[str, ...]] = None,
         chunks: Optional[str | Tuple[int, ...] | int] = None,
         transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
         scale_factors: Optional[ScaleFactors_t] = None,
@@ -32,14 +33,18 @@ class LayerManager(ABC):
         **kwargs: Any,  # kwargs passed to create_spatial_element
     ) -> SpatialData:
         chunks = chunks or arr.chunksize
-        self.validate_input(arr)
+        if dims is None:
+            log.warning(
+                "No dims parameter specified. Assuming order of dimension of provided array is (c, (z), y, x)"
+            )
+            dims = self.get_dims(arr)
 
         intermediate_output_layer = None
         if scale_factors is not None:
             if sdata.is_backed():
                 spatial_element = self.create_spatial_element(
                     arr,
-                    dims=self.get_dims(),
+                    dims=dims,
                     scale_factors=None,
                     chunks=chunks,
                     **kwargs,
@@ -68,7 +73,7 @@ class LayerManager(ABC):
 
         spatial_element = self.create_spatial_element(
             arr,
-            dims=self.get_dims(),
+            dims=dims,
             scale_factors=scale_factors,
             chunks=chunks,
             **kwargs,
@@ -99,10 +104,6 @@ class LayerManager(ABC):
                 sdata = self.remove_from_sdata(sdata, intermediate_output_layer)
 
         return sdata
-
-    @abstractmethod
-    def validate_input(self, arr: Array):
-        pass
 
     @abstractmethod
     def create_spatial_element(
@@ -150,9 +151,6 @@ class LayerManager(ABC):
 
 
 class ImageLayerManager(LayerManager):
-    def validate_input(self, arr: Array):
-        assert len(arr.shape) == 3, "Only 2D images (c,y,x) are currently supported."
-
     def create_spatial_element(
         self,
         arr: Array,
@@ -161,16 +159,37 @@ class ImageLayerManager(LayerManager):
         chunks: Optional[str | Tuple[int, int, int] | int] = None,
         c_coords: Optional[List[str]] = None,
     ) -> Union[SpatialImage, MultiscaleSpatialImage]:
-        return spatialdata.models.Image2DModel.parse(
-            arr,
-            dims=dims,
-            scale_factors=scale_factors,
-            chunks=chunks,
-            c_coords=c_coords,
-        )
+        if len(dims) == 3:
+            return spatialdata.models.Image2DModel.parse(
+                arr,
+                dims=dims,
+                scale_factors=scale_factors,
+                chunks=chunks,
+                c_coords=c_coords,
+            )
+        elif len(dims) == 4:
+            return spatialdata.models.Image3DModel.parse(
+                arr,
+                dims=dims,
+                scale_factors=scale_factors,
+                chunks=chunks,
+                c_coords=c_coords,
+            )
+        else:
+            raise ValueError(
+                f"Provided dims is {dims}, which is not supported, "
+                "please provide dims parameter that only contains c, (z), y, and x."
+            )
 
-    def get_dims(self) -> Tuple[str, str, str]:
-        return ("c", "y", "x")
+    def get_dims(self, arr) -> Tuple[str, ...]:
+        if len(arr.shape) == 3:
+            return ("c", "y", "x")
+        elif len(arr.shape) == 4:
+            return ("c", "z", "y", "x")
+        else:
+            raise ValueError(
+                "Only 2D and 3D images (c, (z), y, x) are currently supported."
+            )
 
     def add_to_sdata(
         self,
@@ -191,11 +210,6 @@ class ImageLayerManager(LayerManager):
 
 
 class LabelLayerManager(LayerManager):
-    def validate_input(self, arr: Array):
-        assert (
-            len(arr.shape) == 2
-        ), "Only 2D labels layers (y,x) are currently supported."
-
     def create_spatial_element(
         self,
         arr: Array,
@@ -203,15 +217,35 @@ class LabelLayerManager(LayerManager):
         scale_factors: Optional[ScaleFactors_t] = None,
         chunks: Optional[str | Tuple[int, int] | int] = None,
     ) -> Union[SpatialImage, MultiscaleSpatialImage]:
-        return spatialdata.models.Labels2DModel.parse(
-            arr,
-            dims=dims,
-            scale_factors=scale_factors,
-            chunks=chunks,
-        )
+        if len(dims) == 2:
+            return spatialdata.models.Labels2DModel.parse(
+                arr,
+                dims=dims,
+                scale_factors=scale_factors,
+                chunks=chunks,
+            )
+        elif len(dims) == 3:
+            return spatialdata.models.Labels3DModel.parse(
+                arr,
+                dims=dims,
+                scale_factors=scale_factors,
+                chunks=chunks,
+            )
+        else:
+            raise ValueError(
+                f"Provided dims is {dims}, which is not supported, "
+                "please provide dims parameter that only contains (z), y and x."
+            )
 
-    def get_dims(self) -> Tuple[str, str]:
-        return ("y", "x")
+    def get_dims(self, arr) -> Tuple[str, str]:
+        if len(arr.shape) == 2:
+            return ("y", "x")
+        elif len(arr.shape) == 3:
+            return ("z", "y", "x")
+        else:
+            raise ValueError(
+                "Only 2D and 3D labels layers ( (z), y, x) are currently supported."
+            )
 
     def add_to_sdata(
         self,

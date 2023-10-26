@@ -24,6 +24,7 @@ def plot_image(
     sdata: SpatialData,
     img_layer: str = "raw_image",
     channel: Optional[int | str | Iterable[int | str]] = None,
+    z_slice: Optional[int] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
@@ -51,6 +52,7 @@ def plot_image(
         img_layer=img_layer,
         shapes_layer=None,
         channel=channel,
+        z_slice=z_slice,
         crd=crd,
         output=output,
         **kwargs,
@@ -60,6 +62,7 @@ def plot_image(
 def plot_labels(
     sdata: SpatialData,
     labels_layer: str = "segmentation_mask",
+    z_slice: Optional[int] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
@@ -84,6 +87,7 @@ def plot_labels(
         sdata,
         labels_layer=labels_layer,
         shapes_layer=None,
+        z_slice=z_slice,
         crd=crd,
         output=output,
         **kwargs,
@@ -93,9 +97,10 @@ def plot_labels(
 def plot_shapes(
     sdata: SpatialData,
     img_layer: Optional[str | Iterable[str]] = None,
-    labels_layer: Optional[ str | Iterable[str] ]= None,
+    labels_layer: Optional[str | Iterable[str]] = None,
     shapes_layer: Optional[str | Iterable[str]] = None,
     channel: Optional[int | str | Iterable[int] | Iterable[str]] = None,
+    z_slice: Optional[int] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     figsize: Optional[Tuple[int, int]] = None,
     output: Optional[str | Path] = None,
@@ -167,22 +172,25 @@ def plot_shapes(
     """
 
     if img_layer is not None and labels_layer is not None:
-        raise ValueError( "Both img_layer and labels_layer is not None. "
-                         "Please specify either img_layer or labels_layer, not both." )
-    
+        raise ValueError(
+            "Both img_layer and labels_layer is not None. "
+            "Please specify either img_layer or labels_layer, not both."
+        )
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
     if img_layer is not None:
-        layer=img_layer
-        img_layer_type=True
+        layer = img_layer
+        img_layer_type = True
     elif labels_layer is not None:
-        layer=labels_layer
-        img_layer_type=False
+        layer = labels_layer
+        img_layer_type = False
     else:
         layer = [*sdata.images][-1]
-        img_layer_type=True
-        log.warning(f"No image layer or labels layer specified. "
-                    f"Plotting last image layer {layer} of the provided SpatialData object.")
+        img_layer_type = True
+        log.warning(
+            f"No image layer or labels layer specified. "
+            f"Plotting last image layer {layer} of the provided SpatialData object."
+        )
 
     # Make code also work if user would provide another iterable than List
     layer = (
@@ -220,7 +228,6 @@ def plot_shapes(
 
     nr_of_columns = max(len(layer), len(shapes_layer))
 
-
     if img_layer_type:
         # if channel is None, get the number of channels from the first img_layer given, maybe print a message about this.
         if channel is None:
@@ -228,9 +235,9 @@ def plot_shapes(
             channels = se.c.data
         else:
             channels = channel
-    
+
     else:
-        channels=[None] # for labels_layer type, there are no channels
+        channels = [None]  # for labels_layer type, there are no channels
 
     nr_of_rows = len(channels)
 
@@ -259,6 +266,7 @@ def plot_shapes(
                 labels_layer=_layer if not img_layer_type else None,
                 shapes_layer=_shapes_layer,
                 channel=_channel,
+                z_slice=z_slice,
                 crd=crd,
                 **kwargs,
             )
@@ -282,6 +290,7 @@ def _plot(
     labels_layer: Optional[str] = None,
     shapes_layer: Optional[str] = "segmentation_mask_boundaries",
     channel: Optional[int | str] = None,
+    z_slice: Optional[int] = None,
     alpha: float = 0.5,
     crd: Tuple[int, int, int, int] = None,
     vmin: Optional[float] = None,
@@ -344,22 +353,25 @@ def _plot(
     - The function supports various visualization options such as image layers, shape layers, channels, color mapping, and custom regions.
     """
     if img_layer is not None and labels_layer is not None:
-        raise ValueError( "Both img_layer and labels_layer is not None. "
-                         "Please specify either img_layer or labels_layer, not both." )
-    
+        raise ValueError(
+            "Both img_layer and labels_layer is not None. "
+            "Please specify either img_layer or labels_layer, not both."
+        )
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
     if img_layer is not None:
-        layer=img_layer
-        img_layer_type=True
+        layer = img_layer
+        img_layer_type = True
     elif labels_layer is not None:
-        layer=labels_layer
-        img_layer_type=False
+        layer = labels_layer
+        img_layer_type = False
     else:
         layer = [*sdata.images][-1]
-        img_layer_type=True
-        log.warning(f"No image layer or labels layer specified. "
-                    f"Plotting last image layer {layer} of the provided SpatialData object.")
+        img_layer_type = True
+        log.warning(
+            f"No image layer or labels layer specified. "
+            f"Plotting last image layer {layer} of the provided SpatialData object."
+        )
 
     if shapes_layer_filtered is not None:
         shapes_layer_filtered = (
@@ -438,15 +450,20 @@ def _plot(
 
         channel_name = se.c.name
         channel_idx = list(se.c.data).index(channel)
-        _se=se.isel(c=channel_idx)
-        cmap_layer="gray"
+        _se = se.isel(c=channel_idx)
+        cmap_layer = "gray"
     else:
-        _se=se
-        cmap_layer="viridis"
+        _se = se
+        cmap_layer = "viridis"
 
-    _se.squeeze().sel(
-        x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
-    ).plot.imshow(cmap=cmap_layer, robust=True, ax=ax, add_colorbar=False)
+    if z_slice is not None:
+        _se = _se[z_slice, ...]
+    else:
+        _se = _se.squeeze()
+
+    _se.sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
+        cmap=cmap_layer, robust=True, ax=ax, add_colorbar=False
+    )
 
     if shapes_layer is not None:
         sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(

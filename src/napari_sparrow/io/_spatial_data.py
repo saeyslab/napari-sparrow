@@ -36,6 +36,7 @@ def create_sdata(
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
     c_coords: Optional[int | str | Iterable[int | str ]] = None,
+    z_projection: bool = True,
 ) -> SpatialData:
     """
     Convert input images or arrays into a SpatialData object.
@@ -118,7 +119,7 @@ def create_sdata(
         # tmp_dir is used to write results for each channel out to separate zarr store,
         # these results are then combined and written to sdata
         dask_array = _load_image_to_dask(
-            input=input, chunks=chunks, dims=dims, crd=crd, output_dir=tmp_dir
+            input=input, chunks=chunks, dims=dims, crd=crd, z_projection=z_projection, output_dir=tmp_dir
         )
 
         if c_coords is not None:
@@ -144,6 +145,7 @@ def create_sdata(
             sdata.write(output_path)
 
         if crd is not None:
+            # TODO crd not yet supported for 3D
             crd = _fix_crd(crd, dask_array)
             tx = crd[0]
             ty = crd[2]
@@ -179,6 +181,7 @@ def _load_image_to_dask(
     chunks: str | Tuple[int, int, int, int] | int | None = None,
     dims: Optional[List[str]] = None,
     crd: Optional[List[int]] = None,
+    z_projection: bool = True,
     output_dir: Optional[Union[Path, str]] = None,
 ) -> da.Array:
     """
@@ -217,14 +220,17 @@ def _load_image_to_dask(
     """
 
     if isinstance(input, list):
-        # if filename pattern is a list, create (c, y, x) for each filename pattern
+        # if filename pattern is a list, create (c, (z), y, x) for each filename pattern
         dask_arrays = [
-            _load_image_to_dask(f, chunks, dims, output_dir=output_dir) for f in input
+            _load_image_to_dask(f, chunks, dims, z_projection=z_projection, output_dir=output_dir) for f in input
         ]
 
+
         dask_array = da.concatenate(dask_arrays, axis=0)
-        # add z- dimension, we want (c,z,y,x)
-        dask_array = dask_array[:, None, :, :]
+
+        if z_projection:
+            # add z- dimension if we did a projection, we want (c,z,y,x)
+            dask_array = dask_array[:, None, :, :]
 
     elif isinstance(input, (np.ndarray, da.Array)):
         # make sure we have (c,z,y,x)
@@ -269,12 +275,13 @@ def _load_image_to_dask(
     if chunks:
         dask_array = dask_array.rechunk(chunks)
 
-    # perform z-projection
-    if dask_array.shape[1] > 1:
-        dask_array = da.max(dask_array, axis=1)
-    # if z-dimension is 1, then squeeze it.
-    else:
-        dask_array = dask_array.squeeze(1)
+    if z_projection:
+        # perform z-projection
+        if dask_array.shape[1] > 1:
+            dask_array = da.max(dask_array, axis=1)
+        # if z-dimension is 1, then squeeze it.
+        else:
+            dask_array = dask_array.squeeze(1)
 
     if isinstance(input, (str, Path)) and output_dir is not None:
         name = os.path.splitext(os.path.basename(input))[0]

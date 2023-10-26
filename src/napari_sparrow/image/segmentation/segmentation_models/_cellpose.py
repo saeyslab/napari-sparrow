@@ -25,6 +25,10 @@ def _cellpose(
     model_type: str = "nuclei",
     channels: List[int] = [0, 0],
     device: str = "cpu",
+    z_axis: int = 0,
+    channel_axis: int = -1,
+    do_3D: bool = True,
+    anisotropy: float = 15,
 ) -> NDArray:
     if not TORCH_AVAILABLE:
         raise RuntimeError(
@@ -45,5 +49,14 @@ def _cellpose(
         min_size=min_size,
         flow_threshold=flow_threshold,
         cellprob_threshold=cellprob_threshold,
+        z_axis=z_axis,
+        channel_axis=channel_axis,
+        do_3D=do_3D,
+        anisotropy=anisotropy,
     )
+
+    # make sure we always return z,y,x for labels.
+    if not do_3D:
+        masks=masks[None,:]
+
     return masks
