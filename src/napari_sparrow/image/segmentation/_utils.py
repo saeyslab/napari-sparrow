@@ -97,7 +97,7 @@ def _clean_up_masks(
     if block_id[0] != total_blocks[0] - 1:
         crossing_masks.append(
             block[:, block.shape[1] - depth[0], :]
-        )  #!!!!! this causes the issue probably need to check
+        )
     if block_id[1] != total_blocks[1] - 1:
         crossing_masks.append(block[:, :, block.shape[2] - depth[1]])
 

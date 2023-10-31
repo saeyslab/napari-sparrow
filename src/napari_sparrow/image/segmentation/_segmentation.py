@@ -156,7 +156,6 @@ class SegmentationModel:
 
         # take dask array and put channel dimension last,
         # so we have ( z, y, x, c ).
-        # TODO check if this works for multiscale
 
         if se.data.ndim == 4:
             assert se.dims == (

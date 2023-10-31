@@ -26,7 +26,7 @@ def _cellpose(
     channels: List[int] = [0, 0],
     device: str = "cpu",
     z_axis: int = 0,
-    channel_axis: int = -1,
+    channel_axis: int = 3,
     do_3D: bool = False,
     anisotropy: float = 2,
 ) -> NDArray:
