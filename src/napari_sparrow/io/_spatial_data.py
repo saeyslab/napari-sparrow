@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple, Union, Iterable
+from typing import Iterable, List, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
@@ -14,7 +14,7 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation
 
-from napari_sparrow.image._image import _add_image_layer
+from napari_sparrow.image._image import _add_image_layer, _fix_dimensions
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -35,7 +35,7 @@ def create_sdata(
     dims: Optional[List[str]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
-    c_coords: Optional[int | str | Iterable[int | str ]] = None,
+    c_coords: Optional[int | str | Iterable[int | str]] = None,
     z_projection: bool = True,
 ) -> SpatialData:
     """
@@ -119,7 +119,12 @@ def create_sdata(
         # tmp_dir is used to write results for each channel out to separate zarr store,
         # these results are then combined and written to sdata
         dask_array = _load_image_to_dask(
-            input=input, chunks=chunks, dims=dims, crd=crd, z_projection=z_projection, output_dir=tmp_dir
+            input=input,
+            chunks=chunks,
+            dims=dims,
+            crd=crd,
+            z_projection=z_projection,
+            output_dir=tmp_dir,
         )
 
         if c_coords is not None:
@@ -145,8 +150,8 @@ def create_sdata(
             sdata.write(output_path)
 
         if crd is not None:
-            # TODO crd not yet supported for 3D
-            crd = _fix_crd(crd, dask_array)
+            # replace None in crd with x-y bounds of dask_array
+            crd = _fix_crd(crd, dask_array.shape[-2:])
             tx = crd[0]
             ty = crd[2]
 
@@ -187,9 +192,10 @@ def _load_image_to_dask(
     """
     Load images into a dask array.
 
-    This function facilitates the loading of one or more images into a 3D dask array.
+    This function facilitates the loading of one or more images into a 3 or 4D dask array depending whether
+    z-projection is set to True or False..
     These images are designated by a provided filename pattern or numpy array. The resulting dask
-    array will have three dimensions structured as follows: channel (c), y, and x.
+    array will have three dimensions structured as follows: c, (z) y, and x.
 
     Parameters
     ----------
@@ -211,20 +217,17 @@ def _load_image_to_dask(
     Returns
     -------
     dask.array.Array
-        The resulting 3D dask array with dimensions ordered as: (c, y, x).
-
-    Raises
-    ------
-    ValueError
-        If an image is not 3D (z,y,x) after loading by dask_image, a ValueError is raised. z-dimension can be 1.
+        The resulting 3D dask array with dimensions ordered as: (c, (z), y, x).
     """
 
     if isinstance(input, list):
         # if filename pattern is a list, create (c, (z), y, x) for each filename pattern
         dask_arrays = [
-            _load_image_to_dask(f, chunks, dims, z_projection=z_projection, output_dir=output_dir) for f in input
+            _load_image_to_dask(
+                f, chunks, dims, z_projection=z_projection, output_dir=output_dir
+            )
+            for f in input
         ]
-
 
         dask_array = da.concatenate(dask_arrays, axis=0)
 
@@ -292,60 +295,13 @@ def _load_image_to_dask(
     return dask_array
 
 
-def _fix_dimensions(
-    array: np.ndarray | da.Array,
-    dims: List[str] = ["c", "z", "y", "x"],
-    target_dims: List[str] = ["c", "z", "y", "x"],
-) -> np.ndarray | da.Array:
-    dims = list(dims)
-    target_dims = list(target_dims)
-
-    dims_set = set(dims)
-    if len(dims) != len(dims_set):
-        raise ValueError(f"dims list {dims} contains duplicates")
-
-    target_dims_set = set(target_dims)
-
-    extra_dims = dims_set - target_dims_set
-
-    if extra_dims:
-        raise ValueError(
-            f"The dimension(s) {extra_dims} are not present in the target dimensions."
-        )
-
-    # check if the array already has the correct number of dimensions, if not add missing dimensions
-    if len(array.shape) != len(dims):
-        raise ValueError(
-            f"Dimension of array {array.shape} is not equal to dimension of provided dims { dims}"
-        )
-    if len(array.shape) > 4:
-        raise ValueError(
-            f"Arrays with dimension larger than 4 are not supported, shape of array is {array.shape}"
-        )
-
-    for dim in target_dims:
-        if dim not in dims:
-            array = array[None, ...]
-            dims.insert(0, dim)
-
-    # create a mapping from input dims to target dims
-    dim_mapping = {dim: i for i, dim in enumerate(dims)}
-    target_order = [dim_mapping[dim] for dim in target_dims]
-
-    # transpose the array to the target dimension order
-    array = array.transpose(*target_order)
-
-    return array
-
-
 def _fix_crd(
-    crd: Tuple[int, int, int, int], arr: da.Array
+    crd: Tuple[int, int, int, int],
+    shape_y_x=Tuple[int, int],
 ) -> Tuple[int, int, int, int]:
     x1, x2, y1, y2 = crd
 
-    # dask array has dimension c,y,x
-    # Get the shape of the array
-    _, max_y, max_x = arr.shape
+    max_y, max_x = shape_y_x
 
     # Update the coordinates based on the conditions
     x1 = 0 if x1 is None else x1

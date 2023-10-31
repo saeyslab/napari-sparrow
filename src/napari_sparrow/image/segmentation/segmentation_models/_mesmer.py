@@ -41,10 +41,10 @@ def _mesmer(
         mem_img = img[..., mem_channel][..., None]
         img = np.concatenate((nuc_img, mem_img), axis=-1)
 
-    # add batch dimension
-    img = img[None, :]
-
-    # mesmer want img to be of dimension (batch, x, y, c)
+    # mesmer want img to be of dimension (batch, y, x, c)
+    # we give it input (z, y, x, c), with z dim ==1.
     masks = app.predict(img, image_mpp=image_mpp, compartment=compartment)
 
-    return masks.squeeze()
+    # mesmer returns dimension (batch, y,x,c), with in our use case batch==1, and c==1.
+    # so it is in correct format (z,y,x,c)
+    return masks

@@ -2,24 +2,25 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple, Union
 
+import dask.array as da
 import numpy as np
 import xarray as xr
 from dask.array import Array
+from dask.dataframe import DataFrame as DaskDataFrame
+from geopandas import GeoDataFrame
 from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
 from spatial_image import SpatialImage
 from spatialdata import SpatialData
-from geopandas import GeoDataFrame
-from dask.dataframe import DataFrame as DaskDataFrame
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import BaseTransformation, Translation, Identity
+from spatialdata.transformations import BaseTransformation, Identity, Translation
 from spatialdata.transformations._utils import (
     _get_transformations,
     _get_transformations_xarray,
 )
 from xarray import DataArray
 
+from napari_sparrow.image._manager import ImageLayerManager, LabelLayerManager
 from napari_sparrow.utils.pylogger import get_pylogger
-from napari_sparrow.image._manager import LabelLayerManager, ImageLayerManager
 
 log = get_pylogger(__name__)
 
@@ -203,6 +204,52 @@ def _get_transformation(
         assert to_coordinate_system is None
         # get the dict of all the transformations
         return transformations
+
+
+def _fix_dimensions(
+    array: np.ndarray | da.Array,
+    dims: List[str] = ["c", "z", "y", "x"],
+    target_dims: List[str] = ["c", "z", "y", "x"],
+) -> np.ndarray | da.Array:
+    dims = list(dims)
+    target_dims = list(target_dims)
+
+    dims_set = set(dims)
+    if len(dims) != len(dims_set):
+        raise ValueError(f"dims list {dims} contains duplicates")
+
+    target_dims_set = set(target_dims)
+
+    extra_dims = dims_set - target_dims_set
+
+    if extra_dims:
+        raise ValueError(
+            f"The dimension(s) {extra_dims} are not present in the target dimensions."
+        )
+
+    # check if the array already has the correct number of dimensions, if not add missing dimensions
+    if len(array.shape) != len(dims):
+        raise ValueError(
+            f"Dimension of array {array.shape} is not equal to dimension of provided dims { dims}"
+        )
+    if len(array.shape) > 4:
+        raise ValueError(
+            f"Arrays with dimension larger than 4 are not supported, shape of array is {array.shape}"
+        )
+
+    for dim in target_dims:
+        if dim not in dims:
+            array = array[None, ...]
+            dims.insert(0, dim)
+
+    # create a mapping from input dims to target dims
+    dim_mapping = {dim: i for i, dim in enumerate(dims)}
+    target_order = [dim_mapping[dim] for dim in target_dims]
+
+    # transpose the array to the target dimension order
+    array = array.transpose(*target_order)
+
+    return array
 
 
 def _add_image_layer(

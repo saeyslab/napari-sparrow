@@ -248,10 +248,7 @@ class SparrowPipeline:
                 f"Depth not provided for segmentation, "
                 f"setting depth equal to 2 times the estimated size of the nucleus/cell: 2*{ self.cfg.segmentation.diameter}"
             )
-            depth = (
-                2 * self.cfg.segmentation.diameter,
-                2 * self.cfg.segmentation.diameter,
-            )
+            depth = 2 * self.cfg.segmentation.diameter
 
         self.shapes_layer_name = self.cfg.segmentation.output_shapes_layer
 
@@ -557,7 +554,9 @@ class SparrowPipeline:
                 output=self.cfg.paths.nhood,
             )
         except ValueError as e:
-            log.warning(f"Could not calculate nhood enrichment for this region. Reason: {e}. Try with a different area if a subset was selected.")
+            log.warning(
+                f"Could not calculate nhood enrichment for this region. Reason: {e}. Try with a different area if a subset was selected."
+            )
 
         return sdata
 

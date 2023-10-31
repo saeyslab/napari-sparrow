@@ -27,8 +27,8 @@ def _cellpose(
     device: str = "cpu",
     z_axis: int = 0,
     channel_axis: int = -1,
-    do_3D: bool = True,
-    anisotropy: float = 15,
+    do_3D: bool = False,
+    anisotropy: float = 2,
 ) -> NDArray:
     if not TORCH_AVAILABLE:
         raise RuntimeError(
@@ -57,6 +57,9 @@ def _cellpose(
 
     # make sure we always return z,y,x for labels.
     if not do_3D:
-        masks=masks[None,:]
+        masks = masks[None, ...]
+
+    # add trivial channel dimension, so we return z,y,x,c
+    masks = masks[..., None]
 
     return masks

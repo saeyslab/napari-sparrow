@@ -13,6 +13,7 @@ from spatialdata.transformations import Translation
 
 from napari_sparrow.image._image import (
     _add_label_layer,
+    _fix_dimensions,
     _get_spatial_element,
     _get_translation,
     _substract_translation_crd,
@@ -40,7 +41,7 @@ def segment(
     model: Callable[..., NDArray] = _model,
     output_labels_layer: str = "segmentation_mask",
     output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-    depth: Tuple[int, int] = (100, 100),
+    depth: Tuple[int, ...] | int = 100,
     chunks: Optional[str | int | tuple[int, ...]] = "auto",
     boundary: str = "reflect",
     trim: bool = False,
@@ -155,18 +156,62 @@ class SegmentationModel:
 
         # take dask array and put channel dimension last,
         # so we have ( z, y, x, c ).
+        # TODO check if this works for multiscale
+
         if se.data.ndim == 4:
-            x = se.data.transpose(1, 2, 3, 0)
+            assert se.dims == (
+                "c",
+                "z",
+                "y",
+                "x",
+            ), "dimension should be in order: ('c', 'z' , 'y', 'x')."
+            # transpose x, so channel dimension is last
+            x = _fix_dimensions(se.data, dims=se.dims, target_dims=("z", "y", "x", "c"))
+            if "depth" in kwargs:
+                depth = kwargs["depth"]
+                if isinstance(depth, int):
+                    kwargs["depth"] = {0: 0, 1: depth, 2: depth, 3: 0}
+                else:
+                    assert (
+                        len(depth) == 4
+                    ), "Please provide depth for ('c', 'z', 'y', 'x')"
+                    assert (
+                        depth[0] == 0
+                    ), "Depth not equal to 0 for 'c' dimension is not supported"
+                    assert (
+                        depth[1] == 0
+                    ), "Depth not equal to 0 for 'z' dimension is not supported"
+                    # transpose depth
+                    depth2 = {0: depth[1], 1: depth[2], 2: depth[3], 3: depth[0]}
+                    kwargs["depth"] = depth2
+
         elif se.data.ndim == 3:
-            x = se.data.transpose(1, 2, 0)
-            # add trivial dimension z dimension.
+            assert se.dims == (
+                "c",
+                "y",
+                "x",
+            ), "dimension should be in order: ('c', 'y', 'x')."
+            # transpose x, so channel dimension is last
+            x = _fix_dimensions(se.data, dims=se.dims, target_dims=("y", "x", "c"))
+            # add trivial z dimension.
             x = x[None, ...]
+            if "depth" in kwargs:
+                depth = kwargs["depth"]
+                if isinstance(depth, int):
+                    kwargs["depth"] = {0: 0, 1: depth, 2: depth, 3: 0}
+                else:
+                    assert len(depth) == 3, "Please provide depth for ('c', 'y', 'x')"
+                    assert (
+                        depth[0] == 0
+                    ), "Depth not equal to 0 for 'c' dimension is not supported"
+                    # transpose depth
+                    depth2 = {0: 0, 1: depth[1], 2: depth[2], 3: depth[0]}
+                    kwargs["depth"] = depth2
         else:
             raise ValueError(
                 "Only 3D and 4D arrays are supported, i.e. (c, (z), y, x)."
             )
 
-        # TODO support crd for 3D
         # crd is specified on original uncropped pixel coordinates
         # need to substract possible translation, because we use crd to crop dask array, which does not take
         # translation into account
@@ -178,14 +223,14 @@ class SegmentationModel:
 
         x_labels = self._segment(
             x,
-            dims=( "z", "y", "x", "c" ),
             fn_kwargs=fn_kwargs,
             **kwargs,
         )
 
-        # squeeze the z-dim if it is 1 (i.e. case where you did not do 3D segmentation)
+        # squeeze the z-dim if it is 1 (i.e. case where you did not do 3D segmentation),
+        # otherwise 2D labels layer would be saved as 3D
         if x_labels.shape[0] == 1:
-            x_labels=x_labels.squeeze(0)
+            x_labels = x_labels.squeeze(0)
 
         tx, ty = _get_translation(se)
 
@@ -205,6 +250,7 @@ class SegmentationModel:
             overwrite=overwrite,
         )
 
+        # TODO update this so shapes layer can be calculated in 3D
         # only calculate shapes layer if it is specified
         if output_shapes_layer is not None:
             se_labels = _get_spatial_element(sdata, layer=output_labels_layer)
@@ -223,45 +269,67 @@ class SegmentationModel:
     def _segment(
         self,
         x: Array,
-        dims: Tuple[str,...]=( "z", "y", "x", "c" ),
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
     ):
         chunks = kwargs.pop("chunks", None)
-        depth = kwargs.pop("depth", {0: 100, 1: 100})
+        depth = kwargs.pop("depth", {0: 0, 1: 100, 2: 100, 3: 0})
+        assert len(depth) == 4, "Please provide depth for (('z', 'y', 'x', 'c'))"
+        assert depth[0] == 0, "Depth not equal to 0 for 'z' dimension is not supported"
+        assert depth[3] == 0, "Depth not equal to 0 for 'c' dimension is not supported"
         boundary = kwargs.pop("boundary", "reflect")
         trim = kwargs.pop("trim", False)
 
+        if not trim and depth[1] == 0 or depth[2] == 0:
+            log.warning(
+                "Depth equal to zero not supported with trim==False, setting trim to True."
+            )
+            trim = True
+
         _check_boundary(boundary)
 
-        # make depth uniform + rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
-        x, depth = _rechunk_overlap(
+        # make depth uniform (dict with depth for z,y and x)
+        # + rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
+        x = _rechunk_overlap(
             x,
             depth=depth,
             chunks=chunks,
-            dims=dims,
         )
 
-        output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
+        # remove trivial depth==0 for c dimension
+        depth.pop(3)
 
-        shift = int(np.prod(x.numblocks) - 1).bit_length()
+        output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
+        # only support output chunks (i.e. labels) with channel shape == 1
+        output_chunks = output_chunks[:-1] + (1,)
+
+        # shift added to results of every chunk (i.e. if shift is 4, then 0 0 0 0 will be added to every label).
+        # These 0's are then filled in with block_id number. This way labels are unique accross the different chunks.
+        # not that if x.numblocks.bit_length() would be close to 16 bit, and each chunks has labels up to 16 bits,
+        # this could lead to collisions.
+        # ignore channel dim (num_blocks[3]), because label channel dim is 1
+        num_blocks = x.numblocks
+        shift = int(
+            np.prod(num_blocks[0] * num_blocks[1] * num_blocks[2]) - 1
+        ).bit_length()
 
         x_labels = da.map_overlap(
             self._segment_chunk,
             x,
             dtype=_SEG_DTYPE,
-            num_blocks=x.numblocks,
+            num_blocks=num_blocks,
             shift=shift,
-            drop_axis=x.ndim
-            - 1,  # drop the last axis, i.e. the c-axis (only for determining output size of array)
             trim=trim,
             allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-            chunks=output_chunks,  # e.g. ((7,) ,(1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60) ),
+            chunks=output_chunks,  # e.g. ((7,) ,(1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60), (1,) ),
             depth=depth,
             boundary=boundary,
             fn_kwargs=fn_kwargs,
             **kwargs,
         )
+
+        # For now, only support processing of x_labels with 1 channel dim
+        x_labels = x_labels.squeeze(-1)
 
         # if trim==True --> use squidpy's way of handling neighbouring blocks
         if trim:
@@ -275,6 +343,7 @@ class SegmentationModel:
             label_groups = label_adjacency_graph(x_labels, None, x_labels.max())
             new_labeling = connected_components_delayed(label_groups)
             x_labels = relabel_blocks(x_labels, new_labeling)
+            x_labels = x_labels.rechunk(x_labels.chunksize)
 
         else:
             x_labels = da.map_blocks(
@@ -285,9 +354,6 @@ class SegmentationModel:
                 **kwargs,
             )
 
-            #return x_labels
-            #x_labels.compute()
-            # test without compute here...
             x_labels = _trim_masks(masks=x_labels, depth=depth)
 
         return x_labels
@@ -300,25 +366,26 @@ class SegmentationModel:
         shift: int,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     ) -> NDArray:
-        if len(num_blocks) == 2:
-            block_num = block_id[0] * num_blocks[1] + block_id[1]
-        elif len(num_blocks) == 3:
-            block_num = (
-                block_id[0] * (num_blocks[1] * num_blocks[2])
-                + block_id[1] * num_blocks[2]
-            )
-        elif len(num_blocks) == 4:
+        if len(num_blocks) == 4:
+            if num_blocks[0] != 1:
+                raise ValueError(
+                    f"Expected the number of blocks in the Z-dimension to be `1`, found `{num_blocks[0]}`."
+                )
             if num_blocks[-1] != 1:
                 raise ValueError(
-                    f"Expected the number of blocks in the Z-dimension to be `1`, found `{num_blocks[-1]}`."
+                    f"Expected the number of blocks in the c-dimension to be `1`, found `{num_blocks[-1]}`."
                 )
+
+            # note: ignore num_blocks[3]==1 and block_id[3]==0, because we assume c-dimension is 1
             block_num = (
                 block_id[0] * (num_blocks[1] * num_blocks[2])
-                + block_id[1] * num_blocks[2]
+                + block_id[1] * (num_blocks[2])
+                + block_id[2]
             )
+
         else:
             raise ValueError(
-                f"Expected either `2`, `3` or `4` dimensional chunks, found `{len(num_blocks)}`."
+                f"Expected `4` dimensional chunks, found `{len(num_blocks)}`."
             )
 
         labels = self._model(block, **fn_kwargs).astype(_SEG_DTYPE)

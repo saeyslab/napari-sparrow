@@ -33,7 +33,7 @@ def align_labels_layers(
     sdata: SpatialData,
     labels_layer_1: str,
     labels_layer_2: str,
-    depth: Tuple[int, int] = (100, 100),
+    depth: Tuple[int, ...] | int = 100,
     chunks: Optional[str | int | tuple[int, ...]] = "auto",
     output_labels_layer: Optional[str] = None,
     output_shapes_layer: Optional[str] = None,
@@ -58,10 +58,10 @@ def align_labels_layers(
         The name of the first labels layer to align.
     labels_layer_2 : str
         The name of the second labels layer to align.
-    depth : Tuple[int, int], optional
+    depth : Tuple[int, ...], optional
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
-        Default is (100, 100). Please set depth>cell size to avoid chunking effects.
+        Default is 100. Please set depth>cell size to avoid chunking effects.
     chunks : Optional[str | int | tuple[int, ...]], optional
         The desired chunk size for the Dask computation, or "auto" to allow the function to
         choose an optimal chunk size based on the data. Default is "auto".
@@ -179,8 +179,19 @@ def _align_dask_arrays(
     ), "Only arrays with same shape are currently supported."
 
     chunks = kwargs.pop("chunks", None)
-    depth = kwargs.pop("depth", {0: 100, 1: 100})
+    depth = kwargs.pop("depth", 100)
     boundary = kwargs.pop("boundary", "reflect")
+
+    if isinstance(depth, int):
+        depth = {0: 0, 1: depth, 2: depth}
+    else:
+        assert (
+            len(depth) == x_label_1.ndim
+        ), f"Please provide depth for each dimension ({x_label_1.ndim})."
+        if x_label_1.ndim == 2:
+            depth = {0: 0, 1: depth[0], 2: depth[1]}
+
+    assert depth[0] == 0, "Depth not equal to 0 for 'z' dimension is not supported"
 
     if chunks is None:
         assert (
@@ -189,14 +200,22 @@ def _align_dask_arrays(
 
     _check_boundary(boundary)
 
-    # make depth uniform + rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
-    # TODO check if this still works
-    x_label_1, depth = _rechunk_overlap(
-        x_label_1, depth=depth, chunks=chunks, dims=( "y", "x" ),
-    )
-    x_label_2, depth = _rechunk_overlap(
-        x_label_2, depth=depth, chunks=chunks, dims=( "y", "x" )
-    )
+    _to_squeeze = False
+    if x_label_1.ndim == 2:
+        _to_squeeze = True
+        x_label_1 = x_label_1[None, ...]
+        x_label_2 = x_label_2[None, ...]
+
+    #  rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
+    x_label_1 = _rechunk_overlap(x_label_1, depth=depth, chunks=chunks)
+    x_label_2 = _rechunk_overlap(x_label_2, depth=depth, chunks=chunks)
+
+    assert (
+        x_label_1.numblocks[0] == 1
+    ), f"Expected the number of blocks in the Z-dimension to be `1`, found `{x_label_1.numblocks[0]}`."
+    assert (
+        x_label_2.numblocks[0] == 1
+    ), f"Expected the number of blocks in the Z-dimension to be `1`, found `{x_label_2.numblocks[0]}`."
 
     # output_chunks can be derived from either x_label_1 or x_label_2
     output_chunks = _add_depth_to_chunks_size(x_label_1.chunks, depth)
@@ -223,6 +242,10 @@ def _align_dask_arrays(
     )
 
     x_labels = _trim_masks(masks=x_labels, depth=depth)
+
+    # squeeze if a trivial dimension was added.
+    if _to_squeeze:
+        x_labels = x_labels.squeeze(0)
 
     return x_labels
 

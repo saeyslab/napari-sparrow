@@ -6,9 +6,10 @@ from typing import Dict, List, Optional, Tuple
 import dask.array as da
 import numpy as np
 from dask.array import Array
-from dask.array.overlap import coerce_depth, ensure_minimum_chunksize
+from dask.array.overlap import ensure_minimum_chunksize
 from numpy.typing import NDArray
 
+from napari_sparrow.image._image import _fix_dimensions
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -18,58 +19,38 @@ _SEG_DTYPE = np.uint32
 
 def _rechunk_overlap(
     x: Array,
-    depth: Tuple[int, int] | int | List[int, int],
-    chunks: Optional[str | int | tuple[int, ...]] = "auto",
-    dims: Tuple[str, ...] = ("y", "x", "c"),
-) -> Tuple[Array, Tuple[int, int]]:
+    depth: Tuple[int, ...],
+    chunks: Optional[str | int | Tuple[int, ...]] = "auto",
+) -> Array:
+    # rechunk, so that we ensure minimum overlap
+
+    assert (
+        len(depth) == x.ndim
+    ), f"Please provide depth value for every dimension of x {(x.ndim)}"
+
     if chunks is not None:
         x = x.rechunk(chunks)
 
     # rechunk if new chunks are needed to fit depth in every chunk,
     # this allows us to send allow_rechunk=False with map_overlap,
     # and have control of chunk sizes of input dask array and output dask array
-    # TODO add an assert on depth, length should be maximal 2, does it work with tuple of length 1? need to check
 
-    if isinstance(depth, list):
-        depth = tuple(depth)
-    if isinstance(depth, int):
-        # 2 relevant spatial dimensions (x and y)
-        depth = (2) * (depth,)
+    for i in range(len(depth)):
+        if depth[i] != 0:
+            if depth[i] > x.chunksize[i]:
+                log.warning(
+                    f"Depth for dimension {i} exceeds chunk size. Adjusting to a quarter of chunk size: {x.chunksize[i]/4}"
+                )
+                depth[i] = int(x.chunksize[i] // 4)
 
-    if dims == ("y", "x", "c"):
-        depth2 = {0: depth[0], 1: depth[1], 2: 0}
-    elif dims == ("z", "y", "x", "c"):
-        depth2 = {0: 0, 1: depth[0], 2: depth[1], 3: 0}
-    elif dims == ("y", "x"):
-        depth2 = {0: depth[0], 1: depth[1]}
-    elif dims == ("z", "y", "x"):
-        depth2 = {0: 0, 1: depth[0], 2: depth[1]}
-    else:
-        raise ValueError(f"Provided dims parameter '{dims}' not supported.")
-
-    for _dim in ("y", "x"):
-        i = dims.index(_dim)
-        if depth2[i] > x.chunksize[i]:
-            log.warning(
-                f"Depth for dimension {_dim} exceeds chunk size. Adjusting to a quarter of chunk size: {x.chunksize[i]/4}"
-            )
-            depth2[i] = int(x.chunksize[i] // 4)
-
-    depths = [max(d) if isinstance(d, tuple) else d for d in depth2.values()]
     new_chunks = tuple(
-        ensure_minimum_chunksize(size + 1, c) for size, c in zip(depths, x.chunks)
+        ensure_minimum_chunksize(size + 1, c)
+        for size, c in zip(depth.values(), x.chunks)
     )
-
-    # we don't want channel dimension in depth
-    # (coerce_depth added this dimension if x has channel dimension, i.e. if x.ndim==3).
-    if "c" in dims:
-        last_key = list(depth2.keys())[-1]
-        depth2.pop(last_key)
-    depth = depth2
 
     x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
 
-    return x, depth
+    return x
 
 
 def _clean_up_masks(
@@ -114,9 +95,11 @@ def _clean_up_masks(
     if block_id[1] != 0:
         crossing_masks.append(block[:, :, depth[1]])
     if block_id[0] != total_blocks[0] - 1:
-        crossing_masks.append(block[:, block.shape[0] - depth[0], :])
+        crossing_masks.append(
+            block[:, block.shape[1] - depth[0], :]
+        )  #!!!!! this causes the issue probably need to check
     if block_id[1] != total_blocks[1] - 1:
-        crossing_masks.append(block[:, :, block.shape[1] - depth[1]])
+        crossing_masks.append(block[:, :, block.shape[2] - depth[1]])
 
     if crossing_masks:
         crossing_masks = np.unique(np.hstack(crossing_masks))
@@ -219,13 +202,13 @@ def _trim_masks(masks: Array, depth: Dict[int, int]) -> Array:
 
         # trim labels if chunk lays on boundary of larger array
         if y_start == 0:
-            chunk = chunk[:,depth[0] :, :]
+            chunk = chunk[:, depth[0] :, :]
         if x_start == 0:
-            chunk = chunk[:,:, depth[1] :]
+            chunk = chunk[:, :, depth[1] :]
         if (y_start + mask_chunk_shape[1]) == masks.shape[1]:
-            chunk = chunk[:,: -depth[0], :]
+            chunk = chunk[:, : -depth[0], :]
         if (x_start + mask_chunk_shape[2]) == masks.shape[2]:
-            chunk = chunk[:,:, : -depth[1]]
+            chunk = chunk[:, :, : -depth[1]]
 
         # now convert back to non-overlapping coordinates.
 
@@ -235,12 +218,15 @@ def _trim_masks(masks: Array, depth: Dict[int, int]) -> Array:
         non_zero_mask = chunk != 0
 
         # Update only the non-zero positions in the dask array
-        masks_trimmed[:,
-            y_offset : y_offset + chunk.shape[1], x_offset : x_offset + chunk.shape[2]
+        masks_trimmed[
+            :,
+            y_offset : y_offset + chunk.shape[1],
+            x_offset : x_offset + chunk.shape[2],
         ] = da.where(
             non_zero_mask,
             chunk,
-            masks_trimmed[:,
+            masks_trimmed[
+                :,
                 y_offset : y_offset + chunk.shape[1],
                 x_offset : x_offset + chunk.shape[2],
             ],
@@ -261,12 +247,14 @@ def _check_boundary(boundary: str) -> None:
 
 
 def _add_depth_to_chunks_size(
-    chunks: Tuple[Tuple[int, ...], ...], depth: Dict[int, int]
+    chunks: Tuple[Tuple[int, ...], ...], depth: Dict[int, int, int]
 ):
     result = []
     for i, item in enumerate(chunks):
         if i in depth:  # check if there's a corresponding depth value
             result.append(tuple(x + depth[i] * 2 for x in item))
+        else:
+            result.append(item)
     return tuple(result)
 
 
@@ -277,6 +265,8 @@ def _substract_depth_from_chunks_size(
     for i, item in enumerate(chunks):
         if i in depth:  # check if there's a corresponding depth value
             result.append(tuple(x - depth[i] * 2 for x in item))
+        else:
+            result.append(item)
     return tuple(result)
 
 
