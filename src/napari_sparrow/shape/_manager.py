@@ -5,6 +5,7 @@ from typing import Any, Union
 import dask
 import geopandas
 import numpy as np
+import pandas as pd
 import rasterio
 import shapely
 import spatialdata
@@ -16,10 +17,10 @@ from spatialdata import SpatialData
 from spatialdata.transformations import Identity, Translation
 
 from napari_sparrow.image._image import _get_translation_values
-
 from napari_sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
+
 
 class ShapesLayerManager:
     def add_shapes(
@@ -59,10 +60,12 @@ class ShapesLayerManager:
         sdata: SpatialData,
         indexes_to_keep: NDArray,
         prefix_filtered_shapes_layer: str,
-    )->SpatialData:
+    ) -> SpatialData:
         if len(indexes_to_keep) == 0:
-            log.warning( f"Length of the 'indexes_to_keep' parameter is 0. "
-                        "This would remove all shapes from sdata`. Skipping filtering step." )
+            log.warning(
+                f"Length of the 'indexes_to_keep' parameter is 0. "
+                "This would remove all shapes from sdata`. Skipping filtering step."
+            )
             return sdata
 
         for _shapes_layer in [*sdata.shapes]:
@@ -78,14 +81,18 @@ class ShapesLayerManager:
                 # a polygons layer containing polygons filtered out in a previous step
                 continue
 
-            output_filtered_shapes_layer=f"{prefix_filtered_shapes_layer}_{_shapes_layer}"
+            output_filtered_shapes_layer = (
+                f"{prefix_filtered_shapes_layer}_{_shapes_layer}"
+            )
 
-            if sum( ~bool_to_keep ) == 0:
+            if sum(~bool_to_keep) == 0:
                 # this is case where there are no polygons filtered out, so no
                 # output_filtered_shapes_layer should be created
-                log.warning(f"No polygons filtered out for shapes layer '{_shapes_layer}'. As a result, "
-                            f"shapes layer '{output_filtered_shapes_layer}' will not be created. This is "
-                            f"expected if 'indexes_to_keep' matches '{_shapes_layer}' indexes.")
+                log.warning(
+                    f"No polygons filtered out for shapes layer '{_shapes_layer}'. As a result, "
+                    f"shapes layer '{output_filtered_shapes_layer}' will not be created. This is "
+                    f"expected if 'indexes_to_keep' matches '{_shapes_layer}' indexes."
+                )
 
                 continue
 
@@ -93,9 +100,11 @@ class ShapesLayerManager:
                 sdata, name=_shapes_layer
             )[~bool_to_keep]
 
-            log.info( f"Filtering {sum( ~bool_to_keep )} polygons from shapes layer '{_shapes_layer}'. "
-                     f"Adding new shapes layer '{output_filtered_shapes_layer}' containing these filtered out polygons." )
-            
+            log.info(
+                f"Filtering {sum( ~bool_to_keep )} polygons from shapes layer '{_shapes_layer}'. "
+                f"Adding new shapes layer '{output_filtered_shapes_layer}' containing these filtered out polygons."
+            )
+
             self.add_to_sdata(
                 sdata,
                 output_layer=output_filtered_shapes_layer,
@@ -116,35 +125,54 @@ class ShapesLayerManager:
 
         return sdata
 
-
     @singledispatchmethod
     def get_polygons_from_input(self, input: Any) -> GeoDataFrame:
         raise ValueError("Unsupported input type.")
 
     @get_polygons_from_input.register(Array)
     def _get_polygons_from_array(self, input: Array) -> GeoDataFrame:
-        self.validate_input(input)
-        return _mask_image_to_polygons(input)
+        dimension = self.get_dims(input)
+        if dimension == 3:
+            all_polygons = []
+            for z_slice in range(input.shape[0]):
+                polygons = _mask_image_to_polygons(input[z_slice], z_slice=z_slice)
+                all_polygons.append(polygons)
+            polygons = geopandas.GeoDataFrame(
+                pd.concat(all_polygons, ignore_index=False)
+            )
+            return polygons
+        elif dimension == 2:
+            return _mask_image_to_polygons(input)
 
     @get_polygons_from_input.register(GeoDataFrame)
     def _get_polygons_from_geodf(self, input: GeoDataFrame) -> GeoDataFrame:
-        self.validate_input(input)
+        self.get_dims(input)
         return input
 
     @singledispatchmethod
-    def validate_input(self, input: Any):
+    def get_dims(self, input: Any):
         raise ValueError("Unsupported input type.")
 
-    @validate_input.register(Array)
-    def _validate_array(self, input):
-        assert (
-            len(input.shape) == 2
-        ), "Only 2D labels layers (y,x) are currently supported."
+    @get_dims.register(Array)
+    def _get_dims_array(self, input):
+        assert len(input.shape) in [
+            2,
+            3,
+        ], "Only 2D (y,x) and 3D (z,y,x) labels layers are supported."
 
-    @validate_input.register(GeoDataFrame)
-    def _validate_gdf(self, input):
+        return len(input.shape)
+
+    @get_dims.register(GeoDataFrame)
+    def _get_dims_gdf(self, input):
         has_z = input["geometry"].apply(lambda geom: geom.has_z)
-        assert not has_z.any(), "Some polygons are not 2-dimensional!"
+        if all(has_z):
+            return 3
+        elif not any(has_z):
+            return 2
+        else:
+            raise ValueError(
+                "All geometries should either be 2D or 3D. Mixed dimensions found."
+            )
 
     def set_transformation(
         self, polygons: GeoDataFrame, transformation: Union[Translation, Identity]
@@ -181,7 +209,7 @@ class ShapesLayerManager:
         return sdata
 
 
-def _mask_image_to_polygons(mask: Array) -> GeoDataFrame:
+def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
     """
     Convert a cell segmentation mask to polygons and return them as a GeoDataFrame.
 
@@ -243,6 +271,11 @@ def _mask_image_to_polygons(mask: Array) -> GeoDataFrame:
             mask=bool_mask,
             transform=rasterio.Affine(1.0, 0, y_offset, 0, 1.0, x_offset),
         ):
+            if z_slice is not None:
+                coordinates = shape["coordinates"]
+                shape["coordinates"] = [
+                    [(*item, z_slice) for item in coord] for coord in coordinates
+                ]
             all_polygons.append(shapely.geometry.shape(shape))
             all_values.append(int(value))
 
@@ -275,5 +308,5 @@ def _mask_image_to_polygons(mask: Array) -> GeoDataFrame:
     gdf = geopandas.GeoDataFrame({"geometry": all_polygons, "cells": all_values})
 
     # Combine polygons that are actually pieces of the same cell back together.
-    # (These cells got broken into pieces because of image chunking, needed for parallel processing.)
+    # (These pieces of same cell got written to different chunks by dask, needed for parallel processing.)
     return gdf.dissolve(by="cells")

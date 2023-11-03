@@ -94,6 +94,7 @@ def sanity_plot_transcripts_matrix(
     - If `plot_cell_number` is set to True, cells are annotated with their numbers.
     - If the `output` parameter is provided, the plot is saved to the specified location, otherwise, it's displayed.
     """
+    # TODO: add 3D support
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 

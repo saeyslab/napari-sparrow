@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from geopandas.geoseries import GeoSeries
+from geopandas.geodataframe import GeoDataFrame
 from spatialdata import SpatialData
 
 from napari_sparrow.image._image import (
@@ -40,6 +42,8 @@ def plot_image(
         Image layer to be plotted. Default is "raw_image".
     channel : int or str or Iterable[int] or Iterable[str], optional
         Channel(s) to be displayed from the image.
+    z_slice: int or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) image. 
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     output : str or Path, optional
@@ -76,6 +80,8 @@ def plot_labels(
         Data containing spatial information for plotting.
     labels_layer : str, optional
         Labels layer to be plotted. Default is "segmentation_mask".
+    z_slice: int or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) labels. 
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     output : str or Path, optional
@@ -156,6 +162,8 @@ def plot_shapes(
         Channel(s) to be displayed from the image. Displayed as rows in the plot.
         If channel is None, get the number of channels from the first img_layer given as input.
         Ignored if img_layer is None and labels_layer is specified.
+    z_slice: int or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     figsize : Tuple[int, int], optional
@@ -323,6 +331,8 @@ def _plot(
     channel : int or str or None, optional
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
         Ignored if img_layer is None and labels_layer is specified.
+    z_slice: int or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons. 
     alpha : float, default=0.5
         Transparency level for the cells, given by the alpha parameter of matplotlib.
     crd : tuple of int, optional
@@ -459,6 +469,9 @@ def _plot(
     if z_slice is not None:
         _se = _se[z_slice, ...]
     else:
+        if _se.ndim ==3:
+            log.warning( f"Layer {layer} has 3 dimensions, but no z-slice was added. Using z_slice at index 0 for plotting by default." )
+            _se=_se[ 0, ... ]
         _se = _se.squeeze()
 
     _se.sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
@@ -466,7 +479,10 @@ def _plot(
     )
 
     if shapes_layer is not None:
-        sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+        polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
+        if z_slice is not None:
+            polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+        polygons.plot(
             ax=ax,
             edgecolor="white",
             column=column,
@@ -480,7 +496,10 @@ def _plot(
         )
         if shapes_layer_filtered is not None:
             for i in shapes_layer_filtered:
-                sdata.shapes[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
+                polygons = sdata.shapes[i].cx[crd[0] : crd[1], crd[2] : crd[3]]
+                if z_slice is not None:
+                    polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+                polygons.plot(
                     ax=ax,
                     edgecolor="red",
                     linewidth=1,
@@ -513,3 +532,25 @@ def _plot(
     se = _unapply_transform(se, x_coords_orig, y_coords_orig)
 
     return ax
+
+
+def _get_z_slice_polygons(polygons: GeoDataFrame, z_slice: int) -> GeoDataFrame:
+    def _get_z_slice(geometry: GeoSeries, z_value) -> bool:
+        # return original geometry if geometry does not has z dimension
+        if not geometry.has_z:
+            return True
+
+        if geometry.geom_type == "Polygon":
+            for x, y, z in geometry.exterior.coords:
+                if z == z_value:
+                    return True
+
+        elif geometry.geom_type == "MultiPolygon":
+            for polygon in geometry.geoms:
+                for x, y, z in polygon.exterior.coords:
+                    if z == z_value:
+                        return True
+
+        return False
+
+    return polygons[polygons["geometry"].apply(_get_z_slice, args=(z_slice,))]
