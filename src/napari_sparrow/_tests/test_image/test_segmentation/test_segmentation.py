@@ -37,7 +37,7 @@ def test_segment_3D( sdata_multi_c ):
                 img_layer="combine_z",
                 model=_cellpose,
                 output_labels_layer="masks_cellpose_3D",
-                output_shapes_layer=None,
+                output_shapes_layer="masks_cellpose_3D_boundaries",
                 trim=False,
                 chunks=50,
                 overwrite=True,
