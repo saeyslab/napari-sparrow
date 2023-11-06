@@ -43,7 +43,7 @@ def plot_image(
     channel : int or str or Iterable[int] or Iterable[str], optional
         Channel(s) to be displayed from the image.
     z_slice: int or None, optional
-        The z_slice to visualize in case of 3D (c,z,y,x) image. 
+        The z_slice to visualize in case of 3D (c,z,y,x) image.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     output : str or Path, optional
@@ -81,7 +81,7 @@ def plot_labels(
     labels_layer : str, optional
         Labels layer to be plotted. Default is "segmentation_mask".
     z_slice: int or None, optional
-        The z_slice to visualize in case of 3D (c,z,y,x) labels. 
+        The z_slice to visualize in case of 3D (c,z,y,x) labels.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     output : str or Path, optional
@@ -332,7 +332,7 @@ def _plot(
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
         Ignored if img_layer is None and labels_layer is specified.
     z_slice: int or None, optional
-        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons. 
+        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
     alpha : float, default=0.5
         Transparency level for the cells, given by the alpha parameter of matplotlib.
     crd : tuple of int, optional
@@ -454,7 +454,7 @@ def _plot(
             log.warning(
                 (
                     f"Provided channel '{_channel}' not in list of available channels '{se.c.data}' "
-                    f"for provided img_layer '{img_layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
+                    f"for provided img_layer '{layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
                 )
             )
 
@@ -469,9 +469,11 @@ def _plot(
     if z_slice is not None:
         _se = _se[z_slice, ...]
     else:
-        if _se.ndim ==3:
-            log.warning( f"Layer {layer} has 3 dimensions, but no z-slice was added. Using z_slice at index 0 for plotting by default." )
-            _se=_se[ 0, ... ]
+        if _se.ndim == 3:
+            log.warning(
+                f"Layer {layer} has 3 dimensions, but no z-slice was added. Using z_slice at index 0 for plotting by default."
+            )
+            _se = _se[0, ...]
         _se = _se.squeeze()
 
     _se.sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(

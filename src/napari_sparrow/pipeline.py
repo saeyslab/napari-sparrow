@@ -28,7 +28,7 @@ class SparrowPipeline:
         # Supress _core_genes futerewarnings
         warnings.simplefilter(action="ignore", category=FutureWarning)
 
-        # The actual pipeline which consists of 7 steps:
+        # The actual pipeline which consists of 6 steps:
 
         # Load
         log.info("Converting to zarr and (lazy) loading of SpatialData object.")

@@ -31,7 +31,7 @@ def create_sdata(
     | List[da.Array],
     output_path: Optional[str | Path] = None,
     img_layer: str = "raw_image",
-    chunks: Optional[str | tuple[int, int, int, int] | int] = None,
+    chunks: Optional[str | Tuple[int, int, int, int] | int] = None,
     dims: Optional[List[str]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,

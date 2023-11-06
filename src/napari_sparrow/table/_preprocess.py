@@ -1,4 +1,9 @@
+from collections import defaultdict
+
+import dask
+import numpy as np
 import scanpy as sc
+from dask.array import Array
 from spatialdata import SpatialData
 
 from napari_sparrow.shape._shape import _filter_shapes_layer
@@ -64,6 +69,9 @@ def preprocess_anndata(
     # Normalize nucleus size
     if shapes_layer is None:
         shapes_layer = [*sdata.shapes][-1]
+    # TODO: update this. Will not work for 3D shapes layer. Use below function _get_mask_area instead
+    # Do as follows: if shapes_layer is passed, check if it is 3D, if not simply use area, it is use labels layer
+    # make user pass labels layer
     sdata.table.obs["shapeSize"] = sdata[shapes_layer].area
 
     sdata.table.layers["raw_counts"] = sdata.table.X
@@ -102,3 +110,28 @@ def preprocess_anndata(
     _back_sdata_table_to_zarr(sdata)
 
     return sdata
+
+
+def _get_mask_area(mask: Array) -> defaultdict:
+    """
+    Calculate area of each label in mask
+    """
+    @dask.delayed
+    def calculate_area(mask_chunk: np.ndarray) -> tuple:
+        unique, counts = np.unique(mask_chunk, return_counts=True)
+
+        return unique, counts
+
+    delayed_results = [calculate_area(chunk) for chunk in mask.to_delayed().flatten()]
+
+    results = dask.compute(*delayed_results, scheduler="threads")
+
+    combined_counts = defaultdict(int)
+
+    # aggregate
+    for unique, counts in results:
+        for label, count in zip(unique, counts):
+            if label > 0:
+                combined_counts[label] += count
+
+    return combined_counts

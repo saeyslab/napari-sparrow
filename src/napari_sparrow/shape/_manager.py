@@ -164,6 +164,7 @@ class ShapesLayerManager:
 
     @get_dims.register(GeoDataFrame)
     def _get_dims_gdf(self, input):
+        # TODO check if this is correct
         has_z = input["geometry"].apply(lambda geom: geom.has_z)
         if all(has_z):
             return 3
@@ -223,6 +224,8 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
         A Dask array representing the segmentation mask. Non-zero pixels belong
         to a cell; pixels with the same intensity value belong to the same cell.
         Zero pixels represent background (no cell).
+    z_slice: int or None, optional.
+        The z slice that is being processed.
 
     Returns
     -------
@@ -283,6 +286,9 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
 
     # Map the extract_polygons function to each chunk
     # Create a list of delayed objects
+
+    # rechunk, otherwise chunk_coords could potentially not match
+    mask=mask.rechunk( mask.chunksize )
 
     chunk_coords = list(
         itertools.product(

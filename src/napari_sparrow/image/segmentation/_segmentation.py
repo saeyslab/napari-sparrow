@@ -249,7 +249,6 @@ class SegmentationModel:
             overwrite=overwrite,
         )
 
-        # TODO update this so shapes layer can be calculated in 3D
         # only calculate shapes layer if it is specified
         if output_shapes_layer is not None:
             se_labels = _get_spatial_element(sdata, layer=output_labels_layer)
