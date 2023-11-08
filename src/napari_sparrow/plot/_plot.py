@@ -467,7 +467,8 @@ def _plot(
         cmap_layer = "viridis"
 
     if z_slice is not None:
-        _se = _se[z_slice, ...]
+        if _se.ndim == 3:
+            _se = _se[z_slice, ...]
     else:
         if _se.ndim == 3:
             log.warning(
@@ -484,32 +485,38 @@ def _plot(
         polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
         if z_slice is not None:
             polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
-        polygons.plot(
-            ax=ax,
-            edgecolor="white",
-            column=column,
-            linewidth=1 if size_im < 5000 * 10000 else 0,
-            alpha=alpha,
-            legend=True,
-            aspect=1,
-            cmap=cmap,
-            vmax=vmax,  # np.percentile(column,vmax),
-            vmin=vmin,  # np.percentile(column,vmin)
-        )
+        if not polygons.empty:
+            polygons.plot(
+                ax=ax,
+                edgecolor="white",
+                column=column,
+                linewidth=1 if size_im < 5000 * 10000 else 0,
+                alpha=alpha,
+                legend=True,
+                aspect=1,
+                cmap=cmap,
+                vmax=vmax,  # np.percentile(column,vmax),
+                vmin=vmin,  # np.percentile(column,vmin)
+            )
+        else:
+            log.warning( f"Shapes layer {shapes_layer} was empty for crd {crd}." )
         if shapes_layer_filtered is not None:
             for i in shapes_layer_filtered:
                 polygons = sdata.shapes[i].cx[crd[0] : crd[1], crd[2] : crd[3]]
                 if z_slice is not None:
                     polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
-                polygons.plot(
-                    ax=ax,
-                    edgecolor="red",
-                    linewidth=1,
-                    alpha=alpha,
-                    legend=True,
-                    aspect=1,
-                    cmap="gray",
-                )
+                if not polygons.empty:
+                    polygons.plot(
+                        ax=ax,
+                        edgecolor="red",
+                        linewidth=1,
+                        alpha=alpha,
+                        legend=True,
+                        aspect=1,
+                        cmap="gray",
+                    )
+                else:
+                    log.warning( f"Shapes layer {i} was empty for crd {crd}." )
     ax.axes.set_aspect(aspect)
     ax.set_xlim(crd[0], crd[1])
     ax.set_ylim(crd[2], crd[3])

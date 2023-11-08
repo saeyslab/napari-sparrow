@@ -50,7 +50,7 @@ def allocate(
         Whether to allocate transcripts using the shapes layer or the labels layer.
     chunks : Optional[str | int | tuple[int, ...]], default=None
         Chunk sizes for processing. Can be a string, integer or tuple of integers.
-        Consider setting the chunks to a relatively high value to speed up processing 
+        Consider setting the chunks to a relatively high value to speed up processing
         (>10000, or only chunk in z-dimension if data is 3D, and one z-slice fits in memory),
         taking into account the available memory of your system.
 
@@ -68,8 +68,8 @@ def allocate(
     coords = Coords(*_get_translation(s_mask))
 
     if allocate_from_shapes_layer:
-        has_z = sdata.shapes[shapes_layer].apply(lambda geom: geom.has_z)
-        if has_z.any().item():
+        has_z = sdata.shapes[shapes_layer]["geometry"].apply(lambda geom: geom.has_z)
+        if any(has_z):
             raise ValueError(
                 "Allocating transcripts from a shapes layer is not supported "
                 "for shapes layers containing 3D polygons. "
@@ -130,44 +130,33 @@ def allocate(
                 & (partition["z"] < chunk.shape[0] + z_start)
             ]
 
-            filtered_partition = filtered_partition.copy()
-
-            z_coords = filtered_partition["z"].values.astype(int) - z_start
-            y_coords = filtered_partition["y"].values.astype(int) - (
-                int(coords.y0) + y_start
-            )
-            x_coords = filtered_partition["x"].values.astype(int) - (
-                int(coords.x0) + x_start
-            )
-
-            filtered_partition.loc[:, "cells"] = chunk[
-                z_coords,
-                y_coords,
-                x_coords,
-            ]
-
         else:
             filtered_partition = partition[
-                (coords.y0 + y_start < partition["y"])
+                (coords.y0 + y_start <= partition["y"])
                 & (partition["y"] < chunk.shape[1] + coords.y0 + y_start)
-                & (coords.x0 + x_start < partition["x"])
+                & (coords.x0 + x_start <= partition["x"])
                 & (partition["x"] < chunk.shape[2] + coords.x0 + x_start)
             ]
 
-            filtered_partition = filtered_partition.copy()
+        filtered_partition = filtered_partition.copy()
 
-            y_coords = filtered_partition["y"].values.astype(int) - (
-                int(coords.y0) + y_start
-            )
-            x_coords = filtered_partition["x"].values.astype(int) - (
-                int(coords.x0) + x_start
-            )
+        if "z" in partition.columns:
+            z_coords = filtered_partition["z"].values.astype(int) - z_start
+        else:
+            z_coords = 0
 
-            filtered_partition.loc[:, "cells"] = chunk[
-                0,
-                y_coords,
-                x_coords,
-            ]
+        y_coords = filtered_partition["y"].values.astype(int) - (
+            int(coords.y0) + y_start
+        )
+        x_coords = filtered_partition["x"].values.astype(int) - (
+            int(coords.x0) + x_start
+        )
+
+        filtered_partition.loc[:, "cells"] = chunk[
+            z_coords,
+            y_coords,
+            x_coords,
+        ]
 
         return filtered_partition
 

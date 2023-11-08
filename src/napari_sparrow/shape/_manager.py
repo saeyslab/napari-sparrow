@@ -101,7 +101,7 @@ class ShapesLayerManager:
             )[~bool_to_keep]
 
             log.info(
-                f"Filtering {sum( ~bool_to_keep )} polygons from shapes layer '{_shapes_layer}'. "
+                f"Filtering {len( set(filtered_polygons.index ) )} cells from shapes layer '{_shapes_layer}'. "
                 f"Adding new shapes layer '{output_filtered_shapes_layer}' containing these filtered out polygons."
             )
 
@@ -164,7 +164,6 @@ class ShapesLayerManager:
 
     @get_dims.register(GeoDataFrame)
     def _get_dims_gdf(self, input):
-        # TODO check if this is correct
         has_z = input["geometry"].apply(lambda geom: geom.has_z)
         if all(has_z):
             return 3
@@ -288,7 +287,7 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
     # Create a list of delayed objects
 
     # rechunk, otherwise chunk_coords could potentially not match
-    mask=mask.rechunk( mask.chunksize )
+    mask = mask.rechunk(mask.chunksize)
 
     chunk_coords = list(
         itertools.product(

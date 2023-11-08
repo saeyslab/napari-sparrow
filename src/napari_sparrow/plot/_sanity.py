@@ -62,7 +62,7 @@ def sanity_plot_transcripts_matrix(
         Channel to display from the img_layer. If none provided, or if provided channel could not be found, first channel is plot.
     z_slice: int or None, optional
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
-        If z_slice is not specified and the sdata[image_layer] is three-dimensional, the plot defaults to the z-slice at index 0; 
+        If z_slice is not specified and the sdata[image_layer] is three-dimensional, the plot defaults to the z-slice at index 0;
         shapes from all z-stacks are displayed; alongside transcripts from every z-stack.
     plot_cell_number : bool, default=False
         Whether to annotate cells with their numbers on the plot.
@@ -172,7 +172,8 @@ def sanity_plot_transcripts_matrix(
         cmap_layer = "viridis"
 
     if z_slice is not None:
-        _se = _se[z_slice, ...]
+        if _se.ndim == 3:
+            _se = _se[z_slice, ...]
     else:
         if _se.ndim == 3:
             log.warning(
@@ -198,9 +199,7 @@ def sanity_plot_transcripts_matrix(
     )
 
     if z_slice is not None:
-        in_df = in_df.query(
-            f"{name_z} == {z_slice}"
-        )
+        in_df = in_df.query(f"{name_z} == {z_slice}")
 
     if gene:
         in_df = in_df[in_df[name_gene_column] == gene]
@@ -228,9 +227,9 @@ def sanity_plot_transcripts_matrix(
     ax.scatter(in_df[name_x], in_df[name_y], color="r", s=8, alpha=alpha)
 
     if shapes_layer is not None:
-        polygons=sdata.shapes[ shapes_layer ]
+        polygons = sdata.shapes[shapes_layer]
     else:
-        polygons=None
+        polygons = None
 
     if polygons is not None:
         log.info("Selecting boundaries")
@@ -240,11 +239,7 @@ def sanity_plot_transcripts_matrix(
         if z_slice is not None:
             polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
 
-        if polygons.shape[0]==0:
-            log.info( f"No polygons to plot in crd '{crd}' at z_slice {z_slice}." )
-
-        if polygons.shape[0]!=0:
-
+        if not polygons.empty:
             polygons["boundaries"] = polygons["geometry"].apply(
                 _extract_boundaries_from_geometry_collection
             )
@@ -263,7 +258,7 @@ def sanity_plot_transcripts_matrix(
             log.info("End plotting boundaries")
 
             # Plot the values inside the polygons
-            cell_numbers_plotted=set()
+            cell_numbers_plotted = set()
             if plot_cell_number:
                 for _, row in polygons.iterrows():
                     centroid = row.geometry.centroid
@@ -271,7 +266,7 @@ def sanity_plot_transcripts_matrix(
                     if value in cell_numbers_plotted:
                         # plot cell number only once for 3D stack of polygons
                         continue
-                    cell_numbers_plotted.add( value )
+                    cell_numbers_plotted.add(value)
                     ax.annotate(
                         value,
                         (centroid.x, centroid.y),
@@ -280,6 +275,8 @@ def sanity_plot_transcripts_matrix(
                         ha="center",
                         va="center",
                     )
+        else:
+            log.warning(f"Shapes layer {shapes_layer} was empty for crd {crd}.")
 
     ax.set_xlim(crd[0], crd[1])
     ax.set_ylim(crd[2], crd[3])
@@ -288,7 +285,7 @@ def sanity_plot_transcripts_matrix(
 
     ax.axis("on")
     if img_layer_type:
-        ax.set_title( f"{channel_name}={channel}" )
+        ax.set_title(f"{channel_name}={channel}")
 
     if gene:
         ax.set_title(f"Transcripts and cell boundaries for gene: {gene}.")
