@@ -59,7 +59,8 @@ def tiling_correction(
     Raises
     ------
     ValueError
-        If the dimensions of the image layer are not multiples of the given tile size.
+        - If the image layer does not contain exactly 2 spatial dimensions.
+        - If the dimensions of the image layer are not multiples of the given tile size.
 
     Notes
     -----
@@ -72,6 +73,10 @@ def tiling_correction(
         img_layer = [*sdata.images][-1]
 
     se = _get_spatial_element(sdata, layer=img_layer)
+
+    if se.ndim !=( 'c', 'y', 'x' ):
+        raise ValueError( "Tiling correction is only supported for images with 2 spatial dimensions, "
+                         f"while provided image layer ({img_layer}) has dimensions {se.ndim}." )
 
     if se.sizes["x"] % tile_size or se.sizes["y"] % tile_size:
         raise ValueError(
