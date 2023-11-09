@@ -314,4 +314,8 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
 
     # Combine polygons that are actually pieces of the same cell back together.
     # (These pieces of same cell got written to different chunks by dask, needed for parallel processing.)
-    return gdf.dissolve(by="cells")
+    gdf = gdf.dissolve(by="cells")
+
+    gdf.index = gdf.index.astype("str")
+
+    return gdf

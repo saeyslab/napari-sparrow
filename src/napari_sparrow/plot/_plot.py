@@ -197,7 +197,7 @@ def plot_shapes(
         img_layer_type = True
         log.warning(
             f"No image layer or labels layer specified. "
-            f"Plotting last image layer {layer} of the provided SpatialData object."
+            f"Plotting last image layer '{layer}' of the provided SpatialData object."
         )
 
     # Make code also work if user would provide another iterable than List
@@ -380,7 +380,7 @@ def _plot(
         img_layer_type = True
         log.warning(
             f"No image layer or labels layer specified. "
-            f"Plotting last image layer {layer} of the provided SpatialData object."
+            f"Plotting last image layer '{layer}' of the provided SpatialData object."
         )
 
     if shapes_layer_filtered is not None:
@@ -414,28 +414,38 @@ def _plot(
     else:
         crd = image_boundary
     size_im = (crd[1] - crd[0]) * (crd[3] - crd[2])
-    if column is not None:
-        if column + "_colors" in sdata.table.uns:
-            cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
-                "new_map",
-                sdata.table.uns[column + "_colors"],
-                N=len(sdata.table.uns[column + "_colors"]),
-            )
-        if column in sdata.table.obs.columns:
-            column = sdata.table[
-                sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].index, :
-            ].obs[column]
-        elif column in sdata.table.var.index:
-            column = sdata.table[
-                sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].index, :
-            ].X[:, np.where(sdata.table.var.index == column)[0][0]]
+
+    polygons=None
+    if shapes_layer is not None:
+        polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
+        if z_slice is not None:
+            polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+
+    if polygons is not None and column is not None:
+        if not polygons.empty:
+            if column + "_colors" in sdata.table.uns:
+                cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+                    "new_map",
+                    sdata.table.uns[column + "_colors"],
+                    N=len(sdata.table.uns[column + "_colors"]),
+                )
+            if column in sdata.table.obs.columns:
+                column = sdata.table[
+                    polygons.index, :
+                ].obs[column]
+            elif column in sdata.table.var.index:
+                column = sdata.table[
+                    polygons.index, :
+                ].X[:, np.where(sdata.table.var.index == column)[0][0]]
+            else:
+                log.info(
+                    f"The column '{column}' is not a column in the dataframe sdata.table.obs, "
+                    "nor is it a gene name (sdata.table.var.index). The plot is made without taking into account this value."
+                )
+                column = None
+                cmap = None
         else:
-            log.info(
-                f"The column '{column}' is not a column in the dataframe sdata.table.obs, "
-                "nor is it a gene name (sdata.table.var.index). The plot is made without taking into account this value."
-            )
-            column = None
-            cmap = None
+            log.warning( f"Shapes layer '{shapes_layer}' was empty for crd {crd}." )
     else:
         cmap = None
     if vmin != None:
@@ -472,19 +482,17 @@ def _plot(
     else:
         if _se.ndim == 3:
             log.warning(
-                f"Layer {layer} has 3 dimensions, but no z-slice was added. Using z_slice at index 0 for plotting by default."
+                f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
+                f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0]//2}) will be utilized."
             )
-            _se = _se[0, ...]
+            _se = _se[_se.shape[0]//2, ...]
         _se = _se.squeeze()
 
     _se.sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
         cmap=cmap_layer, robust=True, ax=ax, add_colorbar=False
     )
 
-    if shapes_layer is not None:
-        polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
-        if z_slice is not None:
-            polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+    if polygons is not None:
         if not polygons.empty:
             polygons.plot(
                 ax=ax,

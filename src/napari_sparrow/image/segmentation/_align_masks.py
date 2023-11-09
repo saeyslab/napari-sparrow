@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import dask.array as da
 import numpy as np
@@ -34,7 +34,7 @@ def align_labels_layers(
     labels_layer_1: str,
     labels_layer_2: str,
     depth: Tuple[int, ...] | int = 100,
-    chunks: Optional[str | int | tuple[int, ...]] = "auto",
+    chunks: Optional[str | int | Tuple[int, ...]] = "auto",
     output_labels_layer: Optional[str] = None,
     output_shapes_layer: Optional[str] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
@@ -62,7 +62,7 @@ def align_labels_layers(
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Default is 100. Please set depth>cell size to avoid chunking effects.
-    chunks : Optional[str | int | tuple[int, ...]], optional
+    chunks : Optional[str | int | Tuple[int, ...]], optional
         The desired chunk size for the Dask computation, or "auto" to allow the function to
         choose an optimal chunk size based on the data. Default is "auto".
     output_labels_layer : Optional[str], optional
