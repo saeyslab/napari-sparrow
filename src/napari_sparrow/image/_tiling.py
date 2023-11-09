@@ -74,9 +74,11 @@ def tiling_correction(
 
     se = _get_spatial_element(sdata, layer=img_layer)
 
-    if se.ndim !=( 'c', 'y', 'x' ):
-        raise ValueError( "Tiling correction is only supported for images with 2 spatial dimensions, "
-                         f"while provided image layer ({img_layer}) has dimensions {se.ndim}." )
+    if se.dims != ("c", "y", "x"):
+        raise ValueError(
+            "Tiling correction is only supported for images with 2 spatial dimensions, "
+            f"while provided image layer ({img_layer}) has dimensions {se.ndim}."
+        )
 
     if se.sizes["x"] % tile_size or se.sizes["y"] % tile_size:
         raise ValueError(
