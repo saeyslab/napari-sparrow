@@ -20,7 +20,9 @@ def transcript_density(
     n_sample: Optional[int] = 15000000,
     name_x: str = "x",
     name_y: str = "y",
+    name_z: Optional[str] = None,
     name_gene_column: str = "gene",
+    z_slice: Optional[int] = None,
     scaling_factor: float = 100,
     chunks: int = 1024,
     crd: Optional[Tuple[int, int, int, int]] = None,
@@ -49,8 +51,13 @@ def transcript_density(
         Column name for x-coordinates of the transcripts in the points layer, by default "x".
     name_y : str, optional
         Column name for y-coordinates of the transcripts in the points layer, by default "y".
+    name_z : str or None, optional
+        Column name for z-coordinates of the transcripts in the points layer, by default None.
     name_gene_column : str, optional
         Column name in the points_layer representing gene information, by default "gene".
+    z_slice: int or None, optional
+        The z-slice for which to calculate transcript density. If set to None for a 3D points layer 
+        (`name_z` not equal to None), an y-x transcript density projection will be calculated.
     scaling_factor : float, optional
         Factor to scale the transcript density image, by default 100.
     chunks: int.
@@ -77,10 +84,16 @@ def transcript_density(
     >>> sdata = transcript_density(sdata, points_layer="transcripts", crd=(2000, 4000, 2000, 4000))
 
     """
+    if z_slice is not None and name_z is None:
+        raise ValueError( "Please specify column name for the z-coordinates of the transcripts in the points layer "
+                         "when specifying z_slice." )
+
     ddf = sdata.points[points_layer]
 
     ddf[name_x] = ddf[name_x].round().astype(int)
     ddf[name_y] = ddf[name_y].round().astype(int)
+    if name_z is not None:
+        ddf[name_z] = ddf[name_z].round().astype(int)
 
     # get image boundary from last image layer if img_layer is None
     if img_layer is None:
@@ -112,6 +125,9 @@ def transcript_density(
     ddf = ddf.query(
         f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }"
     )
+
+    if z_slice is not None:
+        ddf = ddf.query(f"{name_z} == {z_slice}")
 
     # subsampling:
     if n_sample is not None:
