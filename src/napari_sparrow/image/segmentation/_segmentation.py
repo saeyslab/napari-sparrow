@@ -41,8 +41,8 @@ def segment(
     model: Callable[..., NDArray] = _model,
     output_labels_layer: str = "segmentation_mask",
     output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-    depth: Tuple[int, ...] | int = 100,
-    chunks: Optional[str | int | tuple[int, ...]] = "auto",
+    depth: Tuple[int, int] | int = 100,
+    chunks: Optional[str | int | Tuple[int, int]] = "auto",
     boundary: str = "reflect",
     trim: bool = False,
     crd: Optional[Tuple[int, int, int, int]] = None,
@@ -62,16 +62,18 @@ def segment(
         The image layer in `sdata` to be segmented. If not provided, the last image layer in `sdata` is used.
     model : Callable[..., NDArray], default=_cellpose
         The segmentation model function used to process the images.
-        Should take as input arrays of dimension (y,x,c) and return labels of dimension (y,x)
+        Callable should take as input numpy arrays of dimension (z,y,x,c) and return labels of dimension (z,y,x,c), with
+        c dimension==1. It can have an arbitrary number of other parameters.
     output_labels_layer : str, default="segmentation_mask"
         Name of the label layer in which segmentation results will be stored in `sdata`.
     output_shapes_layer : Optional[str], default="segmentation_mask_boundaries"
         Name of the shapes layer where boundaries obtained output_labels_layer will be stored. If set to None, shapes won't be stored.
-    depth : Tuple[int, int], default=(100, 100)
-        The depth parameter to be passed to map_overlap. If trim is set to False,
+    depth : Tuple[int, int] | int, default=100
+        The depth in y and x dimension. The depth parameter is passed to map_overlap. If trim is set to False,
         it's recommended to set the depth to a value greater than twice the estimated diameter of the cells/nulcei.
-    chunks : Optional[str | int | tuple[int, ...]], default="auto"
-        Chunk sizes for processing. Can be a string, integer or tuple of integers.
+    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+        Chunk sizes for processing. Can be a string, integer or tuple of integers. If chunks is a Tuple,
+        they  contain the chunk size that will be used in y and x dimension. Chunking in 'z' or 'c' dimension is not supported.
     boundary : str, default="reflect"
         Boundary parameter passed to map_overlap.
     trim : bool, default=False
@@ -155,7 +157,7 @@ class SegmentationModel:
         se = _get_spatial_element(sdata, layer=img_layer)
 
         # take dask array and put channel dimension last,
-        # so we have ( z, y, x, c ).
+        # so we have ( z, y, x, c ), also do some checks on depth and chunks
 
         if se.data.ndim == 4:
             assert se.dims == (
@@ -166,23 +168,6 @@ class SegmentationModel:
             ), "dimension should be in order: ('c', 'z' , 'y', 'x')."
             # transpose x, so channel dimension is last
             x = _fix_dimensions(se.data, dims=se.dims, target_dims=("z", "y", "x", "c"))
-            if "depth" in kwargs:
-                depth = kwargs["depth"]
-                if isinstance(depth, int):
-                    kwargs["depth"] = {0: 0, 1: depth, 2: depth, 3: 0}
-                else:
-                    assert (
-                        len(depth) == 4
-                    ), "Please provide depth for ('c', 'z', 'y', 'x')"
-                    assert (
-                        depth[0] == 0
-                    ), "Depth not equal to 0 for 'c' dimension is not supported"
-                    assert (
-                        depth[1] == 0
-                    ), "Depth not equal to 0 for 'z' dimension is not supported"
-                    # transpose depth
-                    depth2 = {0: depth[1], 1: depth[2], 2: depth[3], 3: depth[0]}
-                    kwargs["depth"] = depth2
 
         elif se.data.ndim == 3:
             assert se.dims == (
@@ -194,22 +179,32 @@ class SegmentationModel:
             x = _fix_dimensions(se.data, dims=se.dims, target_dims=("y", "x", "c"))
             # add trivial z dimension.
             x = x[None, ...]
-            if "depth" in kwargs:
-                depth = kwargs["depth"]
-                if isinstance(depth, int):
-                    kwargs["depth"] = {0: 0, 1: depth, 2: depth, 3: 0}
-                else:
-                    assert len(depth) == 3, "Please provide depth for ('c', 'y', 'x')"
-                    assert (
-                        depth[0] == 0
-                    ), "Depth not equal to 0 for 'c' dimension is not supported"
-                    # transpose depth
-                    depth2 = {0: 0, 1: depth[1], 2: depth[2], 3: depth[0]}
-                    kwargs["depth"] = depth2
         else:
             raise ValueError(
                 "Only 3D and 4D arrays are supported, i.e. (c, (z), y, x)."
             )
+
+        if "depth" in kwargs:
+            depth = kwargs["depth"]
+            if isinstance(depth, int):
+                kwargs["depth"] = {0: 0, 1: depth, 2: depth, 3: 0}
+            else:
+                assert (
+                    len(depth) == x.ndim - 2
+                ), "Please (only) provide depth for ( 'y', 'x')."
+                # set depth for every dimension
+                depth2 = {0: 0, 1: depth[0], 2: depth[1], 3: 0}
+                kwargs["depth"] = depth2
+
+        if "chunks" in kwargs:
+            chunks = kwargs["chunks"]
+            if chunks is not None:
+                if not isinstance(chunks, (int, str)):
+                    assert (
+                        len(chunks) == x.ndim - 2
+                    ), "Please (only) provide chunks for ( 'y', 'x')."
+                    chunks = (x.shape[0], chunks[0], chunks[1], x.shape[-1])
+                    kwargs["chunks"] = chunks
 
         # crd is specified on original uncropped pixel coordinates
         # need to substract possible translation, because we use crd to crop dask array, which does not take
@@ -305,7 +300,7 @@ class SegmentationModel:
         # These 0's are then filled in with block_id number. This way labels are unique accross the different chunks.
         # not that if x.numblocks.bit_length() would be close to 16 bit, and each chunks has labels up to 16 bits,
         # this could lead to collisions.
-        # ignore channel dim (num_blocks[3]), because label channel dim is 1
+        # ignore channel dim (num_blocks[3]), because channel dim of resulting label is supposed to be 1.
         num_blocks = x.numblocks
         shift = int(
             np.prod(num_blocks[0] * num_blocks[1] * num_blocks[2]) - 1

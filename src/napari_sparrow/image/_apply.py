@@ -28,7 +28,7 @@ def apply(
     img_layer: Optional[str] = None,
     output_layer: Optional[str] = None,
     channel: Optional[int | Iterable[int]] = None,
-    chunks: Optional[str | Tuple[int, ...] | int] = None,
+    chunks: Optional[str | int | Tuple[int, ...]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
@@ -51,9 +51,10 @@ def apply(
     channel : Optional[int | Iterable[int]], default=None
         Specifies which channel(s) to run `func` on. The `func` is run independently on each channel.
           If None, the `func` is run on all channels.
-    chunks : str | tuple[int, ...] | int | None, default=None
+    chunks : str | Tuple[int, ...] | int | None, default=None
         Specification for rechunking the data before applying the function.
         If specified, dask's map_overlap or map_blocks is used depending on the occurence of the "depth" parameter in kwargs.
+        If chunks is a Tuple, they  contain the chunk size that will be used in the spatial dimensions.
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
