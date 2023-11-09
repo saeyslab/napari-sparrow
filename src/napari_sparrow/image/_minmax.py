@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional, Tuple
 
+import dask.array as da
 from dask.array import Array
 from dask_image.ndfilters import maximum_filter, minimum_filter
 from spatialdata import SpatialData
@@ -23,6 +24,7 @@ def min_max_filtering(
     Apply min max filtering to an image in a SpatialData object using dask.
     The size of the filter can be provided
     either as an integer or a list of integers corresponding to each channel.
+    Compatibility with image layers that have either two or three spatial dimensions.
 
     Parameters
     ----------
@@ -63,7 +65,27 @@ def min_max_filtering(
     >>> sdata = min_max_filtering(sdata, size_min_max_filtering=[30, 50, 70])
     """
 
-    def _apply_min_max_filtering(image: Array, size_min_max_filter: int = 85) -> Array:
+    def _apply_min_max_filtering(
+        image: da.Array, size_min_max_filter: int = 85
+    ) -> da.Array:
+        if image.ndim == 3:
+            # Process each z slice of the 3D image
+            processed_slices = [
+                _apply_min_max_filtering_2d(image_slice, size_min_max_filter)
+                for image_slice in image
+            ]
+            filtered_image = da.stack(processed_slices, axis=0)
+            return filtered_image
+        elif image.ndim == 2:
+            return _apply_min_max_filtering_2d(
+                image, size_min_max_filter=size_min_max_filter
+            )
+        else:
+            raise ValueError("The input array is not 3D.")
+
+    def _apply_min_max_filtering_2d(
+        image: Array, size_min_max_filter: int = 85
+    ) -> Array:
         # Apply the minimum filter
         minimum_t = minimum_filter(image, size_min_max_filter)
 

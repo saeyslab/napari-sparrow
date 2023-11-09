@@ -65,7 +65,7 @@ def combine(
     ValueError
         If `output_layer` is not provided.
         If no channels are specified for combining.
-        If provided arrays are not 2D (c,y,x).
+        If provided arrays are not 2D or 3D (c, (z) , y, x).
 
     Notes
     -----
@@ -120,12 +120,15 @@ def combine(
             )
 
         arr = se.isel(c=ch_indices).data
-        if len(arr.shape) != 3:
+        if arr.ndim not in (2, 3):
             raise ValueError(
-                f"Array is of dimension {arr.shape}, currently only 2D images are supported."
+                f"Array is of dimension {arr.shape}, currently only images with 2 or 3 spatial dimensions are supported."
             )
         if crd is not None:
-            arr = arr[:, crd[2] : crd[3], crd[0] : crd[1]]
+            if arr.ndim == 2:
+                arr = arr[:, crd[2] : crd[3], crd[0] : crd[1]]
+            elif arr.ndim == 3:
+                arr = arr[:, : crd[2] : crd[3], crd[0] : crd[1]]
             arr = arr.rechunk(arr.chunksize)
         arr = arr.sum(axis=0)
         arr = arr[None, ...]

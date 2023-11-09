@@ -1,6 +1,13 @@
+from collections import defaultdict
+
+import dask
+import numpy as np
+import pandas as pd
 import scanpy as sc
+from dask.array import Array
 from spatialdata import SpatialData
 
+from napari_sparrow.image._image import _get_spatial_element
 from napari_sparrow.shape._shape import _filter_shapes_layer
 from napari_sparrow.table._table import _back_sdata_table_to_zarr
 from napari_sparrow.utils.pylogger import get_pylogger
@@ -11,14 +18,17 @@ log = get_pylogger(__name__)
 def preprocess_anndata(
     sdata: SpatialData,
     shapes_layer: str = None,
+    labels_layer: str = None,
     min_counts: int = 10,
     min_cells: int = 5,
     size_norm: bool = True,
     n_comps: int = 50,
 ) -> SpatialData:
     """
-    Preprocess the table (AnnData) attribute of a SpatialData object. Filters cells and genes,
-    normalizes based on nucleus/cell size, calculates QC metrics and principal components.
+    Preprocess the table (AnnData) attribute of a SpatialData object.
+    Calculates nucleus/cell size from either shapes_layer or labels_layer, and adds it
+    to sdata.table.obs as column "shapeSize".
+    Filters cells and genes, normalizes based on nucleus/cell size, calculates QC metrics and principal components.
 
     Parameters
     ----------
@@ -27,7 +37,11 @@ def preprocess_anndata(
     shapes_layer : str, optional
         The shapes_layer of `sdata` that will be used to calculate nucleus size for normalization
         (or cell size if shapes_layer holds cell shapes).
-        If not specified, the last shapes layer is chosen.
+        This should be None if labels_layer is specified.
+    labels_layer : str, optional
+        The labels_layer of `sdata` that will be used to calculate nucleus size for normalization
+        (or cell size if labels_layer holds cell labels).
+        This should be None if shapes_layer is specified.
     min_counts : int, default=10
         Minimum number of genes a cell should contain to be kept.
     min_cells : int, default=5
@@ -41,6 +55,12 @@ def preprocess_anndata(
     -------
     SpatialData
         The preprocessed `sdata` containg the preprocessed AnnData object as an attribute (sdata.table).
+
+    Raises
+    ------
+    ValueError
+        - If both `shapes_layer` and `labels_layer` are specified.
+        - If `shapes_layer` contains 3D polygons.
 
     Notes
     -----
@@ -61,10 +81,25 @@ def preprocess_anndata(
     sc.pp.filter_cells(sdata.table, min_counts=min_counts)
     sc.pp.filter_genes(sdata.table, min_cells=min_cells)
 
-    # Normalize nucleus size
-    if shapes_layer is None:
-        shapes_layer = [*sdata.shapes][-1]
-    sdata.table.obs["shapeSize"] = sdata[shapes_layer].area
+    if shapes_layer is not None and labels_layer is not None:
+        raise ValueError( "Either specify shapes_layer or labels_layer, not both." )
+
+    if shapes_layer is not None:
+        has_z = sdata.shapes[shapes_layer]["geometry"].apply(lambda geom: geom.has_z)
+        if any(has_z):
+            raise ValueError(
+                f"The shapes layer {shapes_layer} contains 3D polygons for calculation of nucleus/cell size. "
+                "At present, support for computing the size of nuclei or cells in 3D is confined to a labels layer. "
+                "It is advisable to designate a labels layer for this purpose."
+            )
+
+        sdata.table.obs["shapeSize"] = sdata[shapes_layer].area
+
+    elif labels_layer is not None:
+        se = _get_spatial_element(sdata, layer=labels_layer)
+        sdata.table.obs["shapeSize"] = _get_mask_area(se.data)
+    else:
+        raise ValueError("Either specify a shapes layer or a labels layer.")
 
     sdata.table.layers["raw_counts"] = sdata.table.X
 
@@ -102,3 +137,32 @@ def preprocess_anndata(
     _back_sdata_table_to_zarr(sdata)
 
     return sdata
+
+
+def _get_mask_area(mask: Array) -> pd.Series:
+    """
+    Calculate area of each label in mask. Return as pd.Series.
+    """
+
+    @dask.delayed
+    def calculate_area(mask_chunk: np.ndarray) -> tuple:
+        unique, counts = np.unique(mask_chunk, return_counts=True)
+
+        return unique, counts
+
+    delayed_results = [calculate_area(chunk) for chunk in mask.to_delayed().flatten()]
+
+    results = dask.compute(*delayed_results, scheduler="threads")
+
+    combined_counts = defaultdict(int)
+
+    # aggregate
+    for unique, counts in results:
+        for label, count in zip(unique, counts):
+            if label > 0:
+                combined_counts[str(label)] += count
+
+    combined_counts = pd.Series(combined_counts)
+    combined_counts.index.name = "cells"
+
+    return combined_counts

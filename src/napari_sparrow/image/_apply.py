@@ -28,7 +28,7 @@ def apply(
     img_layer: Optional[str] = None,
     output_layer: Optional[str] = None,
     channel: Optional[int | Iterable[int]] = None,
-    chunks: Optional[str | tuple[int, int] | int] = None,
+    chunks: Optional[str | int | Tuple[int, ...]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
@@ -51,9 +51,10 @@ def apply(
     channel : Optional[int | Iterable[int]], default=None
         Specifies which channel(s) to run `func` on. The `func` is run independently on each channel.
           If None, the `func` is run on all channels.
-    chunks : str | tuple[int, int] | int | None, default=None
+    chunks : str | Tuple[int, ...] | int | None, default=None
         Specification for rechunking the data before applying the function.
         If specified, dask's map_overlap or map_blocks is used depending on the occurence of the "depth" parameter in kwargs.
+        If chunks is a Tuple, they  contain the chunk size that will be used in the spatial dimensions.
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
@@ -124,6 +125,12 @@ def apply(
                 arr = arr.rechunk(arr.chunksize)
             arr = func(arr, **fn_kwargs)
             return da.asarray(arr)
+        if not isinstance(chunks, (int, str)):
+            if len(chunks) != arr.ndim:
+                raise ValueError(
+                    f"Chunks ({chunks}) are provided for {len(chunks)} dimensions. "
+                    f"Please (only) provide chunks for the {arr.ndim} spatial dimensions."
+                )
         arr = da.asarray(arr).rechunk(chunks)
         if "depth" in kwargs:
             kwargs.setdefault("boundary", "reflect")
@@ -141,6 +148,12 @@ def apply(
 
             chunksize = arr.chunksize
             depth = kwargs["depth"]
+            if not isinstance(depth, int):
+                if len(depth) != arr.ndim:
+                    raise ValueError(
+                        f"Depth ({depth}) is provided for {len(depth)} dimensions. "
+                        f"Please (only) provide depth for the {arr.ndim} spatial dimensions."
+                    )
             depth = coerce_depth(arr.ndim, depth)
 
             for dim in range(arr.ndim):
@@ -192,12 +205,15 @@ def apply(
     for ch, _fn_kwargs in zip(channel, _fn_kwargs_channel):
         channel_idx = list(se.c.data).index(ch)
         arr = se.isel(c=channel_idx).data
-        if len(arr.shape) != 2:
+        if arr.ndim not in (2, 3):
             raise ValueError(
-                f"Array is of dimension {arr.shape}, currently only 2D images are supported."
+                f"Array has {arr.ndim} dimensions, currently only 2D and 3D arrays are supported."
             )
         if crd is not None:
-            arr = arr[crd[2] : crd[3], crd[0] : crd[1]]
+            if arr.ndim == 2:
+                arr = arr[crd[2] : crd[3], crd[0] : crd[1]]
+            else:
+                arr = arr[:, crd[2] : crd[3], crd[0] : crd[1]]
         # passing correct value from fn_kwargs to apply_func
         arr = apply_func(func, arr, _fn_kwargs)
         results.append(arr)
@@ -212,7 +228,7 @@ def apply(
 
     translation = Translation([tx, ty], axes=("x", "y"))
 
-    sdata=_add_image_layer(
+    sdata = _add_image_layer(
         sdata,
         arr=arr,
         output_layer=output_layer,

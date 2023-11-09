@@ -6,6 +6,8 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from geopandas.geoseries import GeoSeries
+from geopandas.geodataframe import GeoDataFrame
 from spatialdata import SpatialData
 
 from napari_sparrow.image._image import (
@@ -24,6 +26,7 @@ def plot_image(
     sdata: SpatialData,
     img_layer: str = "raw_image",
     channel: Optional[int | str | Iterable[int | str]] = None,
+    z_slice: Optional[int] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
@@ -39,6 +42,8 @@ def plot_image(
         Image layer to be plotted. Default is "raw_image".
     channel : int or str or Iterable[int] or Iterable[str], optional
         Channel(s) to be displayed from the image.
+    z_slice: int or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) image.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     output : str or Path, optional
@@ -51,6 +56,7 @@ def plot_image(
         img_layer=img_layer,
         shapes_layer=None,
         channel=channel,
+        z_slice=z_slice,
         crd=crd,
         output=output,
         **kwargs,
@@ -60,6 +66,7 @@ def plot_image(
 def plot_labels(
     sdata: SpatialData,
     labels_layer: str = "segmentation_mask",
+    z_slice: Optional[int] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
@@ -73,6 +80,8 @@ def plot_labels(
         Data containing spatial information for plotting.
     labels_layer : str, optional
         Labels layer to be plotted. Default is "segmentation_mask".
+    z_slice: int or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) labels.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     output : str or Path, optional
@@ -84,6 +93,7 @@ def plot_labels(
         sdata,
         labels_layer=labels_layer,
         shapes_layer=None,
+        z_slice=z_slice,
         crd=crd,
         output=output,
         **kwargs,
@@ -93,9 +103,10 @@ def plot_labels(
 def plot_shapes(
     sdata: SpatialData,
     img_layer: Optional[str | Iterable[str]] = None,
-    labels_layer: Optional[ str | Iterable[str] ]= None,
+    labels_layer: Optional[str | Iterable[str]] = None,
     shapes_layer: Optional[str | Iterable[str]] = None,
     channel: Optional[int | str | Iterable[int] | Iterable[str]] = None,
+    z_slice: Optional[int] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     figsize: Optional[Tuple[int, int]] = None,
     output: Optional[str | Path] = None,
@@ -151,6 +162,8 @@ def plot_shapes(
         Channel(s) to be displayed from the image. Displayed as rows in the plot.
         If channel is None, get the number of channels from the first img_layer given as input.
         Ignored if img_layer is None and labels_layer is specified.
+    z_slice: int or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     figsize : Tuple[int, int], optional
@@ -167,22 +180,25 @@ def plot_shapes(
     """
 
     if img_layer is not None and labels_layer is not None:
-        raise ValueError( "Both img_layer and labels_layer is not None. "
-                         "Please specify either img_layer or labels_layer, not both." )
-    
+        raise ValueError(
+            "Both img_layer and labels_layer is not None. "
+            "Please specify either img_layer or labels_layer, not both."
+        )
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
     if img_layer is not None:
-        layer=img_layer
-        img_layer_type=True
+        layer = img_layer
+        img_layer_type = True
     elif labels_layer is not None:
-        layer=labels_layer
-        img_layer_type=False
+        layer = labels_layer
+        img_layer_type = False
     else:
         layer = [*sdata.images][-1]
-        img_layer_type=True
-        log.warning(f"No image layer or labels layer specified. "
-                    f"Plotting last image layer {layer} of the provided SpatialData object.")
+        img_layer_type = True
+        log.warning(
+            f"No image layer or labels layer specified. "
+            f"Plotting last image layer '{layer}' of the provided SpatialData object."
+        )
 
     # Make code also work if user would provide another iterable than List
     layer = (
@@ -220,7 +236,6 @@ def plot_shapes(
 
     nr_of_columns = max(len(layer), len(shapes_layer))
 
-
     if img_layer_type:
         # if channel is None, get the number of channels from the first img_layer given, maybe print a message about this.
         if channel is None:
@@ -228,9 +243,9 @@ def plot_shapes(
             channels = se.c.data
         else:
             channels = channel
-    
+
     else:
-        channels=[None] # for labels_layer type, there are no channels
+        channels = [None]  # for labels_layer type, there are no channels
 
     nr_of_rows = len(channels)
 
@@ -259,6 +274,7 @@ def plot_shapes(
                 labels_layer=_layer if not img_layer_type else None,
                 shapes_layer=_shapes_layer,
                 channel=_channel,
+                z_slice=z_slice,
                 crd=crd,
                 **kwargs,
             )
@@ -282,6 +298,7 @@ def _plot(
     labels_layer: Optional[str] = None,
     shapes_layer: Optional[str] = "segmentation_mask_boundaries",
     channel: Optional[int | str] = None,
+    z_slice: Optional[int] = None,
     alpha: float = 0.5,
     crd: Tuple[int, int, int, int] = None,
     vmin: Optional[float] = None,
@@ -314,6 +331,8 @@ def _plot(
     channel : int or str or None, optional
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
         Ignored if img_layer is None and labels_layer is specified.
+    z_slice: int or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
     alpha : float, default=0.5
         Transparency level for the cells, given by the alpha parameter of matplotlib.
     crd : tuple of int, optional
@@ -344,22 +363,25 @@ def _plot(
     - The function supports various visualization options such as image layers, shape layers, channels, color mapping, and custom regions.
     """
     if img_layer is not None and labels_layer is not None:
-        raise ValueError( "Both img_layer and labels_layer is not None. "
-                         "Please specify either img_layer or labels_layer, not both." )
-    
+        raise ValueError(
+            "Both img_layer and labels_layer is not None. "
+            "Please specify either img_layer or labels_layer, not both."
+        )
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
     if img_layer is not None:
-        layer=img_layer
-        img_layer_type=True
+        layer = img_layer
+        img_layer_type = True
     elif labels_layer is not None:
-        layer=labels_layer
-        img_layer_type=False
+        layer = labels_layer
+        img_layer_type = False
     else:
         layer = [*sdata.images][-1]
-        img_layer_type=True
-        log.warning(f"No image layer or labels layer specified. "
-                    f"Plotting last image layer {layer} of the provided SpatialData object.")
+        img_layer_type = True
+        log.warning(
+            f"No image layer or labels layer specified. "
+            f"Plotting last image layer '{layer}' of the provided SpatialData object."
+        )
 
     if shapes_layer_filtered is not None:
         shapes_layer_filtered = (
@@ -392,28 +414,38 @@ def _plot(
     else:
         crd = image_boundary
     size_im = (crd[1] - crd[0]) * (crd[3] - crd[2])
-    if column is not None:
-        if column + "_colors" in sdata.table.uns:
-            cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
-                "new_map",
-                sdata.table.uns[column + "_colors"],
-                N=len(sdata.table.uns[column + "_colors"]),
-            )
-        if column in sdata.table.obs.columns:
-            column = sdata.table[
-                sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].index, :
-            ].obs[column]
-        elif column in sdata.table.var.index:
-            column = sdata.table[
-                sdata[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].index, :
-            ].X[:, np.where(sdata.table.var.index == column)[0][0]]
+
+    polygons=None
+    if shapes_layer is not None:
+        polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
+        if z_slice is not None:
+            polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+
+    if polygons is not None and column is not None:
+        if not polygons.empty:
+            if column + "_colors" in sdata.table.uns:
+                cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+                    "new_map",
+                    sdata.table.uns[column + "_colors"],
+                    N=len(sdata.table.uns[column + "_colors"]),
+                )
+            if column in sdata.table.obs.columns:
+                column = sdata.table[
+                    polygons.index, :
+                ].obs[column]
+            elif column in sdata.table.var.index:
+                column = sdata.table[
+                    polygons.index, :
+                ].X[:, np.where(sdata.table.var.index == column)[0][0]]
+            else:
+                log.info(
+                    f"The column '{column}' is not a column in the dataframe sdata.table.obs, "
+                    "nor is it a gene name (sdata.table.var.index). The plot is made without taking into account this value."
+                )
+                column = None
+                cmap = None
         else:
-            log.info(
-                f"The column '{column}' is not a column in the dataframe sdata.table.obs, "
-                "nor is it a gene name (sdata.table.var.index). The plot is made without taking into account this value."
-            )
-            column = None
-            cmap = None
+            log.warning( f"Shapes layer '{shapes_layer}' was empty for crd {crd}." )
     else:
         cmap = None
     if vmin != None:
@@ -432,46 +464,67 @@ def _plot(
             log.warning(
                 (
                     f"Provided channel '{_channel}' not in list of available channels '{se.c.data}' "
-                    f"for provided img_layer '{img_layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
+                    f"for provided img_layer '{layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
                 )
             )
 
         channel_name = se.c.name
         channel_idx = list(se.c.data).index(channel)
-        _se=se.isel(c=channel_idx)
-        cmap_layer="gray"
+        _se = se.isel(c=channel_idx)
+        cmap_layer = "gray"
     else:
-        _se=se
-        cmap_layer="viridis"
+        _se = se
+        cmap_layer = "viridis"
 
-    _se.squeeze().sel(
-        x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])
-    ).plot.imshow(cmap=cmap_layer, robust=True, ax=ax, add_colorbar=False)
+    if z_slice is not None:
+        if _se.ndim == 3:
+            _se = _se[z_slice, ...]
+    else:
+        if _se.ndim == 3:
+            log.warning(
+                f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
+                f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0]//2}) will be utilized."
+            )
+            _se = _se[_se.shape[0]//2, ...]
+        _se = _se.squeeze()
 
-    if shapes_layer is not None:
-        sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
-            ax=ax,
-            edgecolor="white",
-            column=column,
-            linewidth=1 if size_im < 5000 * 10000 else 0,
-            alpha=alpha,
-            legend=True,
-            aspect=1,
-            cmap=cmap,
-            vmax=vmax,  # np.percentile(column,vmax),
-            vmin=vmin,  # np.percentile(column,vmin)
-        )
+    _se.sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
+        cmap=cmap_layer, robust=True, ax=ax, add_colorbar=False
+    )
+
+    if polygons is not None:
+        if not polygons.empty:
+            polygons.plot(
+                ax=ax,
+                edgecolor="white",
+                column=column,
+                linewidth=1 if size_im < 5000 * 10000 else 0,
+                alpha=alpha,
+                legend=True,
+                aspect=1,
+                cmap=cmap,
+                vmax=vmax,  # np.percentile(column,vmax),
+                vmin=vmin,  # np.percentile(column,vmin)
+            )
+        else:
+            log.warning( f"Shapes layer {shapes_layer} was empty for crd {crd}." )
         if shapes_layer_filtered is not None:
             for i in shapes_layer_filtered:
-                sdata.shapes[i].cx[crd[0] : crd[1], crd[2] : crd[3]].plot(
-                    ax=ax,
-                    edgecolor="red",
-                    linewidth=1,
-                    alpha=alpha,
-                    legend=True,
-                    aspect=1,
-                    cmap="gray",
-                )
+                polygons = sdata.shapes[i].cx[crd[0] : crd[1], crd[2] : crd[3]]
+                if z_slice is not None:
+                    polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+                if not polygons.empty:
+                    polygons.plot(
+                        ax=ax,
+                        edgecolor="red",
+                        linewidth=1,
+                        alpha=alpha,
+                        legend=True,
+                        aspect=1,
+                        cmap="gray",
+                    )
+                else:
+                    log.warning( f"Shapes layer {i} was empty for crd {crd}." )
     ax.axes.set_aspect(aspect)
     ax.set_xlim(crd[0], crd[1])
     ax.set_ylim(crd[2], crd[3])
@@ -496,3 +549,25 @@ def _plot(
     se = _unapply_transform(se, x_coords_orig, y_coords_orig)
 
     return ax
+
+
+def _get_z_slice_polygons(polygons: GeoDataFrame, z_slice: int) -> GeoDataFrame:
+    def _get_z_slice(geometry: GeoSeries, z_value) -> bool:
+        # return original geometry if geometry does not has z dimension
+        if not geometry.has_z:
+            return True
+
+        if geometry.geom_type == "Polygon":
+            for x, y, z in geometry.exterior.coords:
+                if z == z_value:
+                    return True
+
+        elif geometry.geom_type == "MultiPolygon":
+            for polygon in geometry.geoms:
+                for x, y, z in polygon.exterior.coords:
+                    if z == z_value:
+                        return True
+
+        return False
+
+    return polygons[polygons["geometry"].apply(_get_z_slice, args=(z_slice,))]

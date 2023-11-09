@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, Optional, Union, Tuple
 
 import dask.dataframe as dd
 import numpy as np
@@ -81,6 +81,7 @@ def read_vizgen_transcripts(
     kwargs = {
         "column_x": 2,
         "column_y": 3,
+        "column_z": 4,
         "column_gene": 8,
         "delimiter": ",",
         "header": 0,
@@ -138,10 +139,12 @@ def read_transcripts(
     debug: bool = False,
     column_x: int = 0,
     column_y: int = 1,
+    column_z: Optional[int] = None,
     column_gene: int = 3,
     column_midcount: Optional[int] = None,
     delimiter: str = ",",
     header: Optional[int] = None,
+    crd: Optional[Tuple[int, int, int, int]] = None,
 ) -> SpatialData:
     """
     Reads transcript information from a file with each row listing the x and y coordinates, along with the gene name.
@@ -169,6 +172,8 @@ def read_transcripts(
         Column index of the X coordinate in the count matrix.
     column_y : int, default=1
         Column index of the Y coordinate in the count matrix.
+    column_z : int, default=None
+        Column index of the Z coordinate in the count matrix.
     column_gene : int, default=3
         Column index of the gene information in the count matrix.
     column_midcount : Optional[int], default=None
@@ -177,6 +182,9 @@ def read_transcripts(
         Delimiter used to separate values in the CSV file.
     header : Optional[int], default=None
         Row number to use as the header in the CSV file. If None, no header is used.
+    crd : tuple of int, optional
+        The coordinates (in pixels) for the region of interest in the format (xmin, xmax, ymin, ymax).
+        If None, all transcripts are considered.
 
     Returns
     -------
@@ -233,11 +241,28 @@ def read_transcripts(
     # Rename the columns
     transformed_ddf.columns = ["gene", "pixel_x", "pixel_y"]
 
+    columns = ["pixel_x", "pixel_y", "gene"]
+    coordinates = {"x": "pixel_x", "y": "pixel_y"}
+
+    if column_z is not None:
+        transformed_ddf["pixel_z"] = ddf.iloc[:, column_z]
+        columns.append("pixel_z")
+        coordinates["z"] = "pixel_z"
+
     # Reorder
-    transformed_ddf = transformed_ddf[["pixel_x", "pixel_y", "gene"]]
+    transformed_ddf = transformed_ddf[columns]
+
+    if crd is not None:
+        transformed_ddf = transformed_ddf.query(
+            f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}"
+        )
 
     sdata = _add_transcripts_to_sdata(
-        sdata, transformed_ddf, points_layer, overwrite=overwrite
+        sdata,
+        transformed_ddf=transformed_ddf,
+        points_layer=points_layer,
+        coordinates=coordinates,
+        overwrite=overwrite,
     )
 
     return sdata
@@ -247,6 +272,7 @@ def _add_transcripts_to_sdata(
     sdata: SpatialData,
     transformed_ddf: DaskDataFrame,
     points_layer: str,
+    coordinates: Dict[str, str],
     overwrite: bool = False,
 ):
     if sdata.points:
@@ -256,7 +282,8 @@ def _add_transcripts_to_sdata(
     sdata.add_points(
         name=points_layer,
         points=spatialdata.models.PointsModel.parse(
-            transformed_ddf, coordinates={"x": "pixel_x", "y": "pixel_y"}
+            transformed_ddf,
+            coordinates=coordinates,
         ),
         overwrite=overwrite,
     )
