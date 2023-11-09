@@ -65,7 +65,7 @@ def combine(
     ValueError
         If `output_layer` is not provided.
         If no channels are specified for combining.
-        If provided arrays are not 2D (c,y,x).
+        If provided arrays are not 2D or 3D (c, (z) , y, x).
 
     Notes
     -----
