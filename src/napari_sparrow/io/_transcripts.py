@@ -187,7 +187,7 @@ def read_transcripts(
         The coordinates (in pixels) for the region of interest in the format (xmin, xmax, ymin, ymax).
         If None, all transcripts are considered.
     filter_gene_names: list or list of strings, optional
-        Regular expression(s) of gene names that need to be filtered out, mostly 
+        Regular expression(s) of gene names that need to be filtered out, mostly control genes that were added, and which you don't want to use. If list of strings, all items in the list are seen as regular expressions.  
     Returns
     -------
     SpatialData
@@ -203,7 +203,8 @@ def read_transcripts(
     
     def filter_names(ddf,column_gene,filter_name):
         # filter out control genes that you don't want ending up in the dataset
-        ddf=ddf[ddf[column_gene].str.contains(filter_name)==False]
+        
+        ddf=ddf[ddf.iloc[:,column_gene].str.contains(filter_name)==False]
         return ddf
     
     if filter_gene_names:
