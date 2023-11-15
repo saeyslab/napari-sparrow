@@ -145,6 +145,7 @@ def read_transcripts(
     delimiter: str = ",",
     header: Optional[int] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
+    filter_gene_names: Optional(str|list)=None 
 ) -> SpatialData:
     """
     Reads transcript information from a file with each row listing the x and y coordinates, along with the gene name.
@@ -185,7 +186,8 @@ def read_transcripts(
     crd : tuple of int, optional
         The coordinates (in pixels) for the region of interest in the format (xmin, xmax, ymin, ymax).
         If None, all transcripts are considered.
-
+    filter_gene_names: list or list of strings, optional
+        Regular expression(s) of gene names that need to be filtered out, mostly control genes that were added, and which you don't want to use. If list of strings, all items in the list are seen as regular expressions.  
     Returns
     -------
     SpatialData
@@ -198,7 +200,26 @@ def read_transcripts(
     """
     # Read the CSV file using Dask
     ddf = dd.read_csv(path_count_matrix, delimiter=delimiter, header=header)
-
+    
+    def filter_names(ddf,column_gene,filter_name):
+        # filter out control genes that you don't want ending up in the dataset
+        
+        ddf=ddf[ddf.iloc[:,column_gene].str.contains(filter_name)==False]
+        return ddf
+    
+    if filter_gene_names:
+        
+        if type(filter_gene_names) is list:
+            
+            for i in filter_gene_names:
+                ddf=filter_names(ddf,column_gene,i)
+                
+        elif isinstance(filter_gene_names,str):
+            
+            ddf=filter_names(ddf,column_gene,filter_gene_names)
+        else: 
+            log.info('instance to filter on isn\'t a string nor a list. No genes are filtered out based on the gene name. ')
+            
     # Read the transformation matrix
     if path_transform_matrix is None:
         log.info("No transform matrix given, will use identity matrix.")
@@ -207,7 +228,7 @@ def read_transcripts(
         transform_matrix = np.loadtxt(path_transform_matrix)
 
     log.info(f"Transform matrix used:\n {transform_matrix}")
-
+    
     if debug:
         n = 100000
         fraction = n / len(ddf)
