@@ -122,7 +122,7 @@ def allocate_intensity(
     # iterate over all the channels and collect intensity for each channel and each cell
     channel_intensities = []
     for channel in channels:
-        channel_idx = list(channels).index(channel)
+        channel_idx = list(se_image.c.data).index(channel)
         channel_intensities.append(
             _calculate_intensity(
                 se_image.isel(c=channel_idx).data, se_labels.data, chunks=chunks
