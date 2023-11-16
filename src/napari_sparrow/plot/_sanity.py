@@ -62,6 +62,10 @@ def sanity_plot_transcripts_matrix(
         Channel to display from the img_layer. If none provided, or if provided channel could not be found, first channel is plot.
     z_slice: int or None, optional
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
+        If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
+        If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
+
+        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
         If z_slice is not specified and the sdata[image_layer] is three-dimensional, the plot defaults to the z-slice at index 0;
         shapes from all z-stacks are displayed; alongside transcripts from every z-stack.
     plot_cell_number : bool, default=False
@@ -176,10 +180,18 @@ def sanity_plot_transcripts_matrix(
             _se = _se[z_slice, ...]
     else:
         if _se.ndim == 3:
-            log.warning(
-                f"Layer {layer} has 3 dimensions, but no z-slice was added. Using z_slice at index 0 for plotting by default."
-            )
-            _se = _se[0, ...]
+            if img_layer_type:
+                log.info(
+                    f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
+                    f"will perform a max projection along the z-axis."
+                )
+                _se = _se.max(dim="z")
+            else:
+                log.info(
+                    f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
+                    f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0]//2}) will be utilized."
+                )
+                _se = _se[_se.shape[0] // 2, ...]
         _se = _se.squeeze()
 
     _se.sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(

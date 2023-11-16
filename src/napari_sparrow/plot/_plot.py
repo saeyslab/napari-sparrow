@@ -105,12 +105,23 @@ def plot_shapes(
     img_layer: Optional[str | Iterable[str]] = None,
     labels_layer: Optional[str | Iterable[str]] = None,
     shapes_layer: Optional[str | Iterable[str]] = None,
+    column: Optional[str] = None,
+    cmap: Optional[str] = "magma",
     channel: Optional[int | str | Iterable[int] | Iterable[str]] = None,
     z_slice: Optional[int] = None,
+    alpha: float = 0.5,
     crd: Optional[Tuple[int, int, int, int]] = None,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    vmin_img: Optional[float] = None,
+    vmax_img: Optional[float] = None,
+    shapes_layer_filtered: Optional[str | Iterable[str]] = None,
+    img_title: bool = False,
+    shapes_title: bool = False,
+    channel_title: bool = True,
+    aspect: str = "equal",
     figsize: Optional[Tuple[int, int]] = None,
     output: Optional[str | Path] = None,
-    **kwargs: Dict[str, Any],
 ) -> None:
     """
     Plot shapes and/or images/labels from a SpatialData object.
@@ -158,14 +169,39 @@ def plot_shapes(
     shapes_layer : str or Iterable[str], optional
         Specifies which shapes to plot. If set to None, no shapes_layer is plotted.
         Displayed as columns in the plot, if multiple are provided.
+    column : str or None, optional
+        Column in `sdata.table.obs` or name in `sdata.table.var.index` to base cell colors on. If none provided, default color is used.
+    cmap : str, default='magma'
+        Colormap for column. Ignored if column is None, or if column + "_colors" is in `sdata.table.uns`.
     channel : int or str or Iterable[int] or Iterable[str], optional
         Channel(s) to be displayed from the image. Displayed as rows in the plot.
         If channel is None, get the number of channels from the first img_layer given as input.
         Ignored if img_layer is None and labels_layer is specified.
     z_slice: int or None, optional
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
+        If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
+        If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+    vmin : float or None, optional
+        Lower bound for color scale for continuous data (i.e. a column). Given as a percentile. Ignored if column is None.
+    vmax : float or None, optional
+        Upper bound for color scale for continuous data (i.e. a column). Given as a percentile. Ignored if column is None.
+    vmin_img : float or None, optional
+        Lower bound for plotting of `img_layer` or `labels_layer`.
+    vmax_img : float or None, optional
+        Upper bound for plotting of `img_layer` or `labels_layer`.
+    shapes_layer_filtered : str or Iterable[str], optional
+        Extra shapes layers to plot. E.g. shapes filtered out in previous preprocessing steps.
+    img_title: bool, default=False
+        A flag indicating whether the image layer's name should be added to the title of the plot.
+    shapes_title: bool, default=False
+        A flag indicating whether the shapes layer's name should be added to the title of the plot.
+    channel_title: bool, default=True
+        A flag indicating whether the channel's name should be added to the title of the plot.
+        Ignored if img_layer is None and labels_layer is specified.
+    aspect : str, default='equal'
+        Aspect ratio for the plot.
     figsize : Tuple[int, int], optional
         Size of the figure for plotting. If not provided, a default size is used based on the number of columns and rows.
     output : str or Path, optional
@@ -273,10 +309,21 @@ def plot_shapes(
                 img_layer=_layer if img_layer_type else None,
                 labels_layer=_layer if not img_layer_type else None,
                 shapes_layer=_shapes_layer,
+                column=column,
+                cmap=cmap,
                 channel=_channel,
                 z_slice=z_slice,
+                alpha=alpha,
                 crd=crd,
-                **kwargs,
+                vmin=vmin,
+                vmax=vmax,
+                vmin_img=vmin_img,
+                vmax_img=vmax_img,
+                shapes_layer_filtered=shapes_layer_filtered,
+                img_title=img_title,
+                shapes_title=shapes_title,
+                channel_title=channel_title,
+                aspect=aspect,
             )
             idx += 1
 
@@ -292,17 +339,19 @@ def plot_shapes(
 def _plot(
     sdata: SpatialData,
     ax: plt.Axes,
-    column: Optional[str] = None,
-    cmap: str = "magma",
     img_layer: Optional[str] = None,
     labels_layer: Optional[str] = None,
     shapes_layer: Optional[str] = "segmentation_mask_boundaries",
+    column: Optional[str] = None,
+    cmap: Optional[str] = "magma",
     channel: Optional[int | str] = None,
     z_slice: Optional[int] = None,
     alpha: float = 0.5,
     crd: Tuple[int, int, int, int] = None,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
+    vmin_img: Optional[float] = None,
+    vmax_img: Optional[float] = None,
     shapes_layer_filtered: Optional[str | Iterable[str]] = None,
     img_title: bool = False,
     shapes_title: bool = False,
@@ -318,29 +367,35 @@ def _plot(
         Data containing spatial information for plotting.
     ax : plt.Axes, optional
         Axes object to plot on.
-    column : str or None, optional
-        Column to base cell colors on. Can be an observation or variable column. If none provided, default color is used.
-    cmap : str, default='magma'
-        Colormap for the plot.
     img_layer : str or None, optional
         Image layer to be plotted. By default, the last added image layer is plotted.
     labels_layer : str or None, optional
         Labels layer to be plotted.
     shapes_layer : str or None, optional
         Specifies which shapes to plot. Default is 'segmentation_mask_boundaries'. If set to None, no shapes_layer is plot.
+    column : str or None, optional
+        Column in `sdata.table.obs` or name in `sdata.table.var.index` to base cell colors on. If none provided, default color is used.
+    cmap : str, default='magma'
+        Colormap for column. Ignored if column is None, or if column + "_colors" is in `sdata.table.uns`.
     channel : int or str or None, optional
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
         Ignored if img_layer is None and labels_layer is specified.
     z_slice: int or None, optional
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
+        If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
+        If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
     alpha : float, default=0.5
         Transparency level for the cells, given by the alpha parameter of matplotlib.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
     vmin : float or None, optional
-        Lower bound for color scale for continuous data. Given as a percentile.
+        Lower bound for color scale for continuous data (i.e. a column). Given as a percentile. Ignored if column is None.
     vmax : float or None, optional
-        Upper bound for color scale for continuous data. Given as a percentile.
+        Upper bound for color scale for continuous data (i.e. a column). Given as a percentile. Ignored if column is None.
+    vmin_img : float or None, optional
+        Lower bound for plotting of `img_layer` or `labels_layer`.
+    vmax_img : float or None, optional
+        Upper bound for plotting of `img_layer` or `labels_layer`.
     shapes_layer_filtered : str or Iterable[str], optional
         Extra shapes layers to plot. E.g. shapes filtered out in previous preprocessing steps.
     img_title: bool, default=False
@@ -415,7 +470,7 @@ def _plot(
         crd = image_boundary
     size_im = (crd[1] - crd[0]) * (crd[3] - crd[2])
 
-    polygons=None
+    polygons = None
     if shapes_layer is not None:
         polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
         if z_slice is not None:
@@ -430,13 +485,11 @@ def _plot(
                     N=len(sdata.table.uns[column + "_colors"]),
                 )
             if column in sdata.table.obs.columns:
-                column = sdata.table[
-                    polygons.index, :
-                ].obs[column]
+                column = sdata.table[polygons.index, :].obs[column]
             elif column in sdata.table.var.index:
-                column = sdata.table[
-                    polygons.index, :
-                ].X[:, np.where(sdata.table.var.index == column)[0][0]]
+                column = sdata.table[polygons.index, :].X[
+                    :, np.where(sdata.table.var.index == column)[0][0]
+                ]
             else:
                 log.info(
                     f"The column '{column}' is not a column in the dataframe sdata.table.obs, "
@@ -445,7 +498,7 @@ def _plot(
                 column = None
                 cmap = None
         else:
-            log.warning( f"Shapes layer '{shapes_layer}' was empty for crd {crd}." )
+            log.warning(f"Shapes layer '{shapes_layer}' was empty for crd {crd}.")
     else:
         cmap = None
     if vmin != None:
@@ -481,15 +534,28 @@ def _plot(
             _se = _se[z_slice, ...]
     else:
         if _se.ndim == 3:
-            log.warning(
-                f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
-                f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0]//2}) will be utilized."
-            )
-            _se = _se[_se.shape[0]//2, ...]
+            if img_layer_type:
+                log.info(
+                    f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
+                    f"will perform a max projection along the z-axis."
+                )
+                _se = _se.max(dim="z")
+            else:
+                log.info(
+                    f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
+                    f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0]//2}) will be utilized."
+                )
+                _se = _se[_se.shape[0] // 2, ...]
+
         _se = _se.squeeze()
 
     _se.sel(x=slice(crd[0], crd[1]), y=slice(crd[2], crd[3])).plot.imshow(
-        cmap=cmap_layer, robust=True, ax=ax, add_colorbar=False
+        cmap=cmap_layer,
+        robust=True,
+        ax=ax,
+        add_colorbar=False,
+        vmin=vmin_img,
+        vmax=vmax_img,
     )
 
     if polygons is not None:
@@ -507,7 +573,7 @@ def _plot(
                 vmin=vmin,  # np.percentile(column,vmin)
             )
         else:
-            log.warning( f"Shapes layer {shapes_layer} was empty for crd {crd}." )
+            log.warning(f"Shapes layer {shapes_layer} was empty for crd {crd}.")
         if shapes_layer_filtered is not None:
             for i in shapes_layer_filtered:
                 polygons = sdata.shapes[i].cx[crd[0] : crd[1], crd[2] : crd[3]]
@@ -524,7 +590,7 @@ def _plot(
                         cmap="gray",
                     )
                 else:
-                    log.warning( f"Shapes layer {i} was empty for crd {crd}." )
+                    log.warning(f"Shapes layer {i} was empty for crd {crd}.")
     ax.axes.set_aspect(aspect)
     ax.set_xlim(crd[0], crd[1])
     ax.set_ylim(crd[2], crd[3])
