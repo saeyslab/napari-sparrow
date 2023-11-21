@@ -1,4 +1,4 @@
-from ._apply import ChannelList, apply
+from ._apply import apply
 from ._combine import combine
 from ._contrast import enhance_contrast
 from ._image import _add_image_layer, _add_label_layer

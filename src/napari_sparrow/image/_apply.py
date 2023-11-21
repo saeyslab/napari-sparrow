@@ -24,18 +24,18 @@ log = get_pylogger(__name__)
 
 def apply(
     sdata: SpatialData,
-    func: Callable[..., NDArray | Array],
+    func: Callable[..., NDArray | Array] | Mapping[str, Any],
+    fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     img_layer: Optional[str] = None,
     output_layer: Optional[str] = None,
-    channel: Optional[int | Iterable[int]] = None,
-    z_slice: Optional[int | Iterable[int]] = None,
-    combine_c=False,
+    channel: Optional[int | Iterable[int] | str | Iterable[str]] = None,
+    z_slice: Optional[float | Iterable[float]] = None,
+    combine_c=True,
     combine_z=True,
     chunks: Optional[str | int | Tuple[int, ...]] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
-    fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     **kwargs: Any,
 ) -> SpatialData:
     """
@@ -45,29 +45,47 @@ def apply(
     ----------
     sdata : SpatialData
         Spatial data object containing the image to be processed.
-    func : Callable[..., NDArray | Array]
+    func : Callable[..., NDArray | Array] | Mapping[ str | Any ]
         The Callable to apply to the image.
+        Can also be a Mapping if different Callable should be applied to z_slice and/or channel
+        e.g. { 'channel1': function, 'channel2': function2 ... } or { 'channel': { 'z_slice': function ... } ... }.
+        If a Mapping is specified, and fn_kwargs is specified then the Mapping should match
+        the Mapping specified in fn_kwargs.
+    fn_kwargs : Mapping[str, Any], default=MappingProxyType({})
+        Keyword arguments to pass to `func`.
+        If different fn_kwargs should be passed to different z_slices and or channels, one can specify e.g.
+        {'channel1': fn_kwargs1, 'channel2': fn_kwargs2 ... } or { 'channel': { 'z_slice': fn_kwargs ... } ... }.
     img_layer : Optional[str], default=None
         The image layer in `sdata` to process. If not provided, the last image layer in `sdata` is used.
     output_layer : Optional[str]
         The name of the output layer where results will be stored. This must be specified.
-    channel : Optional[int | Iterable[int]], default=None
-        Specifies which channel(s) to run `func` on. The `func` is run independently on each channel.
-          If None, the `func` is run on all channels.
+    channel : Optional[int | Iterable[int] | str | Iterable[str] ], default=None
+        Specifies which channel(s) to run `func` on.
+        If None, the `func` is run on all channels if `func` is a Callable,
+        and if `func` or `fn_kwargs` is a mapping, it will run on the specfied channels if provided.
+    z_slice : Optional[float | Iterable[float]], default=None
+        Specifies which z_slice to run `func` on.
+        If None, the `func` is run on all channels if `func` is a Callable,
+        and if `func` or `fn_kwargs` is a mapping, in will run on the specfied z slices if provided.
+    combine_c : bool, default=True.
+        If False, each channel is processed indepentently,
+        i.e. input to `func`/map_blocks/map_overlap will be of shape (1,(z),y,x).
+        If set to True, input will depend on the chunk parameter specified for the c dimension.
+    combine_z : bool, default=True.
+        If False, each z slice is processed indepentently,
+        i.e. input to `func`/map_blocks/map_overlap will be of shape (c,1,y,x).
+        If set to True, input will depend on the chunk parameter specified for the z dimension.
+        Ignored when `img_layer` does not contain a z dimension.
     chunks : str | Tuple[int, ...] | int | None, default=None
         Specification for rechunking the data before applying the function.
         If specified, dask's map_overlap or map_blocks is used depending on the occurence of the "depth" parameter in kwargs.
-        If chunks is a Tuple, they  contain the chunk size that will be used in the spatial dimensions.
+        If chunks is a Tuple, they should contain desired chunk size for c, (z), y, x.
     crd : Optional[Tuple[int, int, int, int]], default=None
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
         Scale factors to apply for multiscale.
     overwrite : bool, default=False
         If True, overwrites the output layer if it already exists in `sdata`.
-    fn_kwargs : Mapping[str, Any], default=MappingProxyType({})
-        Keyword arguments to pass to `func`.
-        If a different value should be used for each channel, then value to the keyword argument
-        should be passed as a ChannelList with length equal to the number of channels in the image.
     **kwargs : Any
         Additional keyword arguments passed to dask's map_overlap or map_blocks
         depending of the occurence of "depth" in kwargs.
@@ -80,9 +98,9 @@ def apply(
     Raises
     ------
     ValueError
-        If `output_layer` is not provided.
-        If ChannelList objects are specified in fn_kwargs that do not match the provided number of channels.
-        If provided arrays are not 2D (c,y,x).
+        - If `output_layer` is not provided.
+        - If chunks is a Tuple, and do not match (c,(z),y,x).
+        - If depth is a Tuple, and do not match (c,(z),y,x).
 
     Notes
     -----
@@ -92,18 +110,37 @@ def apply(
 
     Examples
     --------
-    Apply a custom function `my_function` to all channels in an image using different parameters for each channel
-    (we assume sdata[ "raw_image" ] has 2 channels):
+    Apply a custom function `my_function` to all channels of an image layer using different parameters for each channel
+    (we assume sdata[ "raw_image" ] has 2 channels, 0 and 1, and has dimensions c,y,x ):
 
     >>> def my_function( image, parameter ):
     ...    return image*parameter
-    >>> fn_kwargs={ "parameter": ChannelList( [2,3] ) }
-    >>> sdata = apply(sdata, my_function, img_layer="raw_image", output_layer="processed_image", channel=None, fn_kwargs=fn_kwargs)
+    >>> fn_kwargs={ 0: { "parameter": 2 }, 1: { "parameter": 3 } }
+    >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_c=False)
 
     Apply the same function to only the first channel of the image:
 
-    >>> fn_kwargs={ "parameter": 2 }
-    >>> sdata = apply(sdata, my_function, img_layer="raw_image", output_layer="processed_image", channel=0, fn_kwargs=fn_kwargs)
+    >>> fn_kwargs={ 0: { "parameter": 2 } }
+    >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_c=False)
+
+    Apply a custom function `my_function` and `my_function2` to channel 0, respectively channel 1 of an image layer
+    (we assume sdata[ "raw_image" ] has 2 channels, 0 and 1, and has dimensions c,y,x ):
+
+    >>> def my_function1( image ):
+    ...    return image*2
+    >>> def my_function2( image ):
+    ...    return image+2
+
+    >>> func={ 0: function1, 1: function2 }
+    >>> sdata = apply(sdata, func, img_layer="raw_image", output_layer="processed_image", combine_c=False)
+
+    Apply a custom function `my_function` to all z slices of an image layer using different parameters for each z slice
+    (we assume sdata[ "raw_image" ] has 2 z slices at 0.5 and 1.5, and has dimensions c,z,y,x ):
+
+    >>> def my_function( image, parameter ):
+    ...    return image*parameter
+    >>> fn_kwargs={ 0.5: { "parameter": 2 }, 1.5: { "parameter": 3 } }
+    >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_z=False)
     """
 
     if img_layer is None:
@@ -209,10 +246,12 @@ def apply(
         z_slices=z_slice,
     )
 
+    if crd is not None:
+        crd = _substract_translation_crd(se, crd)
+
     if not combine_c:
-        # process channels dimensions indepentenly, so get channel names from fn_kwargs, because could have less channels
+        # process channels dimensions individually, so get channel names from fn_kwargs, because could have less channels
         channel = list(fn_kwargs.keys())
-        # TODO not allow is se is not 3D (fix this by setting combine_z to True if se does not contain z dimensions)
         if not combine_z:
             result = []
             for key_c, _fn_kwargs_c in fn_kwargs.items():
@@ -220,11 +259,10 @@ def apply(
                 result_z = []
                 for key_z, _fn_kwargs_c_z in _fn_kwargs_c.items():
                     func_c_z = func_c[key_z]
-                    arr = se.sel(
-                        z=[key_z], c=[key_c]
-                    ).data  # we do not reduce dimensions, we do sel with z=[...]
+                    arr = se.sel(z=[key_z], c=[key_c]).data
                     if crd is not None:
                         arr = arr[:, :, crd[2] : crd[3], crd[0] : crd[1]]
+                    # we could also squeeze here, and then put them back in next step
                     arr = apply_func(func=func_c_z, arr=arr, fn_kwargs=_fn_kwargs_c_z)
                     # arr of size (1,1,y,x)
                     result_z.append(arr[0, 0, ...])
@@ -235,23 +273,17 @@ def apply(
             result = []
             for key_c, _fn_kwargs_c in fn_kwargs.items():
                 func_c = func[key_c]
-                # TODO should only do se.sel( z=... ) if there is a z dimension
                 if z_slice is not None:
-                    arr = se.sel(
-                        z=z_slice, c=[key_c]
-                    ).data  # we do not reduce dimensions, we do sel with c=[...]
+                    arr = se.sel(z=z_slice, c=[key_c]).data
                 else:
-                    arr = se.sel(
-                        c=[key_c]
-                    ).data  # we do not reduce dimensions, we do sel with c=[...]
+                    arr = se.sel(c=[key_c]).data
                 if crd is not None:
                     if arr.ndim == 3:
                         arr = arr[:, crd[2] : crd[3], crd[0] : crd[1]]
                     elif arr.ndim == 4:
                         arr = arr[:, :, crd[2] : crd[3], crd[0] : crd[1]]
-                arr = apply_func(
-                    func=func_c, arr=arr, fn_kwargs=_fn_kwargs_c
-                )  # apply func expects c,z,y,x
+                arr = apply_func(func=func_c, arr=arr, fn_kwargs=_fn_kwargs_c)
+                # apply func expects c,z,y,x
                 # apply_func returns 1, z, y, x, so we take z,y,x and do a stack over all results to get our c-dimension back
                 result.append(arr[0, ...])
             arr = da.stack(result, axis=0)
@@ -280,9 +312,6 @@ def apply(
                 elif arr.ndim == 4:
                     arr = arr[:, :, crd[2] : crd[3], crd[0] : crd[1]]
             arr = apply_func(func=func, arr=arr, fn_kwargs=fn_kwargs)
-
-    if crd is not None:
-        crd = _substract_translation_crd(se, crd)
 
     tx, ty = _get_translation(se)
 
@@ -388,12 +417,12 @@ def _precondition(
         ), "should specify same keys in fn_kwargs and func"
         keys = set(flatten_list(keys_fn_kwargs))
         # now also do sanity check on the channels and z slices.
-        if combine_c:
+        if combine_c and channels is not None:
             if keys.intersection(set(channels)):
                 raise ValueError(
                     "Keys in fn_kwargs can not have intersection with channel names if combine_c is set to True."
                 )
-        if combine_z:
+        if combine_z and z_slices is not None:
             if keys.intersection(set(z_slices)):
                 raise ValueError(
                     "Keys in fn_kwargs can not have intersection with names of z_slices if combine_z is set to True."
@@ -413,13 +442,15 @@ def _precondition(
                     # in this case func should be a callable
                     # if not isinstance( func, Callable ):
                     #    raise ValueError
-                    print(
-                        "combine_z is False, but not all z-slices spefified in fn_kwargs/func."
+                    log.info(
+                        f"combine_z is False, but not all z-slices spefified in fn_kwargs/func ({fn_kwargs}/{func}). "
+                        f"Specifying z-slices ({z_slices})."
                     )
                     fn_kwargs = {key: fn_kwargs for key in z_slices}
                     func = {key: func for key in z_slices}
-            print(
-                "combine_c is False, but not all channels spefified in fn_kwargs/func."
+            log.info(
+                f"combine_c is False, but not all channels spefified in fn_kwargs/func ({fn_kwargs}/{func}). "
+                f"Specifying channels ({channels})."
             )
             fn_kwargs = {key: fn_kwargs for key in channels}
             func = {key: func for key in channels}
@@ -434,10 +465,10 @@ def _precondition(
                     )
                     or value == {}
                 ):
-                    print(
-                        "combine_z is False, but not all z-slices spefified in fn_kwargs/func"
+                    log.info(
+                        f"combine_z is False, but not all z-slices spefified in fn_kwargs/func ({fn_kwargs}/{func}). "
+                        f"Specifying z-slices ({z_slices})."
                     )
-                    # print a warning
                     fn_kwargs = {
                         key: {z_slice: _value for z_slice in z_slices}
                         for key, _value in fn_kwargs.items()
@@ -452,8 +483,9 @@ def _precondition(
             set(fn_kwargs.keys()).issubset(set(z_slices))
             or set(z_slices).issubset(set(fn_kwargs.keys()))
         ):
-            print(
-                "combine_z is False, but not all z-slices spefified in fn_kwargs/func"
+            log.info(
+                f"combine_z is False, but not all z-slices spefified in fn_kwargs/func ({fn_kwargs}/{func}). "
+                f"Specifying z-slices ({z_slices})."
             )
             fn_kwargs = {key: fn_kwargs for key in z_slices}
             func = {key: func for key in z_slices}
@@ -461,94 +493,6 @@ def _precondition(
         assert isinstance(func, Callable)
         assert (
             keys_fn_kwargs is None
-        ), "combine_z and combine_c are both set to True, but it seems fn_kwargs contains specific parameters for different channels and z stacks."
+        ), f"combine_z and combine_c are both set to True, but it seems fn_kwargs ({fn_kwargs}) contains specific parameters for different channels and z slices."
 
     return fn_kwargs, func
-
-
-class ChannelList:
-    def __init__(self, *args, **kwargs):
-        self._list = list(*args, **kwargs)
-
-    def __len__(self):
-        return len(self._list)
-
-    def __getitem__(self, index):
-        return self._list[index]
-
-    def __setitem__(self, index, value):
-        self._list[index] = value
-
-    def __delitem__(self, index):
-        del self._list[index]
-
-    def append(self, item):
-        self._list.append(item)
-
-    def extend(self, items):
-        self._list.extend(items)
-
-    def remove(self, item):
-        self._list.remove(item)
-
-    def __repr__(self):
-        return repr(self._list)
-
-
-"""
-def _precondition( fn_kwargs, func ):
-
-    # sanity check:
-    keys = set()
-    for key, value in fn_kwargs.items():
-        keys.add(key)
-        if isinstance(value, dict):
-            keys.update(value.keys())
-
-    if not process_each_channel_indepentenly:
-        if keys.issubset( set(channels) ):
-            raise ValueError( "keys in fn_kwargs also present in channels can not be specified if process_each_channel_indepentenlyt is set to false." )
-
-    if not process_each_z_stack_indepentenly:
-        if keys.issubset( set(z_slices) ):
-            raise ValueError( "keyword argumens for z_slices can not be specified if process_each_z_stack_indepentenlyt is set to false." )
-
-
-
-    # fix keys
-    if process_each_channel_indepentenly:
-        if not set(fn_kwargs.keys()).issubset( set( channels ) ):
-            if process_each_z_stack_indepentenly:
-                if not set(fn_kwargs.keys()).issubset( set( z_slices ) ):
-                    # in this case func should be a callable
-                    #if not isinstance( func, Callable ): 
-                    #    raise ValueError
-                    print( "process each zstack indepentenlty is True, but not all z-slices spefified in fn_kwargs/func." )
-                    fn_kwargs={key: fn_kwargs for key in z_slices }
-                    func={key: func for key in z_slices }
-                    #fn_kwargs={key: fn_kwargs for key in channels } 
-                    #func={key: func for key in channels }
-            fn_kwargs={key: fn_kwargs for key in channels } 
-            func={key: func for key in channels }
-            
-        # case where we are subset of channels, but want to add z dimension
-        elif process_each_z_stack_indepentenly:
-        for item, value in fn_kwargs.items():
-            if not set(value.keys()).issubset( set( z_slices ) ):
-                print( "process each zstack indepentenlty is True, but not all z-slices spefified in fn_kwargs/func" )
-                # print a warning
-                fn_kwargs = {key: {z_slice: _value for z_slice in z_slices} for key, _value in fn_kwargs.items()}
-                func = {key: {z_slice: _value for z_slice in z_slices} for key, _value in func.items()}
-                break
-            
-
-    elif process_each_z_stack_indepentenly:
-
-        print( "process each zstack indepentenlty is True, but not all z-slices spefified in fn_kwargs/func" )
-        if not set(fn_kwargs.keys()).issubset( set( z_slices ) ):
-            fn_kwargs={key: fn_kwargs for key in z_slices }
-            func={key: func for key in z_slices }
-
-    else:
-        pass
-"""

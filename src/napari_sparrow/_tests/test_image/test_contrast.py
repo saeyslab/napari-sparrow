@@ -11,7 +11,7 @@ def test_enhance_contrast(sdata_multi_c):
         sdata_multi_c,
         img_layer="combine_z_16bit",
         output_layer="preprocessed_contrast",
-        chunks=(2, 200, 200),
+        chunks=(1, 1, 200, 200),
         overwrite=True,
     )
 

@@ -8,7 +8,7 @@ import numpy as np
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
-from napari_sparrow.image._apply import ChannelList, apply
+from napari_sparrow.image._apply import apply
 from napari_sparrow.image._image import _get_spatial_element
 
 
@@ -26,7 +26,7 @@ def enhance_contrast(
     """
     Enhance the contrast of an image in a SpatialData object using
     Contrast Limited Adaptive Histogram Equalization (CLAHE).
-    Compatibility with image layers that have either two or three spatial dimensions.
+    Compatibility with image layers that have either two or three spatial dimensions (c, (z), y, x).
 
     Parameters
     ----------
@@ -38,7 +38,8 @@ def enhance_contrast(
     contrast_clip : Union[float, List[float]], optional
         The clip limit for the CLAHE algorithm. Higher values result in stronger contrast enhancement
         but also stronger noise amplification.
-        If provided as a list, the length must match the number of channels
+        If provided as a list, the length must match the number of channels,
+        as the parameter will be used to process the different channels.
         The default value is 3.5.
     chunks : str | Tuple[int,...] | int, optional
         The size of the chunks used during dask image processing.
@@ -64,62 +65,80 @@ def enhance_contrast(
     Raises
     -------
     ValueError
-        - If the number of dimensions in `img_layer` of `sdata` > 4
-        - If Depth not equal to 0 for 'z' dimension, if there are 3 spatial dimension.
-        - If the number of spatial dimensions is not equal to 2 or 2.
+        If the dimensions in `img_layer` of `sdata` is not equal to (c,(z),y,x)
 
     Notes
     -----
-    CLAHE is applied to each channel of the image separately.
-    For 3D images (3 spatial dimensions), CLAHE is applied to each z-slice separately.
-    For large 3D images (3 spatial dimensions), we advice to set the chunks parameter to (1, ..., ...).
+    CLAHE is applied to each channel and z-stack (if the image is 3D) of the image separately.
     """
 
     def _apply_clahe(image: NDArray, contrast_clip: float = 3.5) -> NDArray:
-        if image.ndim == 3:
-            processed_slices = [
-                _apply_clahe_2d(image_slice, contrast_clip=contrast_clip)
-                for image_slice in image
-            ]
-            processed_image = np.stack(processed_slices, axis=0)
-            return processed_image
-        elif image.ndim == 2:
-            return _apply_clahe_2d(image, contrast_clip)
+        # input c, (z) , y, x
+        # output c, (z), y, x
+        # squeeze dimension, and then put it back
+
+        image_dim = image.ndim
+        if image_dim == 3:
+            if image.shape[0] == 1:
+                image = np.squeeze(image, axis=0)
+            else:
+                raise ValueError("_apply_clahe only accepts c dimension equal to 1.")
+        elif image_dim == 4:
+            if image.shape[0] == 1 and image.shape[1] == 1:
+                image = np.squeeze(image, axis=(0, 1))
+            else:
+                raise ValueError(
+                    "_apply_clahe only accepts c and z dimension equal to 1."
+                )
         else:
             raise ValueError(
-                f"Only 2D ad 3D arrays are supported, but provided array was of dimension '{image.ndim}'"
+                "Please provide numpy array containing c,(z),y and x dimension."
             )
 
-    def _apply_clahe_2d(image: NDArray, contrast_clip: float = 3.5) -> NDArray:
         clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
-        return clahe.apply(image)
+        image = clahe.apply(image)
 
-    if isinstance(contrast_clip, Iterable) and not isinstance(contrast_clip, str):
-        contrast_clip = ChannelList(contrast_clip)
+        if image_dim == 3:
+            image = image[None, ...]
+        else:
+            image = image[None, None, ...]
+
+        return image
 
     se = _get_spatial_element(sdata, img_layer)
 
-    if len(se.dims) > 4:
+    if isinstance(contrast_clip, Iterable):
+        assert len(contrast_clip) == len(
+            se.c.data
+        ), f"If 'contrast_clip' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
+        fn_kwargs = {
+            key: {"contrast_clip": value}
+            for (key, value) in zip(se.c.data, contrast_clip)
+        }
+    else:
+        fn_kwargs = {"contrast_clip": contrast_clip}
+
+    if se.dims == ("c", "z", "y", "x"):
+        if isinstance(depth, int):
+            depth = (0, 0, depth, depth)
+    elif se.dims == ("c", "y", "x"):
+        if isinstance(depth, int):
+            depth = (0, depth, depth)
+    else:
         raise ValueError(
             f"Dimensions for provided img_layer are {se.dims}. We only support (c, (z), y, x)."
         )
 
-    elif len(se.dims) == 4:
-        if isinstance(depth, int):
-            # we do not allow depth!=0 for z dimension for enhance contrast
-            depth = (0, depth, depth)
-            # if depth is not an int, coerce depth will fix it.
-        assert depth[0] == 0, "Depth not equal to 0 for 'z' dimension is not supported."
-
     sdata = apply(
         sdata,
         _apply_clahe,
+        fn_kwargs=fn_kwargs,
         img_layer=img_layer,
         output_layer=output_layer,
-        chunks=chunks,
-        channel=None,  # channel==None -> apply apply_clahe to each layer seperately
-        fn_kwargs={"contrast_clip": contrast_clip},
-        depth=depth,
+        combine_c=False,  # you want to process all channels independently.
+        combine_z=False,  # you want to process all z-stacks independently.
+        chunks=chunks,  # provide it for c,z,y,x,
+        depth=depth,  # provide it for c,z,y,x; depth > 0 for c and z will be ignored
         crd=crd,
         scale_factors=scale_factors,
         overwrite=overwrite,
