@@ -8,7 +8,13 @@ from dask_image.ndfilters import maximum_filter, minimum_filter
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
-from napari_sparrow.image._apply import ChannelList, apply
+from napari_sparrow.image._apply import apply, _get_spatial_element
+
+import numpy as np
+
+from napari_sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def min_max_filtering(
@@ -65,48 +71,78 @@ def min_max_filtering(
     >>> sdata = min_max_filtering(sdata, size_min_max_filtering=[30, 50, 70])
     """
 
-    def _apply_min_max_filtering(
-        image: da.Array, size_min_max_filter: int = 85
-    ) -> da.Array:
-        if image.ndim == 3:
-            # Process each z slice of the 3D image
-            processed_slices = [
-                _apply_min_max_filtering_2d(image_slice, size_min_max_filter)
-                for image_slice in image
-            ]
-            filtered_image = da.stack(processed_slices, axis=0)
-            return filtered_image
-        elif image.ndim == 2:
-            return _apply_min_max_filtering_2d(
-                image, size_min_max_filter=size_min_max_filter
-            )
-        else:
-            raise ValueError("The input array is not 3D.")
+    def _apply_min_max_filtering(image: Array, size_min_max_filter: int = 85) -> Array:
 
-    def _apply_min_max_filtering_2d(
-        image: Array, size_min_max_filter: int = 85
-    ) -> Array:
+        def _to_odd( size_min_max_filter ):
+            if not isinstance( size_min_max_filter, int ):
+                log.warning("Non-integer value received for size_min_max_filter; it will be rounded to the nearest integer.")
+                size_min_max_filter=int(np.round( size_min_max_filter ))
+            if size_min_max_filter %2 == 0:
+                log.warning( f"Provided value for min max filter size is even ('{size_min_max_filter}'). "
+                         f"To prevent unexpected output, we set min max filter to '{size_min_max_filter +1}'." )
+                return size_min_max_filter + 1
+            else:
+                return size_min_max_filter
+            
+        size_min_max_filter=_to_odd( size_min_max_filter )
+
+        image_dim = image.ndim
+        if image_dim == 3:
+            if image.shape[0] == 1:
+                image = da.squeeze(image, axis=0)
+            else:
+                raise ValueError(
+                    "_apply_min_max_filtering only accepts c dimension equal to 1."
+                )
+        elif image_dim == 4:
+            if image.shape[0] == 1 and image.shape[1] == 1:
+                image = da.squeeze(image, axis=(0, 1))
+            else:
+                raise ValueError(
+                    "_apply_min_max_filtering only accepts c and z dimension equal to 1."
+                )
+        else:
+            raise ValueError(
+                "Please provide numpy array containing c,(z),y and x dimension."
+            )
+
         # Apply the minimum filter
         minimum_t = minimum_filter(image, size_min_max_filter)
 
         # Apply the maximum filter
         max_of_min_t = maximum_filter(minimum_t, size_min_max_filter)
 
-        return image - max_of_min_t
+        image = image - max_of_min_t
 
-    if isinstance(size_min_max_filter, Iterable) and not isinstance(
-        size_min_max_filter, str
-    ):
-        size_min_max_filter = ChannelList(size_min_max_filter)
+        if image_dim == 3:
+            image = image[None, ...]
+        else:
+            image = image[None, None, ...]
+
+        return image
+
+    se = _get_spatial_element(sdata, img_layer)
+
+    if isinstance(size_min_max_filter, Iterable):
+        assert len(size_min_max_filter) == len(
+            se.c.data
+        ), f"If 'size_min_max_filter' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
+        fn_kwargs = {
+            key: {"size_min_max_filter": value}
+            for (key, value) in zip(se.c.data, size_min_max_filter)
+        }
+    else:
+        fn_kwargs = {"size_min_max_filter": size_min_max_filter}
 
     sdata = apply(
         sdata,
         _apply_min_max_filtering,
+        fn_kwargs=fn_kwargs,
         img_layer=img_layer,
         output_layer=output_layer,
+        combine_c=False,  # you want to process all channels independently.
+        combine_z=False,  # you want to process all z-stacks independently.
         chunks=None,
-        channel=None,
-        fn_kwargs={"size_min_max_filter": size_min_max_filter},
         crd=crd,
         scale_factors=scale_factors,
         overwrite=overwrite,

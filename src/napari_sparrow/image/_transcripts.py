@@ -22,7 +22,7 @@ def transcript_density(
     name_y: str = "y",
     name_z: Optional[str] = None,
     name_gene_column: str = "gene",
-    z_slice: Optional[int] = None,
+    z_index: Optional[int] = None,
     scaling_factor: float = 100,
     chunks: int = 1024,
     crd: Optional[Tuple[int, int, int, int]] = None,
@@ -55,9 +55,9 @@ def transcript_density(
         Column name for z-coordinates of the transcripts in the points layer, by default None.
     name_gene_column : str, optional
         Column name in the points_layer representing gene information, by default "gene".
-    z_slice: int or None, optional
-        The z-slice for which to calculate transcript density. If set to None for a 3D points layer 
-        (`name_z` not equal to None), an y-x transcript density projection will be calculated.
+    z_index: int or None, optional
+        The z index in the points layer for which to calculate transcript density. If set to None for a 3D points layer 
+        (and `name_z` is not equal to None), an y-x transcript density projection will be calculated.
     scaling_factor : float, optional
         Factor to scale the transcript density image, by default 100.
     chunks: int.
@@ -84,9 +84,9 @@ def transcript_density(
     >>> sdata = transcript_density(sdata, points_layer="transcripts", crd=(2000, 4000, 2000, 4000))
 
     """
-    if z_slice is not None and name_z is None:
+    if z_index is not None and name_z is None:
         raise ValueError( "Please specify column name for the z-coordinates of the transcripts in the points layer "
-                         "when specifying z_slice." )
+                         "when specifying z_index." )
 
     ddf = sdata.points[points_layer]
 
@@ -126,8 +126,8 @@ def transcript_density(
         f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }"
     )
 
-    if z_slice is not None:
-        ddf = ddf.query(f"{name_z} == {z_slice}")
+    if z_index is not None:
+        ddf = ddf.query(f"{name_z} == {z_index}")
 
     # subsampling:
     if n_sample is not None:
