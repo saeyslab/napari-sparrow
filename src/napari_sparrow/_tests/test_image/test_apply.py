@@ -177,25 +177,20 @@ def test_precondition_multiple_func():
     }
     assert func_post == {0: {0.5: _multiply, 1.5: _add}, 1: {0.5: _multiply, 1.5: _add}}
 
-    # if conflicts in parameters specified in fn_kwargs and channels,
-    # then let fn_kwargs decide.
+    # if conflicts in channels/z_slices specified in fn_kwargs/func and channels/z_slices,
+    # then raise a ValueError to prevent unwanted behaviour.
     fn_kwargs = {0.5: {"parameter": 4}, 1.5: {"parameter_add": 10}}
     func = {0.5: _multiply, 1.5: _add}
 
-    fn_kwargs_post, func_post = _precondition(
-        fn_kwargs=fn_kwargs,
-        func=func,
-        combine_c=False,
-        combine_z=False,
-        channels=[0, 1],
-        z_slices=[0.5],
-    )
-
-    assert fn_kwargs_post == {
-        0: {0.5: {"parameter": 4}, 1.5: {"parameter_add": 10}},
-        1: {0.5: {"parameter": 4}, 1.5: {"parameter_add": 10}},
-    }
-    assert func_post == {0: {0.5: _multiply, 1.5: _add}, 1: {0.5: _multiply, 1.5: _add}}
+    with pytest.raises(ValueError):
+        fn_kwargs_post, func_post = _precondition(
+            fn_kwargs=fn_kwargs,
+            func=func,
+            combine_c=False,
+            combine_z=False,
+            channels=[0, 1],
+            z_slices=[0.5],
+        )
 
     # fn_kwargs and func should match with keys, if func is a mapping
     fn_kwargs = {0.5: {"parameter": 4}, 1.5: {"parameter_add": 10}}
@@ -239,11 +234,22 @@ def test_precondition_empty_fn_kwargs():
         combine_c=False,
         combine_z=False,
         channels=[0, 1],
-        z_slices=[0.5],
+        z_slices=[0.5, 1.5],
     )
 
     assert fn_kwargs_post == {0: {0.5: {}, 1.5: {}}, 1: {0.5: {}, 1.5: {}}}
     assert func_post == {0: {0.5: _multiply, 1.5: _add}, 1: {0.5: _multiply, 1.5: _add}}
+
+    # if keys specified they should be in channels or z_slices, otherwise raise ValueError.
+    with pytest.raises(ValueError):
+        fn_kwargs_post, func_post = _precondition(
+            fn_kwargs=fn_kwargs,
+            func=func,
+            combine_c=False,
+            combine_z=False,
+            channels=[0, 1],
+            z_slices=[0.5],
+        )
 
 
 def test_apply(sdata_multi_c):
