@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
+import numpy as np
 from dask.dataframe.core import DataFrame as DaskDataFrame
 from spatialdata import SpatialData
 
@@ -28,7 +29,7 @@ def sanity_plot_transcripts_matrix(
     points_layer: str = "transcripts",
     shapes_layer: Optional[str] = None,
     channel: Optional[int | str] = None,
-    z_slice: Optional[int] = None,
+    z_slice: Optional[float] = None,
     plot_cell_number: bool = False,
     n_sample: Optional[int] = None,
     name_x: str = "x",
@@ -60,14 +61,12 @@ def sanity_plot_transcripts_matrix(
         The layer in the SpatialData object representing cell boundaries. If None, no cell boundaries are plotted.
     channel : int or str or None, optional
         Channel to display from the img_layer. If none provided, or if provided channel could not be found, first channel is plot.
-    z_slice: int or None, optional
-        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
+    z_slice: float or None, optional
+        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons. For transcripts, if the z_slice is specified, 
+        the transcripts at index corresponding to the z_slice in the image layer will be plotted.
         If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
         If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
-
-        The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
-        If z_slice is not specified and the sdata[image_layer] is three-dimensional, the plot defaults to the z-slice at index 0;
-        shapes from all z-stacks are displayed; alongside transcripts from every z-stack.
+        If no z-slice is specified and `points_layer` is 3D, all transcripts in all z-stacks will be plotted.
     plot_cell_number : bool, default=False
         Whether to annotate cells with their numbers on the plot.
     n_sample : Optional[int], default=None
@@ -95,8 +94,10 @@ def sanity_plot_transcripts_matrix(
 
     Raises
     ------
+    ValueError
+        If both `img_layer` and `labels_layer` are specified.
     AttributeError
-        If the "points" attribute is not present in the SpatialData object.
+        If `sdata` does not contain a `points_layer`.
     Warning
         If provided coordinates (crd) and image_boundary do not have overlap.
         If provided shapes_layer is not present in the SpatialData object.
@@ -152,6 +153,14 @@ def sanity_plot_transcripts_matrix(
 
     se, x_coords_orig, y_coords_orig = _apply_transform(se)
 
+    z_index = None
+    if z_slice is not None:
+        if "z" in se.dims:
+            if z_slice not in se.z.data:
+                raise ValueError( f"z_slice {z_slice} not a z slice in layer '{layer}' of `sdata`. "
+                                 f"Please specify a z_slice from the list '{se.z.data}'." )
+            z_index = np.where(se.z.data == z_slice)[0][0]
+
     if img_layer_type:
         if channel is None:
             # if channel is None, plot the first channel
@@ -166,7 +175,6 @@ def sanity_plot_transcripts_matrix(
                     f"for provided img_layer '{layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
                 )
             )
-
         channel_name = se.c.name
         channel_idx = list(se.c.data).index(channel)
         _se = se.isel(c=channel_idx)
@@ -176,10 +184,10 @@ def sanity_plot_transcripts_matrix(
         cmap_layer = "viridis"
 
     if z_slice is not None:
-        if _se.ndim == 3:
-            _se = _se[z_slice, ...]
+        if "z" in _se.dims:
+            _se = _se.sel(z=z_slice)
     else:
-        if _se.ndim == 3:
+        if "z" in _se.dims:
             if img_layer_type:
                 log.info(
                     f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
@@ -210,8 +218,8 @@ def sanity_plot_transcripts_matrix(
         f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}"
     )
 
-    if z_slice is not None:
-        in_df = in_df.query(f"{name_z} == {z_slice}")
+    if z_index is not None:
+        in_df = in_df.query(f"{name_z} == {z_index}")
 
     if gene:
         in_df = in_df[in_df[name_gene_column] == gene]
@@ -248,8 +256,8 @@ def sanity_plot_transcripts_matrix(
 
         polygons = polygons.cx[crd[0] : crd[1], crd[2] : crd[3]]
 
-        if z_slice is not None:
-            polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+        if z_index is not None:
+            polygons = _get_z_slice_polygons(polygons, z_index=z_index)
 
         if not polygons.empty:
             polygons["boundaries"] = polygons["geometry"].apply(

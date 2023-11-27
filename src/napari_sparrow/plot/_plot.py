@@ -26,7 +26,7 @@ def plot_image(
     sdata: SpatialData,
     img_layer: str = "raw_image",
     channel: Optional[int | str | Iterable[int | str]] = None,
-    z_slice: Optional[int] = None,
+    z_slice: Optional[float] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
@@ -42,7 +42,7 @@ def plot_image(
         Image layer to be plotted. Default is "raw_image".
     channel : int or str or Iterable[int] or Iterable[str], optional
         Channel(s) to be displayed from the image.
-    z_slice: int or None, optional
+    z_slice: float or None, optional
         The z_slice to visualize in case of 3D (c,z,y,x) image.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
@@ -66,7 +66,7 @@ def plot_image(
 def plot_labels(
     sdata: SpatialData,
     labels_layer: str = "segmentation_mask",
-    z_slice: Optional[int] = None,
+    z_slice: Optional[float] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     output: Optional[str | Path] = None,
     **kwargs: Dict[str, Any],
@@ -80,7 +80,7 @@ def plot_labels(
         Data containing spatial information for plotting.
     labels_layer : str, optional
         Labels layer to be plotted. Default is "segmentation_mask".
-    z_slice: int or None, optional
+    z_slice: float or None, optional
         The z_slice to visualize in case of 3D (c,z,y,x) labels.
     crd : tuple of int, optional
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
@@ -108,7 +108,7 @@ def plot_shapes(
     column: Optional[str] = None,
     cmap: Optional[str] = "magma",
     channel: Optional[int | str | Iterable[int] | Iterable[str]] = None,
-    z_slice: Optional[int] = None,
+    z_slice: Optional[float] = None,
     alpha: float = 0.5,
     crd: Optional[Tuple[int, int, int, int]] = None,
     vmin: Optional[float] = None,
@@ -177,7 +177,7 @@ def plot_shapes(
         Channel(s) to be displayed from the image. Displayed as rows in the plot.
         If channel is None, get the number of channels from the first img_layer given as input.
         Ignored if img_layer is None and labels_layer is specified.
-    z_slice: int or None, optional
+    z_slice: float or None, optional
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
         If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
         If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
@@ -208,6 +208,14 @@ def plot_shapes(
         Path to save the plot. If not provided, plot will be displayed.
     **kwargs : dict
         Additional arguments to be passed to the internal `_plot` function.
+
+        
+    Raises
+    ------
+    ValueError
+        - If both `img_layer` and `labels_layer` are specified. 
+        - If z_slice is specified, and it is not a z_slice in specified `img_layer` or `labels_layer`.
+
 
     Notes
     -----
@@ -345,7 +353,7 @@ def _plot(
     column: Optional[str] = None,
     cmap: Optional[str] = "magma",
     channel: Optional[int | str] = None,
-    z_slice: Optional[int] = None,
+    z_slice: Optional[float] = None,
     alpha: float = 0.5,
     crd: Tuple[int, int, int, int] = None,
     vmin: Optional[float] = None,
@@ -380,7 +388,7 @@ def _plot(
     channel : int or str or None, optional
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
         Ignored if img_layer is None and labels_layer is specified.
-    z_slice: int or None, optional
+    z_slice: float or None, optional
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
         If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
         If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
@@ -412,6 +420,12 @@ def _plot(
     -------
     plt.Axes
         The axes with the plotted SpatialData.
+
+    Raises
+    ------
+    ValueError
+        - If both `img_layer` and `labels_layer` are specified.
+        - If z_slice is specified, and it is not a z_slice in specified `img_layer` or `labels_layer`.
 
     Notes
     -----
@@ -470,11 +484,19 @@ def _plot(
         crd = image_boundary
     size_im = (crd[1] - crd[0]) * (crd[3] - crd[2])
 
+    z_index = None
+    if z_slice is not None:
+        if "z" in se.dims:
+            if z_slice not in se.z.data:
+                raise ValueError( f"z_slice {z_slice} not a z slice in layer '{layer}' of `sdata`. "
+                                 f"Please specify a z_slice from the list '{se.z.data}'." )
+            z_index = np.where(se.z.data == z_slice)[0][0]
+
     polygons = None
     if shapes_layer is not None:
         polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
-        if z_slice is not None:
-            polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+        if z_index is not None:
+            polygons = _get_z_slice_polygons(polygons, z_index=z_index)
 
     if polygons is not None and column is not None:
         if not polygons.empty:
@@ -530,19 +552,19 @@ def _plot(
         cmap_layer = "viridis"
 
     if z_slice is not None:
-        if _se.ndim == 3:
-            _se = _se[z_slice, ...]
+        if "z" in _se.dims:
+            _se = _se.sel(z=z_slice)
     else:
-        if _se.ndim == 3:
+        if "z" in _se.dims:
             if img_layer_type:
                 log.info(
-                    f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
+                    f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was specified. "
                     f"will perform a max projection along the z-axis."
                 )
                 _se = _se.max(dim="z")
             else:
                 log.info(
-                    f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
+                    f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was specified. "
                     f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0]//2}) will be utilized."
                 )
                 _se = _se[_se.shape[0] // 2, ...]
@@ -577,8 +599,8 @@ def _plot(
         if shapes_layer_filtered is not None:
             for i in shapes_layer_filtered:
                 polygons = sdata.shapes[i].cx[crd[0] : crd[1], crd[2] : crd[3]]
-                if z_slice is not None:
-                    polygons = _get_z_slice_polygons(polygons, z_slice=z_slice)
+                if z_index is not None:
+                    polygons = _get_z_slice_polygons(polygons, z_index=z_index)
                 if not polygons.empty:
                     polygons.plot(
                         ax=ax,
@@ -617,7 +639,7 @@ def _plot(
     return ax
 
 
-def _get_z_slice_polygons(polygons: GeoDataFrame, z_slice: int) -> GeoDataFrame:
+def _get_z_slice_polygons(polygons: GeoDataFrame, z_index: int) -> GeoDataFrame:
     def _get_z_slice(geometry: GeoSeries, z_value) -> bool:
         # return original geometry if geometry does not has z dimension
         if not geometry.has_z:
@@ -636,4 +658,4 @@ def _get_z_slice_polygons(polygons: GeoDataFrame, z_slice: int) -> GeoDataFrame:
 
         return False
 
-    return polygons[polygons["geometry"].apply(_get_z_slice, args=(z_slice,))]
+    return polygons[polygons["geometry"].apply(_get_z_slice, args=(z_index,))]
