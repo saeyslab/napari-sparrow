@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections import namedtuple
 import itertools
-
+from collections import namedtuple
 from typing import Optional, Tuple
 
 import dask
-import dask.dataframe as dd
 import dask.array as da
+import dask.dataframe as dd
+import pandas as pd
 import rasterio
 import rasterio.features
 import spatialdata
@@ -184,9 +184,9 @@ def allocate(
     combined_partitions = dd.from_delayed(processed_partitions)
 
     if "z" in combined_partitions:
-        coordinates = combined_partitions.groupby("cells").mean().iloc[:, [0, 1, 2]]
+        coordinates = combined_partitions.groupby("cells")["x", "y", "z"].mean()
     else:
-        coordinates = combined_partitions.groupby("cells").mean().iloc[:, [0, 1]]
+        coordinates = combined_partitions.groupby("cells")["x", "y"].mean()
 
     cell_counts = combined_partitions.groupby(["cells", "gene"]).size()
 
@@ -195,21 +195,25 @@ def allocate(
     )
 
     cell_counts = cell_counts.unstack(fill_value=0)
+    # convert dtype of columns to "object", otherwise error writing to zarr.
+    cell_counts.columns = cell_counts.columns.astype(str)
 
     log.info("Finished calculating cell counts.")
 
     # make sure coordinates are sorted in same order as cell_counts
     index_order = cell_counts.index.argsort()
     coordinates = coordinates.loc[cell_counts.index[index_order]]
+    cell_counts = cell_counts.sort_index()
 
     log.info("Creating AnnData object.")
 
     # Create the anndata object
-    adata = AnnData(cell_counts[cell_counts.index != 0])
+    cell_counts.index = cell_counts.index.map(str)
+    adata = AnnData(cell_counts[cell_counts.index != "0"])
     coordinates.index = coordinates.index.map(str)
     adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
 
-    adata.obs["region"] = 1
+    adata.obs["region"] = pd.Categorical([1] * len(adata.obs))
     adata.obs["instance"] = 1
 
     if sdata.table:

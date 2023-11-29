@@ -1,13 +1,17 @@
 from typing import Optional
-import squidpy as sq
+
 import matplotlib.pyplot as plt
 import numpy as np
+import squidpy as sq
+from spatialdata import SpatialData
 
 from napari_sparrow.table._table import _back_sdata_table_to_zarr
 
 
 def nhood_enrichment(
-    sdata, celltype_column: str = "annotation", output: Optional[str] = None
+    sdata: SpatialData,
+    celltype_column: str = "annotation",
+    output: Optional[str] = None,
 ) -> None:
     """
     Plot the neighborhood enrichment across cell-type annotations.
@@ -55,4 +59,3 @@ def nhood_enrichment(
     else:
         plt.show()
     plt.close()
-
