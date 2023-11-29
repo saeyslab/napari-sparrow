@@ -52,7 +52,7 @@ def cluster_cleanliness(
     stacked = (
         sdata.table.obs.groupby(["leiden", celltype_column], as_index=False)
         .size()
-        .pivot("leiden", celltype_column)
+        .pivot( index="leiden", columns=celltype_column)
         .fillna(0)
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
