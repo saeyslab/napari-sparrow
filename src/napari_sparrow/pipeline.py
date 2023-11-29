@@ -274,6 +274,8 @@ class SparrowPipeline:
             channels=list(self.cfg.segmentation.channels)
             if isinstance(self.cfg.segmentation.channels, ListConfig)
             else self.cfg.segmentation.channels,
+            do_3D=self.cfg.segmentation.do_3D,
+            anisotropy=self.cfg.segmentation.anisotropy,
             overwrite=self.cfg.segmentation.overwrite,
         )
 
@@ -326,6 +328,7 @@ class SparrowPipeline:
             header=self.cfg.allocate.header,
             column_x=self.cfg.allocate.column_x,
             column_y=self.cfg.allocate.column_y,
+            column_z=self.cfg.allocate.column_z,
             column_gene=self.cfg.allocate.column_gene,
             column_midcount=self.cfg.allocate.column_midcount,
             debug=self.cfg.allocate.debug,

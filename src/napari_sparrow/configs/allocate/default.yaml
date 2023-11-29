@@ -2,6 +2,7 @@ delimiter: ","
 header: null
 column_x: 0
 column_y: 1
+column_z: null
 column_gene: 2
 column_midcount: null
 debug: False
