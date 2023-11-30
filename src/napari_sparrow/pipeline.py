@@ -100,6 +100,7 @@ class SparrowPipeline:
                 crd=self.cfg.dataset.crop_param,
                 chunks=self.cfg.dataset.chunks,
                 scale_factors=self.cfg.dataset.scale_factors,
+                z_projection=self.cfg.dataset.z_projection,
             )
             log.info("Finished creating sdata.")
 
