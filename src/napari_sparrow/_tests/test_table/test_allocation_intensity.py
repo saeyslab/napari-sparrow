@@ -11,7 +11,7 @@ from napari_sparrow.table._allocation_intensity import (
 from napari_sparrow.table._regionprops import add_regionprop_features
 
 
-def test_integration_allocate_intensity(sdata_multi_c):
+def test_integration_allocate_intensity(sdata_multi_c: SpatialData):
     # integration test for process of aligning masks, allocate intensities and add regionprop features to
     # sdata.table.obs
 
@@ -53,7 +53,7 @@ def test_integration_allocate_intensity(sdata_multi_c):
     del sdata_multi_c.table
 
 
-def test_allocate_intensity(sdata_multi_c):
+def test_allocate_intensity(sdata_multi_c: SpatialData):
     sdata_multi_c = allocate_intensity(
         sdata_multi_c, img_layer="raw_image", labels_layer="masks_whole", chunks=100
     )
