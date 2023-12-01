@@ -49,6 +49,7 @@ Operations on images.
     im.segment
     im.transcript_density
     im.combine
+    im.expand_labels_layer
     im.align_labels_layers
 ```
 
