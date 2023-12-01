@@ -4,7 +4,8 @@ from napari_sparrow.image.segmentation._segmentation import segment
 from napari_sparrow.image.segmentation.segmentation_models._cellpose import _cellpose
 
 
-def test_segment(sdata_multi_c):
+def test_segment(sdata_multi_c: SpatialData):
+
     sdata_multi_c = segment(
         sdata_multi_c,
         img_layer="combine",
@@ -30,7 +31,8 @@ def test_segment(sdata_multi_c):
     assert isinstance(sdata_multi_c, SpatialData)
 
 
-def test_segment_3D(sdata_multi_c):
+def test_segment_3D(sdata_multi_c: SpatialData):
+
     sdata_multi_c = segment(
         sdata_multi_c,
         img_layer="combine_z",
@@ -38,7 +40,7 @@ def test_segment_3D(sdata_multi_c):
         output_labels_layer="masks_cellpose_3D",
         output_shapes_layer="masks_cellpose_3D_boundaries",
         trim=False,
-        chunks=(50,50),
+        chunks=(50, 50),
         overwrite=True,
         depth=(20, 20),
         crd=[50, 80, 10, 70],

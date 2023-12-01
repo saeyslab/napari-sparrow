@@ -52,9 +52,11 @@ def cfg_pipeline(cfg_pipeline_global, tmp_path) -> DictConfig:
 
 
 @pytest.fixture
-def sdata_multi_c():
+def sdata_multi_c( tmpdir ):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
     path = f"{root}/src/napari_sparrow/_tests/test_data/multi_channel_zarr"
     sdata_path = os.path.join(path, "sdata.zarr")
     sdata = read_zarr(sdata_path)
+    # backing store for specific unit test
+    sdata.write( os.path.join( tmpdir, "sdata.zarr" ) )
     yield sdata 

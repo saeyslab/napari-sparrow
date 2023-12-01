@@ -5,6 +5,7 @@
         "masks_nuclear",
         "masks_nuclear_aligned",
         "masks_cellpose",
-        "masks_cellpose_3D"
+        "masks_cellpose_3D",
+        "masks_cellpose_3D_expanded"
     ]
 }

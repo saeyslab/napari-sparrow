@@ -26,7 +26,7 @@ def _rechunk_overlap(
 
     assert (
         len(depth) == x.ndim
-    ), f"Please provide depth value for every dimension of x {(x.ndim)}"
+    ), f"Please provide depth value for every dimension of x ({x.ndim}). Provided depth was '{depth}'"
 
     if chunks is not None:
         x = x.rechunk(chunks)

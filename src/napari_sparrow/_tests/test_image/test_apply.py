@@ -1,10 +1,11 @@
+from typing import Any
+
+import numpy as np
+import pytest
+from numpy.typing import NDArray
 from spatialdata import SpatialData
 
-from numpy.typing import NDArray
-from typing import Any
-from napari_sparrow.image._apply import apply, _precondition
-import pytest
-import numpy as np
+from napari_sparrow.image._apply import _precondition, apply
 
 
 def _multiply(image: NDArray, parameter: Any):
@@ -252,7 +253,8 @@ def test_precondition_empty_fn_kwargs():
         )
 
 
-def test_apply(sdata_multi_c):
+def test_apply(sdata_multi_c: SpatialData):
+
     fn_kwargs = {
         0: {0.5: {"parameter": 4}, 1.5: {"parameter": 8}},
         1: {0.5: {"parameter": 10}, 1.5: {"parameter": 20}},

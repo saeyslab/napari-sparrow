@@ -3,7 +3,7 @@ from spatialdata import SpatialData
 from napari_sparrow.image._minmax import min_max_filtering
 
 
-def test_min_max_filtering(sdata_multi_c):
+def test_min_max_filtering(sdata_multi_c: SpatialData):
     """
     Test min max filtering on 3D image with 2 channels.
     """
