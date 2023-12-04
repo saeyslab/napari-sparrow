@@ -85,6 +85,9 @@ class SparrowPipeline:
                 log.info(
                     f"Applying SparrowPipeline on '{self.loaded_image_name}' image layer in provided SpatialData object."
                 )
+                if self.cfg.dataset.image != self.cfg.paths.sdata:
+                    # changing backing directory
+                    sdata.write( self.cfg.paths.sdata )
                 return sdata
             else:
                 raise ValueError(
