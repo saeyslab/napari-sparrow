@@ -188,7 +188,9 @@ def apply(
             if isinstance(arr, Array):
                 arr = arr.rechunk(arr.chunksize)
             arr = func(arr, **fn_kwargs)
-            return da.asarray(arr)
+            arr = da.asarray( arr )
+            # func could have cause irregular chunking
+            return arr.rechunk( arr.chunksize )
         if not isinstance(chunks, (int, str)):
             if len(chunks) != arr.ndim:
                 raise ValueError(
