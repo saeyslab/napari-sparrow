@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from itertools import product
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
-import dask.array as da
 import numpy as np
 from dask.array import Array
 from dask.array.overlap import ensure_minimum_chunksize
@@ -55,9 +53,9 @@ def _rechunk_overlap(
 
 def _clean_up_masks(
     block: NDArray,
-    block_id: tuple[int, ...],
+    block_id: Tuple[int, int, int],
     block_info,
-    depth,
+    depth: Dict[int, int],
 ) -> NDArray:
     total_blocks = block_info[0]["num-chunks"]
     assert (
@@ -95,9 +93,7 @@ def _clean_up_masks(
     if block_id[1] != 0:
         crossing_masks.append(block[:, :, depth[1]])
     if block_id[0] != total_blocks[0] - 1:
-        crossing_masks.append(
-            block[:, block.shape[1] - depth[0], :]
-        )
+        crossing_masks.append(block[:, block.shape[1] - depth[0], :])
     if block_id[1] != total_blocks[1] - 1:
         crossing_masks.append(block[:, :, block.shape[2] - depth[1]])
 
@@ -132,9 +128,7 @@ def _clean_up_masks(
 
             # if intersection with mask and region outside chunk is bigger than inside region, set values of chunk to 0 for this masks.
             # For edge case where inside region and outside region is the same, it will be assigned to both chunks.
-            # Because we write out final masks single threaded, this is no issue.
             # Note that is better that both chunks claim the masks, than that no chunks are claiming the mask. If they both claim the mask,
-            # It will be assigned to the 'last' chunk, while writing to zarr store.
             if outside_region > inside_region:
                 block[block == mask_label] = 0
                 break
@@ -153,88 +147,157 @@ def _clean_up_masks(
     return block
 
 
-def _trim_masks(masks: Array, depth: Dict[int, int]) -> Array:
-    def _chunks_to_coordinates_and_ids(
-        chunks: Tuple[Tuple[int, ...], Tuple[int, ...]]
-    ) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
-        # Calculate the starting coordinate for each chunk using cumulative sum
-        x_coords = np.cumsum(chunks[0]) - chunks[0]
-        y_coords = np.cumsum(chunks[1]) - chunks[1]
-
-        # add trivial z-dimension to coordinates and ids (not allowing to chunk in z-dimension)
-        coordinates = [(0, x, y) for x, y in product(x_coords, y_coords)]
-        ids = [
-            (0, i, j) for i, j in product(range(len(x_coords)), range(len(y_coords)))
-        ]
-
-        return coordinates, ids
+def _merge_masks(
+    array: NDArray,
+    _depth: Dict[int, int],
+    num_blocks: Tuple[int, int, int],
+    block_id: Tuple[int, int, int],
+) -> NDArray:
+    # helper function to merge the chunks
 
     assert (
-        len(masks.chunks[0]) == 1
+        num_blocks[0] == 1
     ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
 
     assert (
-        depth[0] == 0
+        _depth[0] == 0
     ), "Depth not equal to 0 in z dimension is currently not supported."
-    assert len(depth) == 3, "Please provide depth values for z,y and x."
+    assert len(_depth) == 3, "Please provide depth values for z,y and x."
 
-    # remove z-dimension from depth
-    depth[0] = depth[1]
-    depth[1] = depth[2]
-    del depth[2]
-
-    chunk_coords, chunk_ids = _chunks_to_coordinates_and_ids(masks.chunks[1:])
-
-    chunks = _substract_depth_from_chunks_size(masks.chunks[1:], depth=depth)
-    chunks = (masks.chunks[0], chunks[0], chunks[1])
-
-    masks_trimmed = da.zeros(
-        (sum(chunks[0]), sum(chunks[1]), sum(chunks[2])), chunks=chunks, dtype=int
-    )
-
-    for chunk_id, chunk_coord in zip(chunk_ids, chunk_coords):
-        chunk = masks.blocks[chunk_id]
-
-        mask_chunk_shape = chunk.shape
-
-        y_start = chunk_coord[1]
-        x_start = chunk_coord[2]
-
-        # trim labels if chunk lays on boundary of larger array
-        if y_start == 0:
-            chunk = chunk[:, depth[0] :, :]
-        if x_start == 0:
-            chunk = chunk[:, :, depth[1] :]
-        if (y_start + mask_chunk_shape[1]) == masks.shape[1]:
-            chunk = chunk[:, : -depth[0], :]
-        if (x_start + mask_chunk_shape[2]) == masks.shape[2]:
-            chunk = chunk[:, :, : -depth[1]]
-
-        # now convert back to non-overlapping coordinates.
-
-        y_offset = max(0, y_start - (chunk_id[1] * 2 * depth[0] + depth[0]))
-        x_offset = max(0, x_start - (chunk_id[2] * 2 * depth[1] + depth[1]))
-
-        non_zero_mask = chunk != 0
-
-        # Update only the non-zero positions in the dask array
-        masks_trimmed[
+    new_array = array[:, _depth[1] * 2 : -_depth[1] * 2, _depth[2] * 2 : -_depth[2] * 2]
+    # y,x
+    # upper ( y, x+1 )
+    if block_id[2] + 1 != num_blocks[2]:
+        overlap = array[:, _depth[1] * 2 : -_depth[1] * 2, -_depth[2] :]
+        sliced_new_array = new_array[
             :,
-            y_offset : y_offset + chunk.shape[1],
-            x_offset : x_offset + chunk.shape[2],
-        ] = da.where(
+            :,
+            -_depth[2] :,
+        ]
+        non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
+        new_array[
+            :,
+            :,
+            -_depth[2] :,
+        ] = np.where(
             non_zero_mask,
-            chunk,
-            masks_trimmed[
-                :,
-                y_offset : y_offset + chunk.shape[1],
-                x_offset : x_offset + chunk.shape[2],
-            ],
+            overlap,
+            sliced_new_array,
+        )
+    # upper right ( y+1, x+1 )
+    if block_id[1] + 1 != num_blocks[1] and block_id[2] + 1 != num_blocks[2]:
+        overlap = array[:, -_depth[1] :, -_depth[2] :]
+        sliced_new_array = new_array[
+            :,
+            -_depth[1] :,
+            -_depth[2] :,
+        ]
+        non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
+        new_array[
+            :,
+            -_depth[1] :,
+            -_depth[2] :,
+        ] = np.where(
+            non_zero_mask,
+            overlap,
+            sliced_new_array,
+        )
+    # right ( y+1, x )
+    if block_id[1] + 1 != num_blocks[1]:
+        overlap = array[:, -_depth[1] :, _depth[2] * 2 : -_depth[2] * 2]
+        sliced_new_array = new_array[:, -_depth[1] :, :]
+        non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
+        new_array[:, -_depth[1] :, :] = np.where(
+            non_zero_mask, overlap, sliced_new_array
+        )
+    # under right ( y+1, x-1 )
+    if block_id[1] + 1 != num_blocks[1] and block_id[2] != 0:
+        overlap = array[:, -_depth[1] :, : _depth[2]]
+        sliced_new_array = new_array[
+            :,
+            -_depth[1] :,
+            : _depth[2],
+        ]
+        non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
+        new_array[
+            :,
+            -_depth[1] :,
+            : _depth[2],
+        ] = np.where(
+            non_zero_mask,
+            overlap,
+            sliced_new_array,
+        )
+    # lower ( y, x-1 )
+    if block_id[2] != 0:
+        overlap = array[:, _depth[1] * 2 : -_depth[1] * 2, : _depth[2]]
+        sliced_new_array = new_array[
+            :,
+            :,
+            : _depth[2],
+        ]
+        non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
+        new_array[
+            :,
+            :,
+            : _depth[2],
+        ] = np.where(
+            non_zero_mask,
+            overlap,
+            sliced_new_array,
+        )
+    # lower left ( y-1, x-1 )
+    if block_id[1] != 0 and block_id[2] != 0:
+        overlap = array[:, : _depth[1], : _depth[2]]
+        sliced_new_array = new_array[
+            :,
+            : _depth[1],
+            : _depth[2],
+        ]
+        non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
+        new_array[
+            :,
+            : _depth[1],
+            : _depth[2],
+        ] = np.where(
+            non_zero_mask,
+            overlap,
+            sliced_new_array,
+        )
+    #  left ( y-1, x )
+    if block_id[1] != 0:
+        overlap = array[:, : _depth[1], _depth[2] * 2 : -_depth[2] * 2]
+        sliced_new_array = new_array[
+            :,
+            : _depth[1],
+            :,
+        ]
+        non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
+        new_array[
+            :,
+            : _depth[1],
+            :,
+        ] = np.where(non_zero_mask, overlap, sliced_new_array)
+    # upper left ( y-1, x+1 )
+    if block_id[1] != 0 and block_id[2] + 1 != num_blocks[1]:
+        overlap = array[:, : _depth[1], -_depth[2] :]
+        sliced_new_array = new_array[
+            :,
+            : _depth[1],
+            -_depth[2] :,
+        ]
+        non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
+        new_array[
+            :,
+            : _depth[1],
+            -_depth[2] :,
+        ] = np.where(
+            non_zero_mask,
+            overlap,
+            sliced_new_array,
         )
 
-    masks_trimmed = masks_trimmed.rechunk(masks_trimmed.chunksize)
-
-    return masks_trimmed
+    return new_array
 
 
 def _check_boundary(boundary: str) -> None:

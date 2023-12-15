@@ -23,8 +23,9 @@ from napari_sparrow.image.segmentation._utils import (
     _add_depth_to_chunks_size,
     _check_boundary,
     _clean_up_masks,
+    _merge_masks,
     _rechunk_overlap,
-    _trim_masks,
+    _substract_depth_from_chunks_size,
 )
 from napari_sparrow.image.segmentation.segmentation_models._cellpose import (
     _cellpose as _model,
@@ -347,7 +348,24 @@ class SegmentationModel:
                 **kwargs,
             )
 
-            x_labels = _trim_masks(masks=x_labels, depth=depth)
+            output_chunks = _substract_depth_from_chunks_size(
+                x_labels.chunks, depth=depth
+            )
+
+            x_labels = da.map_overlap(
+                _merge_masks,
+                x_labels,
+                dtype=_SEG_DTYPE,
+                num_blocks=x_labels.numblocks,
+                trim=False,
+                allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
+                chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
+                depth=depth,
+                boundary="reflect",
+                _depth=depth,
+            )
+
+            x_labels = x_labels.rechunk(x_labels.chunksize)
 
         return x_labels
 
