@@ -144,6 +144,7 @@ def read_transcripts(
     column_midcount: Optional[int] = None,
     delimiter: str = ",",
     header: Optional[int] = None,
+    comment: Optional[str] = None,
     crd: Optional[Tuple[int, int, int, int]] = None,
     filter_gene_names: Optional(str|list)=None 
 ) -> SpatialData:
@@ -183,6 +184,10 @@ def read_transcripts(
         Delimiter used to separate values in the CSV file.
     header : Optional[int], default=None
         Row number to use as the header in the CSV file. If None, no header is used.
+    comment : Optional[str], default=None
+        Character indicating that the remainder of line should not be parsed.
+        If found at the beginning of a line, the line will be ignored altogether.
+        This parameter must be a single character.
     crd : tuple of int, optional
         The coordinates (in pixels) for the region of interest in the format (xmin, xmax, ymin, ymax).
         If None, all transcripts are considered.
@@ -199,7 +204,7 @@ def read_transcripts(
     It can also repeat rows based on the MIDCount value and can work in a debug mode that samples the data.
     """
     # Read the CSV file using Dask
-    ddf = dd.read_csv(path_count_matrix, delimiter=delimiter, header=header)
+    ddf = dd.read_csv(path_count_matrix, delimiter=delimiter, header=header, comment=comment)
     
     def filter_names(ddf,column_gene,filter_name):
         # filter out control genes that you don't want ending up in the dataset
