@@ -6,12 +6,10 @@ import dask.array as da
 import numpy as np
 from dask.array import Array
 from numpy.typing import NDArray
+from skimage.segmentation import expand_labels
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation
-
-from skimage.segmentation import expand_labels
-
 
 from napari_sparrow.image._image import (
     _add_label_layer,
@@ -23,8 +21,9 @@ from napari_sparrow.image.segmentation._utils import (
     _add_depth_to_chunks_size,
     _check_boundary,
     _clean_up_masks,
-    _trim_masks,
+    _merge_masks,
     _rechunk_overlap,
+    _substract_depth_from_chunks_size,
 )
 from napari_sparrow.shape._shape import _add_shapes_layer
 from napari_sparrow.utils.pylogger import get_pylogger
@@ -207,7 +206,7 @@ def _expand_dask_array(
         boundary="reflect",
         distance=distance,
         **kwargs,
-        # this reflect is useless for this use case, but clean_up_masks and _trim_masks only support
+        # this reflect is useless for this use case, but clean_up_masks and _merge_masks only support
         # results from map_overlap generated with "reflect", "nearest" and "constant"
     )
 
@@ -218,7 +217,20 @@ def _expand_dask_array(
         depth=depth,
     )
 
-    x_labels = _trim_masks(masks=x_labels, depth=depth)
+    output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
+
+    x_labels = da.map_overlap(
+        _merge_masks,
+        x_labels,
+        dtype=_SEG_DTYPE,
+        num_blocks=x_labels.numblocks,
+        trim=False,
+        allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
+        chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
+        depth=depth,
+        boundary="reflect",
+        _depth=depth,
+    )
 
     # squeeze if a trivial dimension was added.
     if _to_squeeze:
