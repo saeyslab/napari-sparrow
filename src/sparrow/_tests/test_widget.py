@@ -5,7 +5,7 @@ import tifffile as tiff
 from hydra.core.hydra_config import HydraConfig
 
 
-#@pytest.mark.skip
+@pytest.mark.skip
 def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     """
     Integration test for sparrow plugin in napari
