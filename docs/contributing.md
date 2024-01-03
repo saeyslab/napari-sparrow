@@ -31,13 +31,13 @@ This development environment is supported for:
 To run unit tests for the pipeline, run the following from the root of the project:
 
 ```bash
-pytest src/napari_sparrow/_tests/test_pipeline.py
+pytest src/sparrow/_tests/test_pipeline.py
 ```
 
 And to run unit tests for the plugin:
 
 ```bash
-pytest src/napari_sparrow/_tests/test_widget.py
+pytest src/sparrow/_tests/test_widget.py
 ```
 
 Continuous integration will automatically run the tests on all pull requests.

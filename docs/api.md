@@ -2,11 +2,11 @@
 
 ```{eval-rst}
 
-Import napari_sparrow as::
+Import sparrow as::
 
-    import napari_sparrow as nas
+    import sparrow as sp
 
-.. module:: napari_sparrow
+.. module:: sparrow
 ```
 
 
@@ -16,8 +16,8 @@ I/O.
 
 ```{eval-rst}
 
-.. module:: napari_sparrow.io
-.. currentmodule:: napari_sparrow
+.. module:: sparrow.io
+.. currentmodule:: sparrow
 
 .. autosummary::
     :toctree: generated
@@ -36,8 +36,8 @@ Operations on images.
 
 ```{eval-rst}
 
-.. module:: napari_sparrow.im
-.. currentmodule:: napari_sparrow
+.. module:: sparrow.im
+.. currentmodule:: sparrow
 
 .. autosummary::
     :toctree: generated
@@ -59,8 +59,8 @@ Operations on shapes (polygons).
 
 ```{eval-rst}
 
-.. module:: napari_sparrow.sh
-.. currentmodule:: napari_sparrow
+.. module:: sparrow.sh
+.. currentmodule:: sparrow
 
 .. autosummary::
     :toctree: generated
@@ -74,8 +74,8 @@ Operations on tables (`AnnData` object).
 
 ```{eval-rst}
 
-.. module:: napari_sparrow.tb
-.. currentmodule:: napari_sparrow
+.. module:: sparrow.tb
+.. currentmodule:: sparrow
 
 .. autosummary::
     :toctree: generated
@@ -98,8 +98,8 @@ Plotting functions.
 
 ```{eval-rst}
 
-.. module:: napari_sparrow.pl
-.. currentmodule:: napari_sparrow
+.. module:: sparrow.pl
+.. currentmodule:: sparrow
 
 .. autosummary::
     :toctree: generated

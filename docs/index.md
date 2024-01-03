@@ -4,9 +4,9 @@
   :alt: Dambi banner
 ```
 
-# Napari-sparrow
+# sparrow
 
-Napari-sparrow is a library for spatial transcriptomics data analysis.
+sparrow is a library for spatial transcriptomics data analysis.
 
 Please see our preprint ... for citation and to learn more.
 
@@ -20,33 +20,33 @@ Please see our preprint ... for citation and to learn more.
     :link: installation
     :link-type: doc
 
-    Learn how to install ``napari-sparrow``.
+    Learn how to install ``sparrow``.
 
 .. card:: Usage
     :link: usage
     :link-type: doc
 
-    Learn how to use ``napari-sparrow``.
+    Learn how to use ``sparrow``.
 
 .. card:: API
     :link: api
     :link-type: doc
 
-    Find a detailed documentation of ``napari-sparrow``.
+    Find a detailed documentation of ``sparrow``.
 
 
 .. card:: HPC
     :link: hpc
     :link-type: doc
 
-    Learn how to run ``napari-sparrow`` in a HPC environment.
+    Learn how to run ``sparrow`` in a HPC environment.
 
 
 .. card:: Contributing
     :link: contributing
     :link-type: doc
 
-    Learn how to contribute to ``napari-sparrow``.
+    Learn how to contribute to ``sparrow``.
 
 ```
 

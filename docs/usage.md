@@ -63,4 +63,4 @@ All parameters can also be overwritten from the CLI, e.g. for the size of the mi
 sparrow +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow clean.size_min_max_filter=35
 ```
 
-The default values for all parameters for each step of the pipeline can be found at `src/napari_sparrow/configs`.
+The default values for all parameters for each step of the pipeline can be found at `src/sparrow/configs`.

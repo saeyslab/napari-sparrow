@@ -4,7 +4,7 @@ There are two different installation methods:
 
 1. Using the Python package manager pip (TODO)
 ```
-pip install napari-sparrow
+pip install sparrow
 ```
 
 2. Installation from source
@@ -34,7 +34,7 @@ pip install "jax[cpu]===0.4.10" -f https://whls.blob.core.windows.net/unstable/i
 pip install basicpy==1.0.0
 ```
 
-Finally, install `napari-sparrow`
+Finally, install `sparrow`
 ```
 pip install -e .
 ```
@@ -44,7 +44,7 @@ pip install -e .
 To use the plugin, run
 
 ```bash
-pip install "napari-sparrow[plugin]"
+pip install "sparrow[plugin]"
 ```
 
 or when build from source:
@@ -56,7 +56,7 @@ pip install -e ".[plugin]"
 To run `sparrow` from the `cli`:
 
 ```bash
-pip install "napari-sparrow[cli]"
+pip install "sparrow[cli]"
 ```
 
 or when build from source:
