@@ -1,4 +1,4 @@
-# napari-sparrow
+# sparrow
 
 <!-- These badges won't work while the GitHub repo is private:
 [![License BSD-3](https://img.shields.io/pypi/l/napari-sparrow.svg?color=green)](https://github.com/saeyslab/napari-sparrow/raw/main/LICENSE)
@@ -29,7 +29,7 @@ There are two different installation methods:
 
 1. Using the Python package manager pip (TODO)
 ```
-pip install napari-sparrow
+pip install sparrow (TODO sparrow already in use as library name on PyPi)
 ```
 
 2. Installation from source
@@ -61,7 +61,7 @@ pip install basicpy==1.0.0
 ```
 The manual installation of ml_dtypes used by jax is needed because of [this issue](https://developer.apple.com/forums/thread/737890).
 
-Finally, install `napari-sparrow`
+Finally, install `sparrow`
 ```
 pip install -e .
 ```
@@ -71,7 +71,7 @@ pip install -e .
 To use the plugin, run
 
 ```bash
-pip install "napari-sparrow[plugin]"
+pip install "sparrow[plugin]"
 ```
 
 or when build from source:
@@ -83,7 +83,7 @@ pip install -e ".[plugin]"
 To run `sparrow` from the `cli`:
 
 ```bash
-pip install "napari-sparrow[cli]"
+pip install "sparrow[cli]"
 ```
 
 or when build from source:
@@ -158,7 +158,7 @@ All parameters can also be overwritten from the CLI, e.g. for the size of the mi
 sparrow +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow clean.size_min_max_filter=35
 ```
 
-The default values for all parameters for each step of the pipeline can be found at `src/napari_sparrow/configs`.
+The default values for all parameters for each step of the pipeline can be found at `src/sparrow/configs`.
 
 For more info on configuring experiments, we refer to the [hpc](docs/hpc.md) documentation.
 
@@ -173,7 +173,7 @@ Find more information and instructions in the `docs/` folder.
 ## License
 
 Distributed under the terms of the [BSD-3] license,
-"napari-sparrow" is free and open source software
+"sparrow" is free and open source software
 
 ## Issues
 

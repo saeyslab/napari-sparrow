@@ -12,7 +12,7 @@ on:
   #    - main
 
     paths:
-      - 'src/napari_sparrow/**'
+      - 'src/sparrow/**'
       - '.github/workflows/run_tests.yml'
 
 env:
