@@ -25,10 +25,10 @@ log = get_pylogger(__name__)
 def allocate(
     sdata: SpatialData,
     labels_layer: str = "segmentation_mask",
-    shapes_layer: str = "segmentation_mask_boundaries",
+    shapes_layer: Optional[str] = "segmentation_mask_boundaries",
     points_layer: str = "transcripts",
     allocate_from_shapes_layer: bool = True,
-    chunks: Optional[str | Tuple[int, ...] | int] = None,
+    chunks: Optional[str | Tuple[int, ...] | int] = 10000,
 ) -> SpatialData:
     """
     Allocates transcripts to cells via provided shapes_layer and points_layer and returns updated SpatialData
@@ -40,15 +40,17 @@ def allocate(
         The SpatialData object.
     labels_layer : str, optional
         The layer in `sdata` that contains the masks corresponding to the shapes layer
-        (possible before performing operation on the shapes layer, such as calculating voronoi expansion).
-        Only used for determining offset if allocate_from_shapes_layer is set to True.
+        (possibly before performing operation on the shapes layer, such as calculating voronoi expansion).
+        Only used for determining offset if `allocate_from_shapes_layer` is True.
     shapes_layer : str, optional
         The layer in `sdata` that contains the boundaries of the segmentation mask, by default "segmentation_mask_boundaries".
+        Required if `allocate_from_shapes_layer` is True.
     points_layer: str, optional
         The layer in `sdata` that contains the transcripts.
     allocate_from_shapes_layer: bool, optional
-        Whether to allocate transcripts using the shapes layer or the labels layer.
-    chunks : Optional[str | int | tuple[int, ...]], default=None
+        Whether to allocate transcripts using `shapes_layer` or `labels_layer`.
+        Only supported if `shapes_layer` contains 2D polygons.
+    chunks : Optional[str | int | tuple[int, ...]], default=10000
         Chunk sizes for processing. Can be a string, integer or tuple of integers.
         Consider setting the chunks to a relatively high value to speed up processing
         (>10000, or only chunk in z-dimension if data is 3D, and one z-slice fits in memory),

@@ -1,5 +1,8 @@
-from typing import List
+from typing import List, Optional
 from numpy.typing import NDArray
+from pathlib import Path
+
+from sparrow.utils.pylogger import get_pylogger
 
 try:
     import torch
@@ -15,6 +18,8 @@ try:
 except ImportError:
     CELLPOSE_AVAILABLE = False
 
+log = get_pylogger(__name__)
+
 
 def _cellpose(
     img: NDArray,
@@ -22,7 +27,8 @@ def _cellpose(
     cellprob_threshold: int = 0,
     flow_threshold: float = 0.6,
     diameter: int = 55,
-    model_type: str = "nuclei",
+    model_type: Optional[str] = "nuclei",
+    pretrained_model: Optional[str | Path] = None,
     channels: List[int] = [0, 0],
     device: str = "cpu",
     z_axis: int = 0,
@@ -39,10 +45,20 @@ def _cellpose(
         raise RuntimeError(
             "The cellpose module is not available. Please install it to use this function."
         )
-
     gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
-    model = models.Cellpose(gpu=gpu, model_type=model_type, device=torch.device(device))
-    masks, _, _, _ = model.eval(
+    if pretrained_model is not None:
+        model = models.CellposeModel(
+            gpu=gpu, pretrained_model=pretrained_model, device=torch.device(device)
+        )
+    elif model_type is not None:
+        model = models.Cellpose(
+            gpu=gpu, model_type=model_type, device=torch.device(device)
+        )
+    else:
+        log.warning(
+            "Please provide either 'model_type' or 'pretrained_model (i.e. a path to a pretrained model)'."
+        )
+    results = model.eval(
         img,
         diameter=diameter,
         channels=channels,
@@ -54,6 +70,8 @@ def _cellpose(
         do_3D=do_3D,
         anisotropy=anisotropy,
     )
+
+    masks=results[0]
 
     # make sure we always return z,y,x for labels.
     if not do_3D:
