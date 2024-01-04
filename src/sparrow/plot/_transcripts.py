@@ -40,14 +40,14 @@ def analyse_genes_left_out(
         The layer in `sdata` that contains the segmentation masks, by default "segmentation_mask".
         If None, the last layer in the `labels` attribute of `sdata` will be used.
         This layer is used to calculate the crd (region of interest) that was used in the segmentation step,
-        otherwise transcript counts in points layer of sdata (containing all transcripts)
+        otherwise transcript counts in `points_layer` of `sdata` (containing all transcripts)
         and the counts obtained via sdata.table are not comparable.
     name_x : str, optional
-        The column name representing the x-coordinate in the points layer, by default "x".
+        The column name representing the x-coordinate in `points_layer`, by default "x".
     name_y : str, optional
-        The column name representing the y-coordinate in the points layer, by default "y".
+        The column name representing the y-coordinate in `points_layer`, by default "y".
     name_gene_column : str, optional
-        The column name representing the gene name in the points layer, by default "gene".
+        The column name representing the gene name in `points_layer`, by default "gene".
     output : str or Path, optional
         The path to save the generated plots. If None, plots will be shown directly using plt.show().
 
@@ -55,7 +55,7 @@ def analyse_genes_left_out(
     -------
     DataFrame
         A DataFrame containing information about the proportion of transcripts kept for each gene,
-        raw counts (i.e. obtained from the points layer of `sdata`), and the log of raw counts.
+        raw counts (i.e. obtained from `points_layer` of `sdata`), and the log of raw counts.
 
     Raises
     ------
