@@ -55,7 +55,7 @@ def _cellpose(
             gpu=gpu, model_type=model_type, device=torch.device(device)
         )
     else:
-        log.warning(
+        raise ValueError(
             "Please provide either 'model_type' or 'pretrained_model (i.e. a path to a pretrained model)'."
         )
     results = model.eval(
