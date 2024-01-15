@@ -278,7 +278,7 @@ def _merge_masks(
             :,
         ] = np.where(non_zero_mask, overlap, sliced_new_array)
     # upper left ( y-1, x+1 )
-    if block_id[1] != 0 and block_id[2] + 1 != num_blocks[1]:
+    if block_id[1] != 0 and block_id[2] + 1 != num_blocks[2]:
         overlap = array[:, : _depth[1], -_depth[2] :]
         sliced_new_array = new_array[
             :,
@@ -351,7 +351,7 @@ def _get_ajdacent_block_ids(block_id, total_blocks):
     neighbors = [
         neighbor
         for neighbor in potential_neighbors
-        if 0 <= neighbor[0] < max_x and 0 <= neighbor[1] < max_y
+        if 0 <= neighbor[0] < max_y and 0 <= neighbor[1] < max_x
     ]
     return neighbors
 
