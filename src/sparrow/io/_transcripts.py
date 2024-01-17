@@ -283,6 +283,10 @@ def read_transcripts(
             f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}"
         )
 
+    if sdata.points:
+        for points_layer in [*sdata.points]:
+            del sdata.points[points_layer]
+
     sdata = _add_transcripts_to_sdata(
         sdata,
         transformed_ddf=transformed_ddf,
@@ -301,9 +305,6 @@ def _add_transcripts_to_sdata(
     coordinates: Dict[str, str],
     overwrite: bool = False,
 ):
-    if sdata.points:
-        for points_layer in [*sdata.points]:
-            del sdata.points[points_layer]
 
     sdata.add_points(
         name=points_layer,

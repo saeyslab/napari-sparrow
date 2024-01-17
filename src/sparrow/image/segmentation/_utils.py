@@ -378,3 +378,35 @@ def _calculate_boundary_adjacent_block(chunk_shape, depth, block_id, adjacent_bl
         x_stop = depth[1]
 
     return (y_start, y_stop, x_start, x_stop)
+
+
+def _get_block_position(
+    chunks: Tuple[Tuple[int, ...], ...], block_id: Tuple[int, int, int]
+) -> Tuple[int, int, int, int]:
+    """
+    Parameters
+
+    Given a block structure of a 3D Dask array and a block ID, return the
+    start and stop positions in the full array for that block for the 1st (y) and 2nd (x) dimension.
+
+    Parameters
+    ----------
+    block_structure: A tuple of tuples, where each inner tuple
+                            represents the sizes of the blocks in that dimension.
+    block_id: A tuple representing the position of the block in the
+                     block structure.
+
+    Returns
+    -------
+    A tuple (y_start, y_stop, x_start, x_stop)
+    """
+    y_structure, x_structure = chunks[1], chunks[2]
+    _, i, j = block_id
+
+    y_start = sum(y_structure[:i])
+    y_stop = y_start + y_structure[i]
+
+    x_start = sum(x_structure[:j])
+    x_stop = x_start + x_structure[j]
+
+    return y_start, y_stop, x_start, x_stop
