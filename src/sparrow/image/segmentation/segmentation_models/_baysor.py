@@ -31,23 +31,33 @@ def _baysor(
     diameter: int = 40,  # this is scale in baysor, should be approx equal to the expected cell radius
     use_prior_segmentation: bool = True,
     prior_confidence: int = 0.2,  # expected quality of the prior (i.e. masks). 0.0 will make algorithm ignore the prior, while 1.0 restricts the algorithm from contradicting the prior.
-):
+) -> NDArray:
+    # img is (z,y,x,c), and returned masks are also (z,y,x,c)
     log.info(f"Prior segmentation: {use_prior_segmentation}")
     log.info(f"Prior confidence: {prior_confidence}")
+    assert (
+        img.ndim == 4
+    ), "Please provide img with (z,y,x,c) dimension. z and c dimension should be 1."
+    assert (
+        img.shape[0] == 1
+    ), "Currently only 2D segmentation is supported. I.e. z-dimension should be 1"
+    assert img.shape[-1] == 1, "Channel dimension should be 1."
     assert name_x in df.columns, f"DataFrame should contain 'x' coordinate '{name_x}'."
     assert name_y in df.columns, f"DataFrame should contain 'y' coordinate '{name_y}'."
     assert (
         name_gene in df.columns
     ), f"DataFrame should contain 'gene' column. '{name_gene}'."
 
+    # squeeze the trivial c-channel
+    img = img.squeeze(-1)
     # currently only support 2D segmentation with baysor.
     img = img.squeeze(0)
 
-    x_min=df.x.min()
-    x_max=df.x.max()
+    x_min = df.x.min()
+    x_max = df.x.max()
 
-    y_min=df.y.min()
-    y_max=df.y.max()
+    y_min = df.y.min()
+    y_max = df.y.max()
 
     y_max
 
@@ -115,8 +125,8 @@ def _baysor(
         fill=0,
     )
 
-    # add z dimension to masks
-    masks = masks[None, ...]
+    # add z and c dimension to masks
+    masks = masks[None, ..., None]
 
     return masks
 

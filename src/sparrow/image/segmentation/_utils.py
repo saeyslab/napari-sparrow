@@ -386,7 +386,7 @@ def _get_block_position(
     """
     Parameters
 
-    Given a block structure of a 3D Dask array and a block ID, return the
+    Given a block structure of a 4D Dask array and a block ID, return the
     start and stop positions in the full array for that block for the 1st (y) and 2nd (x) dimension.
 
     Parameters
@@ -401,7 +401,7 @@ def _get_block_position(
     A tuple (y_start, y_stop, x_start, x_stop)
     """
     y_structure, x_structure = chunks[1], chunks[2]
-    _, i, j = block_id
+    _, i, j, _ = block_id
 
     y_start = sum(y_structure[:i])
     y_stop = y_start + y_structure[i]
