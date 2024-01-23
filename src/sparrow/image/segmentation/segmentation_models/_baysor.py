@@ -25,7 +25,7 @@ def _baysor(
     name_x: str,
     name_y: str,
     name_gene: str,
-    config_path: str | Path,
+    config_path: str | Path, #path to config.toml file of baysor
     output_dir: str | Path,
     threads: int,
     diameter: int = 40,  # this is scale in baysor, should be approx equal to the expected cell radius
@@ -66,7 +66,6 @@ def _baysor(
         output_html = os.path.join(temp_dir, "output.html")
 
         # command to run baysor
-        # TODO add force 2D here
         command = (
             f"JULIA_NUM_THREADS={threads} baysor run "
             f"-s {diameter} "
