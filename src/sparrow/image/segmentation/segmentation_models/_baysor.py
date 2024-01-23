@@ -53,14 +53,6 @@ def _baysor(
     # currently only support 2D segmentation with baysor.
     img = img.squeeze(0)
 
-    x_min = df.x.min()
-    x_max = df.x.max()
-
-    y_min = df.y.min()
-    y_max = df.y.max()
-
-    y_max
-
     with tempfile.TemporaryDirectory(dir=output_dir) as temp_dir:
         df.to_csv(os.path.join(temp_dir, "transcripts.csv"))
         # Save the image as a TIFF file
@@ -88,8 +80,6 @@ def _baysor(
             "--save-polygons=geojson "
             f"{masks_path}"
         )
-
-        # command = "JULIA_NUM_THREADS=8 baysor run -s 40 -c config.toml -o output_python.html 20272_slide1_A1-1_results_4288_2144_baysor.txt --save-polygons=geojson #[PRIOR_SEGMENTATION]"
 
         # Run the command and capture output
         process = subprocess.run(
@@ -129,6 +119,18 @@ def _baysor(
     masks = masks[None, ..., None]
 
     return masks
+
+
+def _dummy(
+    img: NDArray,
+    df: PandasDataFrame,
+    name_x: str,
+    name_y: str,
+    name_gene: str,
+) -> NDArray:
+    # dummu baysor segmentation, just return the labels layer
+    # (used for benchmarking, and unit tests)
+    return img
 
 
 def _read_baysor(path_polygons: str | Path, min_vertices: int = 4) -> GeoDataFrame:

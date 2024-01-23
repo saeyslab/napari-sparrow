@@ -159,19 +159,32 @@ def segment_points(
     **kwargs: Any,
 ):
     """
-    Segment images using a provided model and add segmentation results
+    Segment images using a `points_layer` and a prior (`labels_layer`) and add segmentation results
     (labels layer and shapes layer) to the SpatialData object.
+    Currently only segmentation using a prior is supported.
+    The `points_layer` and the `labels_layer` should be registered (i.e. same coordinate space in `sdata`).
 
     Parameters
     ----------
     sdata : SpatialData
         The SpatialData object containing the image layer to segment.
-    img_layer : Optional[str], default=None
-        The image layer in `sdata` to be segmented. If not provided, the last image layer in `sdata` is used.
-    model : Callable[..., NDArray], default=_cellpose
+    labels_layer : Optional[str], default=None
+        The labels layer in `sdata` to be used as a prior.
+    points layer : Optional[str], default=None
+        The points layer in `sdata` to be used for segmentation.
+    name_x: Optional[str], default="x"
+        Column name for x-coordinates of the transcripts in the points layer, by default "x".
+    name_y: Optional[str], default="y"
+        Column name for y-coordinates of the transcripts in the points layer, by default "y".
+    name_gene : str, optional
+        Column name in the points_layer representing gene information, by default "gene".
+    model : Callable[..., NDArray], default=_model_points
         The segmentation model function used to process the images.
-        Callable should take as input numpy arrays of dimension (z,y,x,c) and return labels of dimension (z,y,x,c), with
-        c dimension==1. It can have an arbitrary number of other parameters.
+        Callable should take as input numpy arrays of dimension (z,y,x,c), a pandas dataframe with the transcripts, 
+        and parameters 'name_x', 'name_y' and 'name_gene' with the column names of the x and y location and the column
+        name for the transcripts. It should return labels of dimension (z,y,x,c), with c dimension==1.
+        Currently only 2D segmentation is supported (y,x).
+        It can have an arbitrary number of other parameters.
     output_labels_layer : str, default="segmentation_mask"
         Name of the label layer in which segmentation results will be stored in `sdata`.
     output_shapes_layer : Optional[str], default="segmentation_mask_boundaries"
@@ -187,9 +200,9 @@ def segment_points(
     trim : bool, default=False
         If set to True, overlapping regions will be processed using the `squidpy` algorithm.
         If set to False, the `sparrow` algorithm will be employed instead. For dense cell distributions,
-        we recommend setting trim to True.
+        we recommend setting trim to False.
     crd : Optional[Tuple[int, int, int, int]], default=None
-        The coordinates specifying the region of the image to be segmented. Defines the bounds (x_min, x_max, y_min, y_max).
+        The coordinates specifying the region of the `points_layer` to be segmented. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors : Optional[ScaleFactors_t], optional
         Scale factors to apply for multiscale.
     overwrite : bool, default=False
@@ -204,6 +217,9 @@ def segment_points(
 
     Raises
     ------
+    ValueError
+        If the `labels_layer` is not provided.
+
     TypeError
         If the provided `model` is not callable.
     """
@@ -656,11 +672,6 @@ class SegmentationModelPoints(SegmentationModel):
         else:
             _crd_points = None
 
-        # TODO could define this as _precondition in abstract class SegmentationModel
-        # take dask array and put channel dimension last,
-        # do some checks on spatial element
-        # so we have ( z, y, x ), and we do some checks on depth and chunks
-
         # handle taking crops
         if _crd_points is not None:
             # need to account for fact that there can be a translation defined on the labels layer
@@ -793,17 +804,6 @@ class SegmentationModelPoints(SegmentationModel):
             df[name_y] += _depth[1]
         if x_start == _crd_points[0]:
             df[name_x] += _depth[2]
-
-        """
-        if y_start != 0:
-            df[name_y] -= y_start
-        else:
-            df[name_y] += _depth[1]
-        if x_start != 0:
-            df[name_x] -= x_start
-        else:
-            df[name_x] += _depth[2]
-        """
 
         labels = self._model(block, df, **fn_kwargs).astype(_SEG_DTYPE)
         # for debug

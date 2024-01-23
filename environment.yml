@@ -34,3 +34,4 @@ dependencies:
     - xarray-datatree==0.0.12
     - xarray-schema==0.0.3
     - xarray-spatial==0.3.5
+    - nptyping==2.5.0

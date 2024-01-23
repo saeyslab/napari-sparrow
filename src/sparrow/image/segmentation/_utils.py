@@ -127,7 +127,7 @@ def _clean_up_masks(
 
             # if intersection with mask and region outside chunk is bigger than inside region, set values of chunk to 0 for this masks.
             # For edge case where inside region and outside region is the same, it will be assigned to both chunks.
-            # Note that is better that both chunks claim the masks, than that no chunks are claiming the mask. If they both claim the mask,
+            # Note that is better that both chunks claim the masks, than that no chunks are claiming the mask.
             if outside_region > inside_region:
                 block[block == mask_label] = 0
                 break
