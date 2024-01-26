@@ -257,6 +257,8 @@ def _align_dask_arrays(
         _depth=depth,
     )
 
+    x_labels = x_labels.rechunk(x_labels.chunksize)
+
     # squeeze if a trivial dimension was added.
     if _to_squeeze:
         x_labels = x_labels.squeeze(0)
