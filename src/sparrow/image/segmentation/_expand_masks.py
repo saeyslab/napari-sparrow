@@ -1,31 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
 
-import dask.array as da
-import numpy as np
-from dask.array import Array
 from numpy.typing import NDArray
 from skimage.segmentation import expand_labels
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import Translation
 
-from sparrow.image._image import (
-    _add_label_layer,
-    _get_spatial_element,
-    _get_translation,
-)
-from sparrow.image.segmentation._utils import (
-    _SEG_DTYPE,
-    _add_depth_to_chunks_size,
-    _check_boundary,
-    _clean_up_masks,
-    _merge_masks,
-    _rechunk_overlap,
-    _substract_depth_from_chunks_size,
-)
-from sparrow.shape._shape import _add_shapes_layer
+from sparrow.image.segmentation._merge_masks import apply_labels_layers
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -104,139 +86,21 @@ def expand_labels_layer(
         )
     """
 
-    se = _get_spatial_element(sdata, layer=labels_layer)
-
-    x_label = se.data
-
-    t1x, t1y = _get_translation(se)
-
-    x_label_expanded = _expand_dask_array(
-        x_label, chunks=chunks, depth=depth, distance=distance
-    )
-
-    if output_labels_layer is None:
-        output_labels_layer = labels_layer
-        if overwrite == False:
-            raise ValueError(
-                "output_labels_layer was set to None, but overwrite to False. "
-                f"to allow overwriting labels layer {labels_layer}, with aligned result, please set overwrite to True, "
-                "or specify a value for output_labels_layer."
-            )
-
-    translation = Translation([t1x, t1y], axes=("x", "y"))
-
-    sdata = _add_label_layer(
+    sdata = apply_labels_layers(
         sdata,
-        x_label_expanded,
-        output_layer=output_labels_layer,
+        labels_layers=[labels_layer],
+        func=_expand_cells,
+        depth=depth,
         chunks=chunks,
-        transformation=translation,
+        output_labels_layer=output_labels_layer,
+        output_shapes_layer=output_shapes_layer,
         scale_factors=scale_factors,
         overwrite=overwrite,
+        relabel_chunks=False,
+        distance=distance,
     )
-
-    # only calculate shapes layer if it is specified
-    if output_shapes_layer is not None:
-        se_labels = _get_spatial_element(sdata, layer=output_labels_layer)
-
-        # convert the labels to polygons and add them as shapes layer to sdata
-        sdata = _add_shapes_layer(
-            sdata,
-            input=se_labels.data,
-            output_layer=output_shapes_layer,
-            transformation=translation,
-            overwrite=overwrite,
-        )
 
     return sdata
-
-
-def _expand_dask_array(
-    x_label: Array,
-    **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
-):
-    # we will expand x_label
-    distance = kwargs.pop("distance", 10)
-    chunks = kwargs.pop("chunks", None)
-    depth = kwargs.pop("depth", 100 + distance)
-    boundary = kwargs.pop("boundary", "reflect")
-
-    _to_squeeze = False
-    if x_label.ndim == 2:
-        _to_squeeze = True
-        x_label = x_label[None, ...]
-
-    if isinstance(depth, int):
-        depth = {0: 0, 1: depth, 2: depth}
-    else:
-        assert (
-            len(depth) == x_label.ndim - 1
-        ), "Please (only) provide depth for ( 'y', 'x')."
-        # set depth for every dimension
-        depth2 = {0: 0, 1: depth[0], 2: depth[1]}
-        depth = depth2
-
-    if chunks is not None:
-        if not isinstance(chunks, (int, str)):
-            assert (
-                len(chunks) == x_label.ndim - 1
-            ), "Please (only) provide chunks for ( 'y', 'x')."
-            chunks = (x_label.shape[0], chunks[0], chunks[1])
-
-    _check_boundary(boundary)
-
-    #  rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
-    x_label = _rechunk_overlap(x_label, depth=depth, chunks=chunks)
-
-    # TDDO x_label.numblocks[0] should be x_label.shape[0]
-    assert (
-        x_label.numblocks[0] == 1
-    ), f"Expected the number of blocks in the Z-dimension to be `1`, found `{x_label.numblocks[0]}`."
-
-    output_chunks = _add_depth_to_chunks_size(x_label.chunks, depth)
-
-    x_labels = da.map_overlap(
-        _expand_cells,
-        x_label,
-        dtype=_SEG_DTYPE,
-        allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-        chunks=output_chunks,  # e.g. ((1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60) ),
-        depth=depth,
-        trim=False,
-        boundary="reflect",
-        distance=distance,
-        **kwargs,
-        # this reflect is useless for this use case, but clean_up_masks and _merge_masks only support
-        # results from map_overlap generated with "reflect", "nearest" and "constant"
-    )
-
-    x_labels = da.map_blocks(
-        _clean_up_masks,
-        x_labels,
-        dtype=_SEG_DTYPE,
-        depth=depth,
-    )
-
-    output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
-
-    x_labels = da.map_overlap(
-        _merge_masks,
-        x_labels,
-        dtype=_SEG_DTYPE,
-        num_blocks=x_labels.numblocks,
-        trim=False,
-        allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-        chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
-        depth=depth,
-        boundary="reflect",
-        _depth=depth,
-    )
-
-    # squeeze if a trivial dimension was added.
-    if _to_squeeze:
-        x_labels = x_labels.squeeze(0)
-
-    return x_labels
 
 
 def _expand_cells(
