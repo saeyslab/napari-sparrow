@@ -5,8 +5,15 @@ import os
 
 os.environ["USE_PYGEOS"] = "0"
 
-from . import image as im
-from . import io, utils
-from . import plot as pl
-from . import shape as sh
-from . import table as tb
+subpackages = [
+    "image",
+    "io",
+    "plot",
+    "shape",
+    "table",
+    "utils",
+]
+
+import lazy_loader as lazy
+
+__getattr__, __dir__, _ = lazy.attach(__name__, subpackages)

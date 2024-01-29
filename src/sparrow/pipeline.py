@@ -106,7 +106,7 @@ class SparrowPipeline:
 
     def clean(self, sdata: SpatialData) -> SpatialData:
         """Cleaning step, the second step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
-        sp.pl.plot_image(
+        sp.plot.plot_image(
             sdata=sdata,
             output=os.path.join(self.cfg.paths.output_dir, "original"),
             crd=self.cfg.clean.small_size_vis,
@@ -121,7 +121,7 @@ class SparrowPipeline:
 
             output_layer = self.cfg.clean.output_img_layer_tiling_correction
 
-            sdata, flatfields = sp.im.tiling_correction(
+            sdata, flatfields = sp.image.tiling_correction(
                 sdata=sdata,
                 img_layer=self.cleaned_image_name,
                 crd=(self.cfg.clean.crop_param if self.cfg.clean.crop_param is not None else None),
@@ -138,7 +138,7 @@ class SparrowPipeline:
             # Write plot to given path if output is enabled
             if "tiling_correction" in self.cfg.paths:
                 log.info(f"Writing tiling correction plot to {self.cfg.paths.tiling_correction}")
-                sp.pl.tiling_correction(
+                sp.plot.tiling_correction(
                     sdata=sdata,
                     img_layer=[self.loaded_image_name, self.cleaned_image_name],
                     crd=(self.cfg.clean.small_size_vis if self.cfg.clean.small_size_vis is not None else None),
@@ -147,12 +147,12 @@ class SparrowPipeline:
                 for i, flatfield in enumerate(flatfields):
                     # flatfield can be None is tiling correction failed.
                     if flatfield is not None:
-                        sp.pl.flatfield(
+                        sp.plot.flatfield(
                             flatfield,
                             output=f"{self.cfg.paths.tiling_correction}_flatfield_{i}",
                         )
 
-            sp.pl.plot_image(
+            sp.plot.plot_image(
                 sdata=sdata,
                 output=os.path.join(self.cfg.paths.output_dir, self.cleaned_image_name),
                 crd=self.cfg.clean.small_size_vis,
@@ -166,7 +166,7 @@ class SparrowPipeline:
 
             output_layer = self.cfg.clean.output_img_layer_min_max_filtering
 
-            sdata = sp.im.min_max_filtering(
+            sdata = sp.image.min_max_filtering(
                 sdata=sdata,
                 img_layer=self.cleaned_image_name,
                 crd=(self.cfg.clean.crop_param if self.cfg.clean.crop_param is not None else None),
@@ -184,7 +184,7 @@ class SparrowPipeline:
 
             log.info("Min max filtering finished.")
 
-            sp.pl.plot_image(
+            sp.plot.plot_image(
                 sdata=sdata,
                 output=os.path.join(self.cfg.paths.output_dir, self.cleaned_image_name),
                 crd=self.cfg.clean.small_size_vis,
@@ -198,7 +198,7 @@ class SparrowPipeline:
 
             output_layer = self.cfg.clean.output_img_layer_clahe
 
-            sdata = sp.im.enhance_contrast(
+            sdata = sp.image.enhance_contrast(
                 sdata=sdata,
                 img_layer=self.cleaned_image_name,
                 crd=(self.cfg.clean.crop_param if self.cfg.clean.crop_param is not None else None),
@@ -218,7 +218,7 @@ class SparrowPipeline:
 
             log.info("Contrast enhancing finished.")
 
-            sp.pl.plot_image(
+            sp.plot.plot_image(
                 sdata=sdata,
                 output=os.path.join(self.cfg.paths.output_dir, self.cleaned_image_name),
                 crd=self.cfg.clean.small_size_vis,
@@ -244,7 +244,7 @@ class SparrowPipeline:
         self.shapes_layer_name = self.cfg.segmentation.output_shapes_layer
 
         # Perform segmentation
-        sdata = sp.im.segment(
+        sdata = sp.image.segment(
             sdata=sdata,
             img_layer=self.cleaned_image_name,
             output_labels_layer=self.cfg.segmentation.output_labels_layer,
@@ -272,7 +272,7 @@ class SparrowPipeline:
 
         log.info("Segmentation finished.")
 
-        sp.pl.segment(
+        sp.plot.segment(
             sdata=sdata,
             crd=(
                 self.cfg.segmentation.small_size_vis
@@ -285,12 +285,12 @@ class SparrowPipeline:
         )
 
         if self.cfg.segmentation.voronoi_radius:
-            sdata = sp.sh.create_voronoi_boundaries(
+            sdata = sp.shape.create_voronoi_boundaries(
                 sdata,
                 radius=self.cfg.segmentation.voronoi_radius,
                 shapes_layer=self.cfg.segmentation.output_shapes_layer,
             )
-            sp.pl.segment(
+            sp.plot.segment(
                 sdata=sdata,
                 crd=(
                     self.cfg.segmentation.small_size_vis
@@ -327,7 +327,7 @@ class SparrowPipeline:
 
         log.info("Start allocation.")
 
-        sdata = sp.tb.allocate(
+        sdata = sp.table.allocate(
             sdata=sdata,
             labels_layer=self.cfg.segmentation.output_labels_layer,
             shapes_layer=self.shapes_layer_name,
@@ -335,7 +335,7 @@ class SparrowPipeline:
 
         log.info("Allocation finished.")
 
-        sp.pl.plot_shapes(
+        sp.plot.plot_shapes(
             sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
@@ -347,7 +347,7 @@ class SparrowPipeline:
             output=self.cfg.paths.polygons,
         )
 
-        sp.pl.analyse_genes_left_out(
+        sp.plot.analyse_genes_left_out(
             sdata,
             labels_layer=self.cfg.segmentation.output_labels_layer,
             output=self.cfg.paths.analyse_genes_left_out,
@@ -356,7 +356,7 @@ class SparrowPipeline:
         log.info("Preprocess AnnData.")
 
         # Perform normalization based on size + all cells with less than 10 genes and all genes with less than 5 cells are removed.
-        sdata = sp.tb.preprocess_anndata(
+        sdata = sp.table.preprocess_anndata(
             sdata,
             min_counts=self.cfg.allocate.min_counts,
             min_cells=self.cfg.allocate.min_cells,
@@ -367,12 +367,12 @@ class SparrowPipeline:
 
         log.info("Preprocessing AnnData finished.")
 
-        sp.pl.preprocess_anndata(
+        sp.plot.preprocess_anndata(
             sdata,
             output=self.cfg.paths.preprocess_adata,
         )
 
-        sp.pl.plot_shapes(
+        sp.plot.plot_shapes(
             sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
@@ -388,13 +388,13 @@ class SparrowPipeline:
         )
 
         # Filter all cells based on size and distance
-        sdata = sp.tb.filter_on_size(
+        sdata = sp.table.filter_on_size(
             sdata,
             min_size=self.cfg.allocate.min_size,
             max_size=self.cfg.allocate.max_size,
         )
 
-        sp.pl.plot_shapes(
+        sp.plot.plot_shapes(
             sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
@@ -411,7 +411,7 @@ class SparrowPipeline:
 
         log.info("Start clustering")
 
-        sdata = sp.tb.cluster(
+        sdata = sp.table.cluster(
             sdata,
             pcs=self.cfg.allocate.pcs,
             neighbors=self.cfg.allocate.neighbors,
@@ -420,12 +420,12 @@ class SparrowPipeline:
 
         log.info("Clustering finished")
 
-        sp.pl.cluster(
+        sp.plot.cluster(
             sdata,
             output=self.cfg.paths.cluster,
         )
 
-        sp.pl.plot_shapes(
+        sp.plot.plot_shapes(
             sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
@@ -442,7 +442,7 @@ class SparrowPipeline:
 
         if self.cfg.allocate.calculate_transcripts_density:
             # calculate transcript density
-            sdata = sp.im.transcript_density(
+            sdata = sp.image.transcript_density(
                 sdata,
                 img_layer=self.cleaned_image_name,
                 crd=self.cfg.segmentation.crop_param,
@@ -451,7 +451,7 @@ class SparrowPipeline:
                 overwrite=self.cfg.allocate.overwrite,
             )
 
-            sp.pl.transcript_density(
+            sp.plot.transcript_density(
                 sdata,
                 img_layer=[
                     self.cleaned_image_name,
@@ -477,7 +477,7 @@ class SparrowPipeline:
 
         log.info("Start scoring genes")
 
-        mg_dict, scoresper_cluster = sp.tb.score_genes(
+        mg_dict, scoresper_cluster = sp.table.score_genes(
             sdata=sdata,
             path_marker_genes=self.cfg.dataset.markers,
             delimiter=self.cfg.annotate.delimiter,
@@ -490,7 +490,7 @@ class SparrowPipeline:
 
         log.info("Scoring genes finished")
 
-        sp.pl.score_genes(
+        sp.plot.score_genes(
             sdata=sdata,
             scoresper_cluster=scoresper_cluster,
             shapes_layer=self.shapes_layer_name,
@@ -509,7 +509,7 @@ class SparrowPipeline:
         """Visualisation step, the sixth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as SpatialData object."""
         # Perform correction for transcripts (and corresponding celltypes) that occur in all cells and are overexpressed
         if "correct_marker_genes_dict" in self.cfg.visualize:
-            sdata = sp.tb.correct_marker_genes(
+            sdata = sp.table.correct_marker_genes(
                 sdata,
                 celltype_correction_dict=self.cfg.visualize.correct_marker_genes_dict,
             )
@@ -519,14 +519,14 @@ class SparrowPipeline:
         colors = self.cfg.visualize.colors if "colors" in self.cfg.visualize else None
 
         # Check cluster cleanliness
-        sdata, color_dict = sp.tb.cluster_cleanliness(
+        sdata, color_dict = sp.table.cluster_cleanliness(
             sdata,
             celltypes=self._celltypes,
             celltype_indexes=celltype_indexes,
             colors=colors,
         )
 
-        sp.pl.cluster_cleanliness(
+        sp.plot.cluster_cleanliness(
             sdata=sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
@@ -542,8 +542,8 @@ class SparrowPipeline:
         # squidpy sometimes fails calculating/plotting nhood enrichement if a too small region is selected, therefore try add a try except.
         try:
             # calculate nhood enrichment
-            sdata = sp.tb.nhood_enrichment(sdata)
-            sp.pl.nhood_enrichment(
+            sdata = sp.table.nhood_enrichment(sdata)
+            sp.plot.nhood_enrichment(
                 sdata,
                 output=self.cfg.paths.nhood,
             )
