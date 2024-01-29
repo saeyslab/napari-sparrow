@@ -33,17 +33,69 @@ log = get_pylogger(__name__)
 
 def apply_labels_layers(
     sdata: SpatialData,
+    func: Callable[..., NDArray | Array],
     labels_layers: List[str] | str,
-    func: Callable[..., NDArray],
-    depth: Tuple[int, ...] | int = 100,
-    chunks: Optional[str | int | Tuple[int, ...]] = "auto",
     output_labels_layer: Optional[str] = None,
     output_shapes_layer: Optional[str] = None,
+    depth: Tuple[int, ...] | int = 100,
+    chunks: str | int | Tuple[int, ...] = "auto",
     scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
     relabel_chunks: bool = True,
     **kwargs: Any,  # keyword arguments to be passed to func
 ):
+    """
+    Apply a specified function to a labels layer in a SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial data object containing the labels layer to be processed.
+    func : Callable[..., NDArray | Array]
+        The Callable to apply to the labels layer.
+    labels_layer : List[str] | str.
+        The labels layer(s) in `sdata` to process.
+    output_labels_layer : Optional[str], default=None.
+        The name of the output labels layer where results will be stored. This must be specified.
+    output_shapes_layer : Optional[str], default=None.
+        The name of the output shapes layer where results will be stored.
+    depth : Tuple[int, ...], default=100.
+        The depth around the boundary of each block to load when the array is split into blocks
+        (for alignment). This ensures that the split isn't causing misalignment along the edges.
+        Default is 100. Please set depth>cell size to avoid chunking effects.
+    chunks : str | Tuple[int, ...] | int, default=None.
+        Specification for rechunking the data before applying the function.
+        If chunks is a Tuple, they should contain desired chunk size for 'y', 'x'.
+    scale_factors
+        Scale factors to apply for multiscale.
+    overwrite : bool, default=False
+        If True, overwrites the output layer if it already exists in `sdata`.
+    relabel_chunks: bool, default=True.
+        Whether to relabel the labels of each chunk after being processed by func. If set to True, a bit shift will be applied, ensuring no collisions.
+    **kwargs : Any
+        Keyword arguments to be passed to func.
+
+    Returns
+    -------
+    SpatialData
+        The `sdata` object with the processed labels layer added to the specified output layer.
+        If `output_shapes_layer` is provided, a shapes layer will be created corresponding to this labels layer.
+
+    Raises
+    ------
+    ValueError
+        - If `output_labels_layer` is not provided.
+        - If `chunks` is a Tuple, and does not match (y,x).
+        - If `depth` is a Tuple, and does not match (y,x).
+        - If a label layer in `labels_layer` can not be found.
+        - If number of blocks in z-dimension is not equal to 1.
+
+    Notes
+    -----
+    This function is designed for processing labels layers stored in a SpatialData object using dask for potential
+    parallelism and out-of-core computation. It takes care of relabeling across chunks, to avoid collisions.
+    """
+
     fn_kwargs = kwargs
 
     labels_layers = (
@@ -51,6 +103,9 @@ def apply_labels_layers(
         if isinstance(labels_layers, Iterable) and not isinstance(labels_layers, str)
         else [labels_layers]
     )
+
+    if output_labels_layer is None:
+        raise ValueError("Please specify a name for the output layer.")
 
     # first do the precondition.
     def _get_layers(
@@ -176,6 +231,8 @@ def _combine_dask_arrays(
         if x_label.ndim == 2:
             _to_squeeze = True
             _labels_arrays.append(x_label[None, ...])
+        else:
+            _labels_arrays.append(x_label)
 
     if isinstance(depth, int):
         depth = {0: 0, 1: depth, 2: depth}

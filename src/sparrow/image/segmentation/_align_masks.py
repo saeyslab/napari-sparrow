@@ -8,13 +8,8 @@ from dask.array import Array
 from numpy.typing import NDArray
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import Translation
 
-from sparrow.image._image import (
-    _add_label_layer,
-    _get_spatial_element,
-    _get_translation,
-)
+from sparrow.image.segmentation._apply import apply_labels_layers
 from sparrow.image.segmentation._utils import (
     _SEG_DTYPE,
     _add_depth_to_chunks_size,
@@ -24,7 +19,6 @@ from sparrow.image.segmentation._utils import (
     _rechunk_overlap,
     _substract_depth_from_chunks_size,
 )
-from sparrow.shape._shape import _add_shapes_layer
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -59,12 +53,12 @@ def align_labels_layers(
         The name of the first labels layer to align.
     labels_layer_2 : str
         The name of the second labels layer to align.
-    depth : Tuple[int, ...], optional
+    depth : Tuple[int, ...], default=100.
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Default is 100. Please set depth>cell size to avoid chunking effects.
-    chunks : Optional[str | int | Tuple[int, ...]], optional
-        The desired chunk size for the Dask computation, or "auto" to allow the function to
+    chunks : Optional[str | int | Tuple[int, int]], default="auto".
+        The desired chunk size for the Dask computation in 'y' and 'x', or "auto" to allow the function to
         choose an optimal chunk size based on the data. Default is "auto".
     output_labels_layer : Optional[str], optional
         The name for the new labels layer generated after alignment. If None and overwrite is False,
@@ -105,65 +99,18 @@ def align_labels_layers(
     --------
     >>> sdata = align_labels_layers(sdata, 'layer_1', 'layer_2', depth=(50, 50), overwrite=True)
     """
-
-    se_1 = _get_spatial_element(sdata, layer=labels_layer_1)
-    se_2 = _get_spatial_element(sdata, layer=labels_layer_2)
-
-    x_label_1 = se_1.data
-    x_label_2 = se_2.data
-
-    assert (
-        x_label_1.shape == x_label_2.shape
-    ), "Only arrays with same shape are currently supported, "
-    f"but labels layer with name {labels_layer_1} has shape {x_label_1.shape}, "
-    f"while labels layer with name {labels_layer_2} has shape {x_label_2.shape}  "
-
-    t1x, t1y = _get_translation(se_1)
-    t2x, t2y = _get_translation(se_2)
-
-    assert (t1x, t1y) == (
-        t2x,
-        t2y,
-    ), f"labels layer 1 with name {labels_layer_1} should "
-    f"have same translation as labels layer 1 with name {labels_layer_2}"
-
-    x_label_aligned = _align_dask_arrays(
-        x_label_1, x_label_2, chunks=chunks, depth=depth
-    )
-
-    if output_labels_layer is None:
-        output_labels_layer = labels_layer_1
-        if overwrite == False:
-            raise ValueError(
-                "output_labels_layer was set to None, but overwrite to False. "
-                f"to allow overwriting labels layer {labels_layer_1}, with aligned result, please set overwrite to True, "
-                "or specify a value for output_labels_layer."
-            )
-
-    translation = Translation([t1x, t1y], axes=("x", "y"))
-
-    sdata = _add_label_layer(
+    sdata = apply_labels_layers(
         sdata,
-        x_label_aligned,
-        output_layer=output_labels_layer,
+        func=_relabel_array_1_to_array_2_per_chunk,
+        labels_layers=[labels_layer_1, labels_layer_2],
+        depth=depth,
         chunks=chunks,
-        transformation=translation,
+        output_labels_layer=output_labels_layer,
+        output_shapes_layer=output_shapes_layer,
         scale_factors=scale_factors,
         overwrite=overwrite,
+        relabel_chunks=False,
     )
-
-    # only calculate shapes layer if it is specified
-    if output_shapes_layer is not None:
-        se_labels = _get_spatial_element(sdata, layer=output_labels_layer)
-
-        # convert the labels to polygons and add them as shapes layer to sdata
-        sdata = _add_shapes_layer(
-            sdata,
-            input=se_labels.data,
-            output_layer=output_shapes_layer,
-            transformation=translation,
-            overwrite=overwrite,
-        )
 
     return sdata
 
@@ -222,7 +169,7 @@ def _align_dask_arrays(
     output_chunks = _add_depth_to_chunks_size(x_label_1.chunks, depth)
 
     x_labels = da.map_overlap(
-        lambda m, f: _relabel_nuclei_with_cells_per_chunk(m, f),
+        lambda m, f: _relabel_array_1_to_array_2_per_chunk(m, f),
         x_label_1,
         x_label_2,
         dtype=_SEG_DTYPE,
@@ -266,38 +213,36 @@ def _align_dask_arrays(
     return x_labels
 
 
-def _relabel_nuclei_with_cells_per_chunk(
-    masks_nuclear: NDArray, masks_whole_cell: NDArray
+def _relabel_array_1_to_array_2_per_chunk(
+    array_1: NDArray, array_2: NDArray
 ) -> NDArray:
-    nuclear_labels = np.unique(masks_nuclear)
-    cell_labels = np.unique(masks_whole_cell)
+    assert array_1.shape == array_2.shape
 
-    # Create a mapping array that holds the new labels for the nuclear mask.
-    # The index of the array represents the original label, and the value at that index is the new label.
-    mapping = np.zeros((nuclear_labels.max() + 1,), dtype=int)
+    new_array = np.zeros((array_1.shape), dtype=int)
 
-    # only non-zero labels, no background
-    nuclear_labels = nuclear_labels[nuclear_labels != 0]
-    cell_labels = cell_labels[cell_labels != 0]
+    # Iterate through each unique label in array_1
+    for label in np.unique(array_1):
+        if label == 0:
+            continue  # Skip label 0 as it represents the background
 
-    # Now, we perform an operation to identify which cell each nucleus belongs to.
-    # This creates a 2D array where each row corresponds to a nuclear label, and each column corresponds to a cell label.
-    # The value is the count of the overlap area between that nucleus and cell.
-    overlap_matrix = np.zeros(
-        (nuclear_labels.max() + 1, cell_labels.max() + 1), dtype=int
-    )
-    np.add.at(overlap_matrix, (masks_nuclear.ravel(), masks_whole_cell.ravel()), 1)
+        positions = np.where(array_1 == label)
 
-    # For each nucleus, identify the cell with which it has the maximum overlap.
-    # If a nucleus does not overlap with any cell, its label will be set to 0.
-    for nuc_label in nuclear_labels:
-        cell_with_max_overlap = np.argmax(overlap_matrix[nuc_label, :])
-        if overlap_matrix[nuc_label, cell_with_max_overlap] == 0:
-            cell_with_max_overlap = 0  # No overlap, set to 0
+        overlapping_labels = array_2[positions]
 
-        mapping[nuc_label] = cell_with_max_overlap
+        label_areas = {
+            lbl: np.sum(overlapping_labels == lbl)
+            for lbl in np.unique(overlapping_labels)
+        }
 
-    # Apply the mapping to the nuclear mask.
-    relabeled_nuclei = mapping[masks_nuclear]
+        # Remove the area count for label 0 (background)
+        label_areas.pop(0, None)
 
-    return relabeled_nuclei
+        # Find the label with the maximum area
+        if label_areas:
+            max_label = max(label_areas, key=label_areas.get)
+        else:
+            max_label = 0  # Set to 0 if there's no overlap
+
+        new_array[positions] = max_label
+
+    return new_array
