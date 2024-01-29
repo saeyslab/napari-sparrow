@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import dask.array as da
-import numpy as np
 from dask.array import Array
 from numpy.typing import NDArray
 from skimage.segmentation import expand_labels
@@ -35,11 +34,11 @@ def expand_labels_layer(
     sdata: SpatialData,
     labels_layer: str,
     distance: int = 10,
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
-    output_labels_layer: Optional[str] = None,
-    output_shapes_layer: Optional[str] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
+    output_labels_layer: str | None = None,
+    output_shapes_layer: str | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ):
     """
@@ -103,20 +102,17 @@ def expand_labels_layer(
             overwrite=True,
         )
     """
-
     se = _get_spatial_element(sdata, layer=labels_layer)
 
     x_label = se.data
 
     t1x, t1y = _get_translation(se)
 
-    x_label_expanded = _expand_dask_array(
-        x_label, chunks=chunks, depth=depth, distance=distance
-    )
+    x_label_expanded = _expand_dask_array(x_label, chunks=chunks, depth=depth, distance=distance)
 
     if output_labels_layer is None:
         output_labels_layer = labels_layer
-        if overwrite == False:
+        if overwrite is False:
             raise ValueError(
                 "output_labels_layer was set to None, but overwrite to False. "
                 f"to allow overwriting labels layer {labels_layer}, with aligned result, please set overwrite to True, "
@@ -169,18 +165,14 @@ def _expand_dask_array(
     if isinstance(depth, int):
         depth = {0: 0, 1: depth, 2: depth}
     else:
-        assert (
-            len(depth) == x_label.ndim - 1
-        ), "Please (only) provide depth for ( 'y', 'x')."
+        assert len(depth) == x_label.ndim - 1, "Please (only) provide depth for ( 'y', 'x')."
         # set depth for every dimension
         depth2 = {0: 0, 1: depth[0], 2: depth[1]}
         depth = depth2
 
     if chunks is not None:
         if not isinstance(chunks, (int, str)):
-            assert (
-                len(chunks) == x_label.ndim - 1
-            ), "Please (only) provide chunks for ( 'y', 'x')."
+            assert len(chunks) == x_label.ndim - 1, "Please (only) provide chunks for ( 'y', 'x')."
             chunks = (x_label.shape[0], chunks[0], chunks[1])
 
     _check_boundary(boundary)

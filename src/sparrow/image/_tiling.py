@@ -68,7 +68,6 @@ def tiling_correction(
     to stitch tiles together. It manages the pre- and post-processing of data, translation of coordinates,
     and addition of corrected image results back to the `sdata` object.
     """
-
     if img_layer is None:
         img_layer = [*sdata.images][-1]
 
@@ -131,10 +130,7 @@ def tiling_correction(
             tiles_corrected = basic.transform(tiles)
 
         tiles_corrected = np.array(
-            [
-                tiles[number] if black[number] == 1 else tile
-                for number, tile in enumerate(tiles_corrected)
-            ]
+            [tiles[number] if black[number] == 1 else tile for number, tile in enumerate(tiles_corrected)]
         )
 
         # Stitch the tiles back together

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 from numpy.typing import NDArray
 from pandas import DataFrame
@@ -18,7 +16,7 @@ log = get_pylogger(__name__)
 
 def add_regionprop_features(
     sdata: SpatialData,
-    labels_layer: Optional[str] = None,
+    labels_layer: str | None = None,
     append_labels_layer_name: bool = True,
 ):
     """
@@ -57,7 +55,6 @@ def add_regionprop_features(
     - Computed properties are joined with the existing observations within the SpatialData's table, expanding the
       dataset's feature set.
     """
-
     if labels_layer is None:
         labels_layer = [*sdata.labels][-1]
         log.warning(
@@ -163,9 +160,7 @@ def _centroid_dif(prop: RegionProperties) -> float:
 
     convex_image = prop.convex_image
     convex_M = moments(convex_image)
-    convex_centroid = np.array(
-        [convex_M[1, 0] / convex_M[0, 0], convex_M[0, 1] / convex_M[0, 0]]
-    )
+    convex_centroid = np.array([convex_M[1, 0] / convex_M[0, 0], convex_M[0, 1] / convex_M[0, 0]])
 
     centroid_dist = np.linalg.norm(cell_centroid - convex_centroid) / np.sqrt(prop.area)
 

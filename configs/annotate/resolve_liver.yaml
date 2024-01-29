@@ -1,5 +1,5 @@
 defaults:
-- default
+  - default
 
 repl_columns:
   Tot_Score_: ""

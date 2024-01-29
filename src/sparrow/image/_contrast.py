@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Iterable
 
 import cv2
-from numpy.typing import NDArray
 import numpy as np
+from numpy.typing import NDArray
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
@@ -14,13 +14,13 @@ from sparrow.image._image import _get_spatial_element
 
 def enhance_contrast(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
-    contrast_clip: float | List[float] = 3.5,
-    chunks: Optional[str | Tuple[int, ...] | int] = 10000,
-    depth: Tuple[int, ...] | Dict[int, int] | int = 3000,
+    img_layer: str | None = None,
+    contrast_clip: float | list[float] = 3.5,
+    chunks: str | tuple[int, ...] | int | None = 10000,
+    depth: tuple[int, ...] | dict[int, int] | int = 3000,
     output_layer: str = "clahe",
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -63,7 +63,7 @@ def enhance_contrast(
         An updated `sdata` object with the contrast enhanced image added as a new layer.
 
     Raises
-    -------
+    ------
     ValueError
         If the dimensions in `img_layer` of `sdata` is not equal to (c,(z),y,x)
 
@@ -87,13 +87,9 @@ def enhance_contrast(
             if image.shape[0] == 1 and image.shape[1] == 1:
                 image = np.squeeze(image, axis=(0, 1))
             else:
-                raise ValueError(
-                    "_apply_clahe only accepts c and z dimension equal to 1."
-                )
+                raise ValueError("_apply_clahe only accepts c and z dimension equal to 1.")
         else:
-            raise ValueError(
-                "Please provide numpy array containing c,(z),y and x dimension."
-            )
+            raise ValueError("Please provide numpy array containing c,(z),y and x dimension.")
 
         clahe = cv2.createCLAHE(clipLimit=contrast_clip, tileGridSize=(8, 8))
         image = clahe.apply(image)
@@ -108,13 +104,10 @@ def enhance_contrast(
     se = _get_spatial_element(sdata, img_layer)
 
     if isinstance(contrast_clip, Iterable):
-        assert len(contrast_clip) == len(
-            se.c.data
+        assert (
+            len(contrast_clip) == len(se.c.data)
         ), f"If 'contrast_clip' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
-        fn_kwargs = {
-            key: {"contrast_clip": value}
-            for (key, value) in zip(se.c.data, contrast_clip)
-        }
+        fn_kwargs = {key: {"contrast_clip": value} for (key, value) in zip(se.c.data, contrast_clip)}
     else:
         fn_kwargs = {"contrast_clip": contrast_clip}
 
@@ -125,9 +118,7 @@ def enhance_contrast(
         if isinstance(depth, int):
             depth = (0, depth, depth)
     else:
-        raise ValueError(
-            f"Dimensions for provided img_layer are {se.dims}. We only support (c, (z), y, x)."
-        )
+        raise ValueError(f"Dimensions for provided img_layer are {se.dims}. We only support (c, (z), y, x).")
 
     sdata = apply(
         sdata,

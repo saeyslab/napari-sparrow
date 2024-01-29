@@ -1,15 +1,13 @@
 """This file tests the napari widgets and should be used for development purposes."""
-import pytest
 
+import pytest
 import tifffile as tiff
 from hydra.core.hydra_config import HydraConfig
 
 
 @pytest.mark.skip
 def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
-    """
-    Integration test for sparrow plugin in napari
-    """
+    """Integration test for sparrow plugin in napari"""
     from sparrow import utils as utils
     from sparrow.widgets import (
         allocate_widget,
@@ -73,7 +71,6 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     assert f"Added '{utils.ALLOCATION}' layer" in caplog.text
 
     if cfg_pipeline.dataset.markers is not None:
-
         # Start annotate widget
         _annotate_widget = annotate_widget()
 
@@ -89,9 +86,7 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
 def test_load_widget(make_napari_viewer, cfg_pipeline, caplog):
     """Test if the load works."""
     from sparrow import utils as utils
-    from sparrow.widgets import (
-        load_widget,
-    )
+    from sparrow.widgets import load_widget
 
     HydraConfig().set_config(cfg_pipeline)
 
@@ -114,11 +109,8 @@ def test_load_widget(make_napari_viewer, cfg_pipeline, caplog):
 @pytest.mark.skip
 def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
     """Tests if the clean widget works."""
-
     from sparrow import utils as utils
-    from sparrow.widgets import (
-        clean_widget,
-    )
+    from sparrow.widgets import clean_widget
 
     HydraConfig().set_config(cfg_pipeline)
 
@@ -145,6 +137,7 @@ def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
 
 def _run_event_loop_until_worker_finishes(worker):
     from PyQt5.QtCore import QEventLoop
+
     loop = QEventLoop()
     worker.finished.connect(loop.quit)
     loop.exec_()

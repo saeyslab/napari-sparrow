@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional,Tuple, List
 from pathlib import Path
+from typing import Any
 
 from spatialdata import SpatialData
 
@@ -12,10 +12,10 @@ def segment(
     sdata: SpatialData,
     img_layer: str = "raw_image",
     shapes_layer: str = "segmentation_mask_boundaries",
-    channel: Optional[ int | List[ int] ] = None,
-    crd:Optional[Tuple[int,int,int,int]]=None,
-    output:Optional[ str | Path ]=None,
-    **kwargs: Dict[str, Any],
+    channel: int | list[int] | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    output: str | Path | None = None,
+    **kwargs: dict[str, Any],
 ):
     """
     Visualize obtained shapes layer (i.e. segmentation mask boundaries) from a SpatialData object.
@@ -48,7 +48,7 @@ def segment(
     Examples
     --------
     >>> sdata = SpatialData(...)
-    >>> segment(sdata, img_layer="raw_img", crd=(2000,4000,2000,4000))
+    >>> segment(sdata, img_layer="raw_img", crd=(2000, 4000, 2000, 4000))
     """
     plot_shapes(
         sdata,

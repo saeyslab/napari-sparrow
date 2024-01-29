@@ -5,7 +5,6 @@ from sparrow.image.segmentation.segmentation_models._cellpose import _cellpose
 
 
 def test_segment(sdata_multi_c: SpatialData):
-
     sdata_multi_c = segment(
         sdata_multi_c,
         img_layer="combine",
@@ -32,7 +31,6 @@ def test_segment(sdata_multi_c: SpatialData):
 
 
 def test_segment_3D(sdata_multi_c: SpatialData):
-
     sdata_multi_c = segment(
         sdata_multi_c,
         img_layer="combine_z",

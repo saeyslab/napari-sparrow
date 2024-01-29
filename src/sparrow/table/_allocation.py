@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import itertools
 from collections import namedtuple
-from typing import Optional, Tuple
 
 import dask
 import dask.array as da
@@ -25,10 +24,10 @@ log = get_pylogger(__name__)
 def allocate(
     sdata: SpatialData,
     labels_layer: str = "segmentation_mask",
-    shapes_layer: Optional[str] = "segmentation_mask_boundaries",
+    shapes_layer: str | None = "segmentation_mask_boundaries",
     points_layer: str = "transcripts",
     allocate_from_shapes_layer: bool = True,
-    chunks: Optional[str | Tuple[int, ...] | int] = 10000,
+    chunks: str | tuple[int, ...] | int | None = 10000,
 ) -> SpatialData:
     """
     Allocates transcripts to cells via provided shapes_layer and points_layer and returns updated SpatialData
@@ -147,12 +146,8 @@ def allocate(
         else:
             z_coords = 0
 
-        y_coords = filtered_partition["y"].values.astype(int) - (
-            int(coords.y0) + y_start
-        )
-        x_coords = filtered_partition["x"].values.astype(int) - (
-            int(coords.x0) + x_start
-        )
+        y_coords = filtered_partition["y"].values.astype(int) - (int(coords.y0) + y_start)
+        x_coords = filtered_partition["x"].values.astype(int) - (int(coords.x0) + x_start)
 
         filtered_partition.loc[:, "cells"] = chunk[
             z_coords,
@@ -165,11 +160,7 @@ def allocate(
     # Get the number of partitions in the Dask DataFrame
     num_partitions = ddf.npartitions
 
-    chunk_coords = list(
-        itertools.product(
-            *[range(0, s, cs) for s, cs in zip(masks.shape, masks.chunksize)]
-        )
-    )
+    chunk_coords = list(itertools.product(*[range(0, s, cs) for s, cs in zip(masks.shape, masks.chunksize)]))
 
     chunks = masks.to_delayed().flatten()
 
@@ -178,8 +169,7 @@ def allocate(
 
     for _chunk, _chunk_coord in zip(chunks, chunk_coords):
         processed_partitions = processed_partitions + [
-            dask.delayed(process_partition)(i, _chunk, _chunk_coord)
-            for i in range(num_partitions)
+            dask.delayed(process_partition)(i, _chunk, _chunk_coord) for i in range(num_partitions)
         ]
 
     # Combine the processed partitions into a single DataFrame
@@ -192,9 +182,7 @@ def allocate(
 
     cell_counts = combined_partitions.groupby(["cells", "gene"]).size()
 
-    coordinates, cell_counts = dask.compute(
-        coordinates, cell_counts, scheduler="threads"
-    )
+    coordinates, cell_counts = dask.compute(coordinates, cell_counts, scheduler="threads")
 
     cell_counts = cell_counts.unstack(fill_value=0)
     # convert dtype of columns to "object", otherwise error writing to zarr.
@@ -221,9 +209,7 @@ def allocate(
     if sdata.table:
         del sdata.table
 
-    sdata.table = spatialdata.models.TableModel.parse(
-        adata, region_key="region", region=1, instance_key="instance"
-    )
+    sdata.table = spatialdata.models.TableModel.parse(adata, region_key="region", region=1, instance_key="instance")
 
     indexes_to_keep = sdata.table.obs.index.values.astype(int)
     sdata = _filter_shapes_layer(

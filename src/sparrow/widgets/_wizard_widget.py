@@ -1,7 +1,4 @@
-"""
-Napari widget for managing the other widgets and giving a general overview of the workflow.
-"""
-
+"""Napari widget for managing the other widgets and giving a general overview of the workflow."""
 
 from magicgui.widgets import ComboBox, Container, Label, TextEdit
 from qtpy.QtGui import QPixmap
@@ -170,10 +167,7 @@ def get_choices():
 
 
 def wizard_widget() -> None:
-    """
-    Napari widget for managing the other widgets and giving a general overview of the workflow.
-    """
-
+    """Napari widget for managing the other widgets and giving a general overview of the workflow."""
     # Set DaMBi Icon
     icon = Label(name="icon", value="Made by DaMBi")
     pixmap = QPixmap("./src/sparrow/widgets/dambi-white.png")

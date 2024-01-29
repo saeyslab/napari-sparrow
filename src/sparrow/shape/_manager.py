@@ -31,9 +31,7 @@ class ShapesLayerManager:
         transformation: Union[Translation, Identity] = None,
         overwrite: bool = False,
     ) -> SpatialData:
-        if transformation is not None and not isinstance(
-            transformation, (Translation, Identity)
-        ):
+        if transformation is not None and not isinstance(transformation, (Translation, Identity)):
             raise ValueError(
                 f"Currently only transformations of type Translation are supported, "
                 f"while provided transformation is of type {type(transformation)}"
@@ -63,7 +61,7 @@ class ShapesLayerManager:
     ) -> SpatialData:
         if len(indexes_to_keep) == 0:
             log.warning(
-                f"Length of the 'indexes_to_keep' parameter is 0. "
+                "Length of the 'indexes_to_keep' parameter is 0. "
                 "This would remove all shapes from sdata`. Skipping filtering step."
             )
             return sdata
@@ -81,9 +79,7 @@ class ShapesLayerManager:
                 # a polygons layer containing polygons filtered out in a previous step
                 continue
 
-            output_filtered_shapes_layer = (
-                f"{prefix_filtered_shapes_layer}_{_shapes_layer}"
-            )
+            output_filtered_shapes_layer = f"{prefix_filtered_shapes_layer}_{_shapes_layer}"
 
             if sum(~bool_to_keep) == 0:
                 # this is case where there are no polygons filtered out, so no
@@ -96,9 +92,7 @@ class ShapesLayerManager:
 
                 continue
 
-            filtered_polygons = self.retrieve_data_from_sdata(
-                sdata, name=_shapes_layer
-            )[~bool_to_keep]
+            filtered_polygons = self.retrieve_data_from_sdata(sdata, name=_shapes_layer)[~bool_to_keep]
 
             log.info(
                 f"Filtering {len( set(filtered_polygons.index ) )} cells from shapes layer '{_shapes_layer}'. "
@@ -112,9 +106,7 @@ class ShapesLayerManager:
                 overwrite=True,
             )
 
-            updated_polygons = self.retrieve_data_from_sdata(sdata, name=_shapes_layer)[
-                bool_to_keep
-            ]
+            updated_polygons = self.retrieve_data_from_sdata(sdata, name=_shapes_layer)[bool_to_keep]
 
             self.add_to_sdata(
                 sdata,
@@ -137,9 +129,7 @@ class ShapesLayerManager:
             for z_slice in range(input.shape[0]):
                 polygons = _mask_image_to_polygons(input[z_slice], z_slice=z_slice)
                 all_polygons.append(polygons)
-            polygons = geopandas.GeoDataFrame(
-                pd.concat(all_polygons, ignore_index=False)
-            )
+            polygons = geopandas.GeoDataFrame(pd.concat(all_polygons, ignore_index=False))
             return polygons
         elif dimension == 2:
             return _mask_image_to_polygons(input)
@@ -170,13 +160,9 @@ class ShapesLayerManager:
         elif not any(has_z):
             return 2
         else:
-            raise ValueError(
-                "All geometries should either be 2D or 3D. Mixed dimensions found."
-            )
+            raise ValueError("All geometries should either be 2D or 3D. Mixed dimensions found.")
 
-    def set_transformation(
-        self, polygons: GeoDataFrame, transformation: Union[Translation, Identity]
-    ) -> GeoDataFrame:
+    def set_transformation(self, polygons: GeoDataFrame, transformation: Union[Translation, Identity]) -> GeoDataFrame:
         x_translation, y_translation = _get_translation_values(transformation)
 
         polygons["geometry"] = polygons["geometry"].apply(
@@ -275,9 +261,7 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
         ):
             if z_slice is not None:
                 coordinates = shape["coordinates"]
-                shape["coordinates"] = [
-                    [(*item, z_slice) for item in coord] for coord in coordinates
-                ]
+                shape["coordinates"] = [[(*item, z_slice) for item in coord] for coord in coordinates]
             all_polygons.append(shapely.geometry.shape(shape))
             all_values.append(int(value))
 
@@ -289,15 +273,10 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
     # rechunk, otherwise chunk_coords could potentially not match
     mask = mask.rechunk(mask.chunksize)
 
-    chunk_coords = list(
-        itertools.product(
-            *[range(0, s, cs) for s, cs in zip(mask.shape, mask.chunksize)]
-        )
-    )
+    chunk_coords = list(itertools.product(*[range(0, s, cs) for s, cs in zip(mask.shape, mask.chunksize)]))
 
     delayed_results = [
-        extract_polygons(chunk, coord)
-        for chunk, coord in zip(mask.to_delayed().flatten(), chunk_coords)
+        extract_polygons(chunk, coord) for chunk, coord in zip(mask.to_delayed().flatten(), chunk_coords)
     ]
     # Compute the results
     results = dask.compute(*delayed_results, scheduler="threads")

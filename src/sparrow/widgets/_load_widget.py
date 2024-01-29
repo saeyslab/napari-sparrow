@@ -7,7 +7,7 @@ will be more accurate.
 
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, List
+from typing import Any, Callable, Dict, Optional
 
 import napari
 import napari.layers
@@ -16,15 +16,13 @@ import napari.utils
 import numpy as np
 from hydra import compose, initialize_config_dir
 from magicgui import magic_factory
+from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
 from pkg_resources import resource_filename
 from spatialdata import SpatialData
 
-from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
-
 from sparrow import utils
-
 from sparrow.image._image import _get_translation
 from sparrow.pipeline import SparrowPipeline
 
@@ -35,23 +33,17 @@ def loadImage(
     pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the loading step."""
-
     sdata = pipeline.load()
 
     return sdata
 
 
-@thread_worker(
-    progress=True
-)  # TODO: show string with description of current step in the napari progress bar
+@thread_worker(progress=True)  # TODO: show string with description of current step in the napari progress bar
 def _load_worker(
     method: Callable,
     fn_kwargs: Dict[str, Any],
 ) -> list[np.ndarray]:
-    """
-    load image in a thread worker
-    """
-
+    """Load image in a thread worker"""
     res = method(**fn_kwargs)
 
     return res
@@ -75,7 +67,6 @@ def load_widget(
     y_max: Optional[str] = "",
 ):
     """This function represents the load widget and is called by the wizard to create the widget."""
-
     # get the default values for the configs
     abs_config_dir = resource_filename("sparrow", "configs")
 
@@ -83,8 +74,8 @@ def load_widget(
         cfg = compose(config_name="pipeline")
 
     cfg.paths.output_dir = str(output_dir)
-    # set default scale factors to this value. 
-    cfg.dataset.scale_factors = [ 2,2,2,2 ]
+    # set default scale factors to this value.
+    cfg.dataset.scale_factors = [2, 2, 2, 2]
 
     if str(path_zarr).endswith(".zarr"):
         cfg.paths.sdata = str(path_zarr)
@@ -93,9 +84,7 @@ def load_widget(
         cfg.paths.sdata = os.path.join(cfg.paths.output_dir, "sdata.zarr")
         cfg.dataset.image = path_image
     else:
-        raise ValueError(
-            "Please provide either a path to a zarr store 'path_zarr', or an image 'path_image'"
-        )
+        raise ValueError("Please provide either a path to a zarr store 'path_zarr', or an image 'path_image'")
 
     crd = [x_min, x_max, y_min, y_max]
     crd = [None if val == "" else int(val) for val in crd]
@@ -110,7 +99,6 @@ def load_widget(
 
     def add_image(sdata: SpatialData, pipeline: SparrowPipeline, layer_name: str):
         """Add the image to the napari viewer, overwrite if it already exists."""
-
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]

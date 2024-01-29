@@ -4,7 +4,7 @@ import os
 import shutil
 import uuid
 from abc import ABC, abstractmethod
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any
 
 import spatialdata
 from dask.array import Array
@@ -25,18 +25,16 @@ class LayerManager(ABC):
         sdata: SpatialData,
         arr: Array,
         output_layer: str,
-        dims: Optional[Tuple[str, ...]] = None,
-        chunks: Optional[str | Tuple[int, ...] | int] = None,
-        transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
-        scale_factors: Optional[ScaleFactors_t] = None,
+        dims: tuple[str, ...] | None = None,
+        chunks: str | tuple[int, ...] | int | None = None,
+        transformation: BaseTransformation | dict[str, BaseTransformation] = None,
+        scale_factors: ScaleFactors_t | None = None,
         overwrite: bool = False,
         **kwargs: Any,  # kwargs passed to create_spatial_element
     ) -> SpatialData:
         chunks = chunks or arr.chunksize
         if dims is None:
-            log.warning(
-                "No dims parameter specified. Assuming order of dimension of provided array is (c, (z), y, x)"
-            )
+            log.warning("No dims parameter specified. Assuming order of dimension of provided array is (c, (z), y, x)")
             dims = self.get_dims(arr)
 
         intermediate_output_layer = None
@@ -53,9 +51,7 @@ class LayerManager(ABC):
                     set_transformation(spatial_element, transformation)
 
                 intermediate_output_layer = f"{uuid.uuid4()}_{output_layer}"
-                log.info(
-                    f"Writing intermediate non-multiscale results to layer '{intermediate_output_layer}'"
-                )
+                log.info(f"Writing intermediate non-multiscale results to layer '{intermediate_output_layer}'")
                 sdata = self.add_to_sdata(
                     sdata,
                     output_layer=intermediate_output_layer,
@@ -96,9 +92,7 @@ class LayerManager(ABC):
                 f"Removing intermediate output layer '{intermediate_output_layer}' from .zarr store at path {sdata.path}."
             )
             if os.path.isdir(sdata.path) and sdata.path.endswith(".zarr"):
-                location = sdata._locate_spatial_element(
-                    sdata[intermediate_output_layer]
-                )
+                location = sdata._locate_spatial_element(sdata[intermediate_output_layer])
 
                 shutil.rmtree(os.path.join(sdata.path, location[1], location[0]))
                 sdata = self.remove_from_sdata(sdata, intermediate_output_layer)
@@ -109,15 +103,15 @@ class LayerManager(ABC):
     def create_spatial_element(
         self,
         arr: Array,
-        dims: Tuple[int, ...],
-        scale_factors: Optional[ScaleFactors_t] = None,
-        chunks: Optional[str | Tuple[int, ...] | int] = None,
+        dims: tuple[int, ...],
+        scale_factors: ScaleFactors_t | None = None,
+        chunks: str | tuple[int, ...] | int | None = None,
         **kwargs: Any,
-    ) -> Union[SpatialImage, MultiscaleSpatialImage]:
+    ) -> SpatialImage | MultiscaleSpatialImage:
         pass
 
     @abstractmethod
-    def get_dims(self) -> Tuple[str, ...]:
+    def get_dims(self) -> tuple[str, ...]:
         pass
 
     @abstractmethod
@@ -125,7 +119,7 @@ class LayerManager(ABC):
         self,
         sdata: SpatialData,
         output_layer: str,
-        spatial_element: Union[SpatialImage, MultiscaleSpatialImage],
+        spatial_element: SpatialImage | MultiscaleSpatialImage,
         overwrite: bool = False,
     ) -> SpatialData:
         pass
@@ -134,9 +128,7 @@ class LayerManager(ABC):
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
         pass
 
-    def remove_intermediate_layer(
-        self, sdata: SpatialData, intermediate_output_layer: str
-    ) -> SpatialData:
+    def remove_intermediate_layer(self, sdata: SpatialData, intermediate_output_layer: str) -> SpatialData:
         log.info(
             f"Removing intermediate output layer '{intermediate_output_layer}' from .zarr store at path {sdata.path}."
         )
@@ -154,11 +146,11 @@ class ImageLayerManager(LayerManager):
     def create_spatial_element(
         self,
         arr: Array,
-        dims: Tuple[str, str, str],
-        scale_factors: Optional[ScaleFactors_t] = None,
-        chunks: Optional[str | Tuple[int, int, int] | int] = None,
-        c_coords: Optional[List[str]] = None,
-    ) -> Union[SpatialImage, MultiscaleSpatialImage]:
+        dims: tuple[str, str, str],
+        scale_factors: ScaleFactors_t | None = None,
+        chunks: str | tuple[int, int, int] | int | None = None,
+        c_coords: list[str] | None = None,
+    ) -> SpatialImage | MultiscaleSpatialImage:
         if len(dims) == 3:
             return spatialdata.models.Image2DModel.parse(
                 arr,
@@ -181,21 +173,19 @@ class ImageLayerManager(LayerManager):
                 "please provide dims parameter that only contains c, (z), y, and x."
             )
 
-    def get_dims(self, arr) -> Tuple[str, ...]:
+    def get_dims(self, arr) -> tuple[str, ...]:
         if len(arr.shape) == 3:
             return ("c", "y", "x")
         elif len(arr.shape) == 4:
             return ("c", "z", "y", "x")
         else:
-            raise ValueError(
-                "Only 2D and 3D images (c, (z), y, x) are currently supported."
-            )
+            raise ValueError("Only 2D and 3D images (c, (z), y, x) are currently supported.")
 
     def add_to_sdata(
         self,
         sdata: SpatialData,
         output_layer: str,
-        spatial_element: Union[SpatialImage, MultiscaleSpatialImage],
+        spatial_element: SpatialImage | MultiscaleSpatialImage,
         overwrite: bool = False,
     ) -> SpatialData:
         sdata.add_image(name=output_layer, image=spatial_element, overwrite=overwrite)
@@ -213,10 +203,10 @@ class LabelLayerManager(LayerManager):
     def create_spatial_element(
         self,
         arr: Array,
-        dims: Tuple[str, str],
-        scale_factors: Optional[ScaleFactors_t] = None,
-        chunks: Optional[str | Tuple[int, int] | int] = None,
-    ) -> Union[SpatialImage, MultiscaleSpatialImage]:
+        dims: tuple[str, str],
+        scale_factors: ScaleFactors_t | None = None,
+        chunks: str | tuple[int, int] | int | None = None,
+    ) -> SpatialImage | MultiscaleSpatialImage:
         if len(dims) == 2:
             return spatialdata.models.Labels2DModel.parse(
                 arr,
@@ -237,21 +227,19 @@ class LabelLayerManager(LayerManager):
                 "please provide dims parameter that only contains (z), y and x."
             )
 
-    def get_dims(self, arr) -> Tuple[str, str]:
+    def get_dims(self, arr) -> tuple[str, str]:
         if len(arr.shape) == 2:
             return ("y", "x")
         elif len(arr.shape) == 3:
             return ("z", "y", "x")
         else:
-            raise ValueError(
-                "Only 2D and 3D labels layers ( (z), y, x) are currently supported."
-            )
+            raise ValueError("Only 2D and 3D labels layers ( (z), y, x) are currently supported.")
 
     def add_to_sdata(
         self,
         sdata: SpatialData,
         output_layer: str,
-        spatial_element: Union[SpatialImage, MultiscaleSpatialImage],
+        spatial_element: SpatialImage | MultiscaleSpatialImage,
         overwrite: bool = False,
     ) -> SpatialData:
         sdata.add_labels(name=output_layer, labels=spatial_element, overwrite=overwrite)

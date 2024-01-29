@@ -1,13 +1,13 @@
-""" This file contains the six pipeline steps that are used by the single pipeline.
-Some steps consist of multiple substeps"""
+"""This file contains the six pipeline steps that are used by the single pipeline.
+Some steps consist of multiple substeps
+"""
 
 import glob
 import os
 import warnings
 
 from omegaconf import DictConfig, ListConfig
-from spatialdata import SpatialData
-from spatialdata import read_zarr
+from spatialdata import SpatialData, read_zarr
 
 import sparrow as sp
 
@@ -65,16 +65,13 @@ class SparrowPipeline:
 
     def load(self) -> SpatialData:
         """Loading step, the first step of the pipeline, performs creation of spatial data object."""
-
         # cast to list if cfg.dataset.image is a ListConfig object (i.e. for multiple channels)
         if isinstance(self.cfg.dataset.image, ListConfig):
             filename_pattern = list(self.cfg.dataset.image)
         else:
             filename_pattern = str(self.cfg.dataset.image)
 
-        if not isinstance(filename_pattern, list) and filename_pattern.endswith(
-            ".zarr"
-        ):
+        if not isinstance(filename_pattern, list) and filename_pattern.endswith(".zarr"):
             sdata = read_zarr(filename_pattern)
             if isinstance(sdata, SpatialData):
                 img_layers = [*sdata.images]
@@ -87,12 +84,10 @@ class SparrowPipeline:
                 )
                 if self.cfg.dataset.image != self.cfg.paths.sdata:
                     # changing backing directory
-                    sdata.write( self.cfg.paths.sdata )
+                    sdata.write(self.cfg.paths.sdata)
                 return sdata
             else:
-                raise ValueError(
-                    "Currently only zarr's of type SpatialData are supported."
-                )
+                raise ValueError("Currently only zarr's of type SpatialData are supported.")
 
         else:
             log.info("Creating sdata.")
@@ -111,7 +106,6 @@ class SparrowPipeline:
 
     def clean(self, sdata: SpatialData) -> SpatialData:
         """Cleaning step, the second step of the pipeline, performs tilingCorrection and preprocessing of the image to improve image quality."""
-
         sp.pl.plot_image(
             sdata=sdata,
             output=os.path.join(self.cfg.paths.output_dir, "original"),
@@ -130,9 +124,7 @@ class SparrowPipeline:
             sdata, flatfields = sp.im.tiling_correction(
                 sdata=sdata,
                 img_layer=self.cleaned_image_name,
-                crd=self.cfg.clean.crop_param
-                if self.cfg.clean.crop_param is not None
-                else None,
+                crd=(self.cfg.clean.crop_param if self.cfg.clean.crop_param is not None else None),
                 scale_factors=self.cfg.dataset.scale_factors,
                 tile_size=self.cfg.clean.tile_size,
                 output_layer=output_layer,
@@ -145,15 +137,11 @@ class SparrowPipeline:
 
             # Write plot to given path if output is enabled
             if "tiling_correction" in self.cfg.paths:
-                log.info(
-                    f"Writing tiling correction plot to {self.cfg.paths.tiling_correction}"
-                )
+                log.info(f"Writing tiling correction plot to {self.cfg.paths.tiling_correction}")
                 sp.pl.tiling_correction(
                     sdata=sdata,
                     img_layer=[self.loaded_image_name, self.cleaned_image_name],
-                    crd=self.cfg.clean.small_size_vis
-                    if self.cfg.clean.small_size_vis is not None
-                    else None,
+                    crd=(self.cfg.clean.small_size_vis if self.cfg.clean.small_size_vis is not None else None),
                     output=self.cfg.paths.tiling_correction,
                 )
                 for i, flatfield in enumerate(flatfields):
@@ -181,12 +169,12 @@ class SparrowPipeline:
             sdata = sp.im.min_max_filtering(
                 sdata=sdata,
                 img_layer=self.cleaned_image_name,
-                crd=self.cfg.clean.crop_param
-                if self.cfg.clean.crop_param is not None
-                else None,
-                size_min_max_filter=list(self.cfg.clean.size_min_max_filter)
-                if isinstance(self.cfg.clean.size_min_max_filter, ListConfig)
-                else self.cfg.clean.size_min_max_filter,
+                crd=(self.cfg.clean.crop_param if self.cfg.clean.crop_param is not None else None),
+                size_min_max_filter=(
+                    list(self.cfg.clean.size_min_max_filter)
+                    if isinstance(self.cfg.clean.size_min_max_filter, ListConfig)
+                    else self.cfg.clean.size_min_max_filter
+                ),
                 scale_factors=self.cfg.dataset.scale_factors,
                 output_layer=output_layer,
                 overwrite=self.cfg.clean.overwrite,
@@ -213,12 +201,12 @@ class SparrowPipeline:
             sdata = sp.im.enhance_contrast(
                 sdata=sdata,
                 img_layer=self.cleaned_image_name,
-                crd=self.cfg.clean.crop_param
-                if self.cfg.clean.crop_param is not None
-                else None,
-                contrast_clip=list(self.cfg.clean.contrast_clip)
-                if isinstance(self.cfg.clean.contrast_clip, ListConfig)
-                else self.cfg.clean.contrast_clip,
+                crd=(self.cfg.clean.crop_param if self.cfg.clean.crop_param is not None else None),
+                contrast_clip=(
+                    list(self.cfg.clean.contrast_clip)
+                    if isinstance(self.cfg.clean.contrast_clip, ListConfig)
+                    else self.cfg.clean.contrast_clip
+                ),
                 chunks=self.cfg.clean.chunksize_clahe,
                 depth=self.cfg.clean.depth,
                 output_layer=output_layer,
@@ -241,7 +229,6 @@ class SparrowPipeline:
 
     def segment(self, sdata: SpatialData) -> SpatialData:
         """Segmentation step, the third step of the pipeline, performs cellpose segmentation and creates masks."""
-
         log.info("Start segmentation.")
 
         depth = self.cfg.segmentation.depth
@@ -265,9 +252,7 @@ class SparrowPipeline:
             depth=depth,
             chunks=self.cfg.segmentation.chunks,
             trim=self.cfg.segmentation.trim,
-            crd=self.cfg.segmentation.crop_param
-            if self.cfg.segmentation.crop_param is not None
-            else None,
+            crd=(self.cfg.segmentation.crop_param if self.cfg.segmentation.crop_param is not None else None),
             scale_factors=self.cfg.dataset.scale_factors,
             device=self.cfg.device,
             min_size=self.cfg.segmentation.min_size,
@@ -275,9 +260,11 @@ class SparrowPipeline:
             diameter=self.cfg.segmentation.diameter,
             cellprob_threshold=self.cfg.segmentation.cellprob_threshold,
             model_type=self.cfg.segmentation.model_type,
-            channels=list(self.cfg.segmentation.channels)
-            if isinstance(self.cfg.segmentation.channels, ListConfig)
-            else self.cfg.segmentation.channels,
+            channels=(
+                list(self.cfg.segmentation.channels)
+                if isinstance(self.cfg.segmentation.channels, ListConfig)
+                else self.cfg.segmentation.channels
+            ),
             do_3D=self.cfg.segmentation.do_3D,
             anisotropy=self.cfg.segmentation.anisotropy,
             overwrite=self.cfg.segmentation.overwrite,
@@ -287,9 +274,11 @@ class SparrowPipeline:
 
         sp.pl.segment(
             sdata=sdata,
-            crd=self.cfg.segmentation.small_size_vis
-            if self.cfg.segmentation.small_size_vis is not None
-            else self.cfg.clean.small_size_vis,
+            crd=(
+                self.cfg.segmentation.small_size_vis
+                if self.cfg.segmentation.small_size_vis is not None
+                else self.cfg.clean.small_size_vis
+            ),
             img_layer=self.cleaned_image_name,
             shapes_layer=self.cfg.segmentation.output_shapes_layer,
             output=self.cfg.paths.segmentation,
@@ -303,25 +292,23 @@ class SparrowPipeline:
             )
             sp.pl.segment(
                 sdata=sdata,
-                crd=self.cfg.segmentation.small_size_vis
-                if self.cfg.segmentation.small_size_vis is not None
-                else self.cfg.clean.small_size_vis,
+                crd=(
+                    self.cfg.segmentation.small_size_vis
+                    if self.cfg.segmentation.small_size_vis is not None
+                    else self.cfg.clean.small_size_vis
+                ),
                 img_layer=self.cleaned_image_name,
-                shapes_layer="expanded_cells"
-                + str(self.cfg.segmentation.voronoi_radius),
+                shapes_layer="expanded_cells" + str(self.cfg.segmentation.voronoi_radius),
                 output=f"{self.cfg.paths.segmentation}_expanded_cells_{self.cfg.segmentation.voronoi_radius}",
             )
 
             # update current shapes layer name
-            self.shapes_layer_name = "expanded_cells" + str(
-                self.cfg.segmentation.voronoi_radius
-            )
+            self.shapes_layer_name = "expanded_cells" + str(self.cfg.segmentation.voronoi_radius)
 
         return sdata
 
     def allocate(self, sdata: SpatialData) -> SpatialData:
         """Allocation step, the fourth step of the pipeline, creates the adata object from the mask and allocates the transcripts from the supplied file."""
-
         sdata = sp.io.read_transcripts(
             sdata,
             path_count_matrix=self.cfg.dataset.coords,
@@ -352,9 +339,11 @@ class SparrowPipeline:
             sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
-            crd=self.cfg.segmentation.small_size_vis
-            if self.cfg.segmentation.small_size_vis is not None
-            else self.cfg.clean.small_size_vis,
+            crd=(
+                self.cfg.segmentation.small_size_vis
+                if self.cfg.segmentation.small_size_vis is not None
+                else self.cfg.clean.small_size_vis
+            ),
             output=self.cfg.paths.polygons,
         )
 
@@ -387,9 +376,11 @@ class SparrowPipeline:
             sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
-            crd=self.cfg.segmentation.small_size_vis
-            if self.cfg.segmentation.small_size_vis is not None
-            else self.cfg.clean.small_size_vis,
+            crd=(
+                self.cfg.segmentation.small_size_vis
+                if self.cfg.segmentation.small_size_vis is not None
+                else self.cfg.clean.small_size_vis
+            ),
             column=self.cfg.allocate.total_counts_column,
             cmap=self.cfg.allocate.total_counts_cmap,
             alpha=self.cfg.allocate.total_counts_alpha,
@@ -407,9 +398,11 @@ class SparrowPipeline:
             sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
-            crd=self.cfg.segmentation.small_size_vis
-            if self.cfg.segmentation.small_size_vis is not None
-            else self.cfg.clean.small_size_vis,
+            crd=(
+                self.cfg.segmentation.small_size_vis
+                if self.cfg.segmentation.small_size_vis is not None
+                else self.cfg.clean.small_size_vis
+            ),
             column=self.cfg.allocate.shape_size_column,
             cmap=self.cfg.allocate.shape_size_cmap,
             alpha=self.cfg.allocate.shape_size_alpha,
@@ -439,9 +432,11 @@ class SparrowPipeline:
             column=self.cfg.allocate.leiden_column,
             cmap=self.cfg.allocate.leiden_cmap,
             alpha=self.cfg.allocate.leiden_alpha,
-            crd=self.cfg.segmentation.small_size_vis
-            if self.cfg.segmentation.small_size_vis is not None
-            else self.cfg.clean.small_size_vis,
+            crd=(
+                self.cfg.segmentation.small_size_vis
+                if self.cfg.segmentation.small_size_vis is not None
+                else self.cfg.clean.small_size_vis
+            ),
             output=self.cfg.paths.leiden,
         )
 
@@ -462,9 +457,11 @@ class SparrowPipeline:
                     self.cleaned_image_name,
                     self.cfg.allocate.transcripts_density_img_layer_name,
                 ],
-                crd=self.cfg.segmentation.small_size_vis
-                if self.cfg.segmentation.small_size_vis is not None
-                else self.cfg.clean.small_size_vis,
+                crd=(
+                    self.cfg.segmentation.small_size_vis
+                    if self.cfg.segmentation.small_size_vis is not None
+                    else self.cfg.clean.small_size_vis
+                ),
                 output=self.cfg.paths.transcript_density,
             )
 
@@ -472,18 +469,9 @@ class SparrowPipeline:
 
     def annotate(self, sdata: SpatialData) -> SpatialData:
         """Annotation step, the fifth step of the pipeline, annotates the cells with celltypes based on the marker genes file."""
-
         # Get arguments from cfg else empty objects
-        repl_columns = (
-            self.cfg.annotate.repl_columns
-            if "repl_columns" in self.cfg.annotate
-            else dict()
-        )
-        del_celltypes = (
-            self.cfg.annotate.del_celltypes
-            if "del_celltypes" in self.cfg.annotate
-            else []
-        )
+        repl_columns = self.cfg.annotate.repl_columns if "repl_columns" in self.cfg.annotate else {}
+        del_celltypes = self.cfg.annotate.del_celltypes if "del_celltypes" in self.cfg.annotate else []
 
         # Load marker genes, replace columns with different name, delete genes from list
 
@@ -508,16 +496,17 @@ class SparrowPipeline:
             shapes_layer=self.shapes_layer_name,
             img_layer=self.cleaned_image_name,
             output=self.cfg.paths.score_genes,
-            crd=self.cfg.segmentation.small_size_vis
-            if self.cfg.segmentation.small_size_vis is not None
-            else self.cfg.clean.small_size_vis,
+            crd=(
+                self.cfg.segmentation.small_size_vis
+                if self.cfg.segmentation.small_size_vis is not None
+                else self.cfg.clean.small_size_vis
+            ),
         )
 
         return sdata
 
     def visualize(self, sdata: SpatialData) -> SpatialData:
         """Visualisation step, the sixth and final step of the pipeline, checks the cluster cleanliness and performs nhood enrichement before saving the data as SpatialData object."""
-
         # Perform correction for transcripts (and corresponding celltypes) that occur in all cells and are overexpressed
         if "correct_marker_genes_dict" in self.cfg.visualize:
             sdata = sp.tb.correct_marker_genes(
@@ -526,11 +515,7 @@ class SparrowPipeline:
             )
 
         # Get arguments from cfg else None objects
-        celltype_indexes = (
-            self.cfg.visualize.celltype_indexes
-            if "celltype_indexes" in self.cfg.visualize
-            else None
-        )
+        celltype_indexes = self.cfg.visualize.celltype_indexes if "celltype_indexes" in self.cfg.visualize else None
         colors = self.cfg.visualize.colors if "colors" in self.cfg.visualize else None
 
         # Check cluster cleanliness
@@ -545,9 +530,11 @@ class SparrowPipeline:
             sdata=sdata,
             img_layer=self.cleaned_image_name,
             shapes_layer=self.shapes_layer_name,
-            crd=self.cfg.segmentation.small_size_vis
-            if self.cfg.segmentation.small_size_vis is not None
-            else self.cfg.clean.small_size_vis,
+            crd=(
+                self.cfg.segmentation.small_size_vis
+                if self.cfg.segmentation.small_size_vis is not None
+                else self.cfg.clean.small_size_vis
+            ),
             color_dict=color_dict,
             output=self.cfg.paths.cluster_cleanliness,
         )

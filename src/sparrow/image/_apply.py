@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Iterable, Mapping
 
 import dask.array as da
 from dask.array import Array
@@ -26,16 +26,16 @@ def apply(
     sdata: SpatialData,
     func: Callable[..., NDArray | Array] | Mapping[str, Any],
     fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
-    img_layer: Optional[str] = None,
-    output_layer: Optional[str] = None,
-    channel: Optional[int | Iterable[int] | str | Iterable[str]] = None,
-    z_slice: Optional[float | Iterable[float]] = None,
+    img_layer: str | None = None,
+    output_layer: str | None = None,
+    channel: int | Iterable[int] | str | Iterable[str] | None = None,
+    z_slice: float | Iterable[float] | None = None,
     combine_c=True,
     combine_z=True,
-    chunks: Optional[str | int | Tuple[int, ...]] = None,
-    output_chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    chunks: str | int | tuple[int, ...] | None = None,
+    output_chunks: tuple[tuple[int, ...], ...] | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     **kwargs: Any,
 ) -> SpatialData:
@@ -120,20 +120,41 @@ def apply(
     Apply a custom function `my_function` to all channels of an image layer using different parameters for each channel
     (we assume sdata[ "raw_image" ] has 2 channels, 0 and 1, and has dimensions c,y,x ):
 
-    >>> def my_function( image, parameter ):
-    ...    return image*parameter
-    >>> fn_kwargs={ 0: { "parameter": 2 }, 1: { "parameter": 3 } }
-    >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_c=False)
+    >>> def my_function(image, parameter):
+    ...     return image * parameter
+    >>> fn_kwargs = {0: {"parameter": 2}, 1: {"parameter": 3}}
+    >>> sdata = apply(
+    ...     sdata,
+    ...     my_function,
+    ...     fn_kwargs=fn_kwargs,
+    ...     img_layer="raw_image",
+    ...     output_layer="processed_image",
+    ...     combine_c=False,
+    ... )
 
     Apply the same function to only the first channel of the image:
 
-    >>> fn_kwargs={ 0: { "parameter": 2 } }
-    >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_c=False)
+    >>> fn_kwargs = {0: {"parameter": 2}}
+    >>> sdata = apply(
+    ...     sdata,
+    ...     my_function,
+    ...     fn_kwargs=fn_kwargs,
+    ...     img_layer="raw_image",
+    ...     output_layer="processed_image",
+    ...     combine_c=False,
+    ... )
 
     Apply the same function to all channels of the image with the same parameters:
 
-    >>> fn_kwargs={ "parameter": 2 }
-    >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_c=False)
+    >>> fn_kwargs = {"parameter": 2}
+    >>> sdata = apply(
+    ...     sdata,
+    ...     my_function,
+    ...     fn_kwargs=fn_kwargs,
+    ...     img_layer="raw_image",
+    ...     output_layer="processed_image",
+    ...     combine_c=False,
+    ... )
 
     In the above example, setting combine_c to True results in `my_function` receiving an array with the shape c,y,x,
     whereas setting it to False leads to my_function being supplied with an array shaped as 1,y,x.
@@ -141,32 +162,49 @@ def apply(
     Apply a custom function `my_function` and `my_function2` to channel 0, respectively channel 1 of an image layer
     (we assume sdata[ "raw_image" ] has 2 channels, 0 and 1, and has dimensions c,y,x ):
 
-    >>> def my_function1( image ):
-    ...    return image*2
-    >>> def my_function2( image ):
-    ...    return image+2
+    >>> def my_function1(image):
+    ...     return image * 2
+    >>> def my_function2(image):
+    ...     return image + 2
 
-    >>> func={ 0: function1, 1: function2 }
+    >>> func = {0: function1, 1: function2}
     >>> sdata = apply(sdata, func, img_layer="raw_image", output_layer="processed_image", combine_c=False)
 
     Apply a custom function `my_function` to all z slices of an image layer using different parameters for each z slice
     (we assume sdata[ "raw_image" ] has 2 z slices at 0.5 and 1.5, and has dimensions c,z,y,x ):
 
-    >>> def my_function( image, parameter ):
-    ...    return image*parameter
-    >>> fn_kwargs={ 0.5: { "parameter": 2 }, 1.5: { "parameter": 3 } }
-    >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_z=False)
+    >>> def my_function(image, parameter):
+    ...     return image * parameter
+    >>> fn_kwargs = {0.5: {"parameter": 2}, 1.5: {"parameter": 3}}
+    >>> sdata = apply(
+    ...     sdata,
+    ...     my_function,
+    ...     fn_kwargs=fn_kwargs,
+    ...     img_layer="raw_image",
+    ...     output_layer="processed_image",
+    ...     combine_z=False,
+    ... )
 
     Apply a custom function `my_function` to all z slices anc channels of an image layer using different parameters for each z slice
     and channel.
     (we assume sdata[ "raw_image" ] has 2 channels 0 and 1, and 2 z slices at 0.5 and 1.5, and has dimensions c,z,y,x ):
 
-    >>> def my_function( image, parameter ):
-    ...    return image*parameter
-    >>> fn_kwargs={ 0: {  0.5: { "parameter": 2 }, 1.5: { "parameter": 3 } }, 1: {  0.5: { "parameter": 4 }, 1.5: { "parameter": 5 } }  }
-    >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_c=False, combine_z=False)
+    >>> def my_function(image, parameter):
+    ...     return image * parameter
+    >>> fn_kwargs = {
+    ...     0: {0.5: {"parameter": 2}, 1.5: {"parameter": 3}},
+    ...     1: {0.5: {"parameter": 4}, 1.5: {"parameter": 5}},
+    ... }
+    >>> sdata = apply(
+    ...     sdata,
+    ...     my_function,
+    ...     fn_kwargs=fn_kwargs,
+    ...     img_layer="raw_image",
+    ...     output_layer="processed_image",
+    ...     combine_c=False,
+    ...     combine_z=False,
+    ... )
     """
-
     if img_layer is None:
         img_layer = [*sdata.images][-1]
         log.warning(
@@ -188,9 +226,9 @@ def apply(
             if isinstance(arr, Array):
                 arr = arr.rechunk(arr.chunksize)
             arr = func(arr, **fn_kwargs)
-            arr = da.asarray( arr )
+            arr = da.asarray(arr)
             # func could have cause irregular chunking
-            return arr.rechunk( arr.chunksize )
+            return arr.rechunk(arr.chunksize)
         if not isinstance(chunks, (int, str)):
             if len(chunks) != arr.ndim:
                 raise ValueError(
@@ -239,22 +277,14 @@ def apply(
 
     # here you specify the channels the function is applied on
     if channel is not None:
-        channel = (
-            list(channel)
-            if isinstance(channel, Iterable) and not isinstance(channel, str)
-            else [channel]
-        )
+        channel = list(channel) if isinstance(channel, Iterable) and not isinstance(channel, str) else [channel]
     else:
         channel = se.c.data
 
     # here you specify the z-stacks the function is applied on
     if "z" in se.dims:
         if z_slice is not None:
-            z_slice = (
-                list(z_slice)
-                if isinstance(z_slice, Iterable) and not isinstance(z_slice, str)
-                else [z_slice]
-            )
+            z_slice = list(z_slice) if isinstance(z_slice, Iterable) and not isinstance(z_slice, str) else [z_slice]
         else:
             z_slice = se.z.data
     else:
@@ -366,12 +396,12 @@ def apply(
 
 
 def _precondition(
-    fn_kwargs: Dict[Any:Any],
-    func: Callable | Dict[Any:Any],
+    fn_kwargs: dict[Any:Any],
+    func: Callable | dict[Any:Any],
     combine_c: bool,
     combine_z: bool,
-    channels: List[str] | List[int],
-    z_slices: List[float],
+    channels: list[str] | list[int],
+    z_slices: list[float],
 ):
     def collect_keys_fn_kwargs(d):
         if d == {}:
@@ -413,6 +443,7 @@ def _precondition(
 
     def make_mapping(keys, value):
         result = {}
+        previous_item = None  # Initialize previous_item
         for item in keys:
             if isinstance(item, list):
                 sub_dict = {k: value for k in item}

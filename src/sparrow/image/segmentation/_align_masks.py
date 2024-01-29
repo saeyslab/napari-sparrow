@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import dask.array as da
 import numpy as np
@@ -34,11 +34,11 @@ def align_labels_layers(
     sdata: SpatialData,
     labels_layer_1: str,
     labels_layer_2: str,
-    depth: Tuple[int, ...] | int = 100,
-    chunks: Optional[str | int | Tuple[int, ...]] = "auto",
-    output_labels_layer: Optional[str] = None,
-    output_shapes_layer: Optional[str] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    depth: tuple[int, ...] | int = 100,
+    chunks: str | int | tuple[int, ...] | None = "auto",
+    output_labels_layer: str | None = None,
+    output_shapes_layer: str | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ):
     """
@@ -103,18 +103,15 @@ def align_labels_layers(
 
     Examples
     --------
-    >>> sdata = align_labels_layers(sdata, 'layer_1', 'layer_2', depth=(50, 50), overwrite=True)
+    >>> sdata = align_labels_layers(sdata, "layer_1", "layer_2", depth=(50, 50), overwrite=True)
     """
-
     se_1 = _get_spatial_element(sdata, layer=labels_layer_1)
     se_2 = _get_spatial_element(sdata, layer=labels_layer_2)
 
     x_label_1 = se_1.data
     x_label_2 = se_2.data
 
-    assert (
-        x_label_1.shape == x_label_2.shape
-    ), "Only arrays with same shape are currently supported, "
+    assert x_label_1.shape == x_label_2.shape, "Only arrays with same shape are currently supported, "
     f"but labels layer with name {labels_layer_1} has shape {x_label_1.shape}, "
     f"while labels layer with name {labels_layer_2} has shape {x_label_2.shape}  "
 
@@ -127,13 +124,11 @@ def align_labels_layers(
     ), f"labels layer 1 with name {labels_layer_1} should "
     f"have same translation as labels layer 1 with name {labels_layer_2}"
 
-    x_label_aligned = _align_dask_arrays(
-        x_label_1, x_label_2, chunks=chunks, depth=depth
-    )
+    x_label_aligned = _align_dask_arrays(x_label_1, x_label_2, chunks=chunks, depth=depth)
 
     if output_labels_layer is None:
         output_labels_layer = labels_layer_1
-        if overwrite == False:
+        if overwrite is False:
             raise ValueError(
                 "output_labels_layer was set to None, but overwrite to False. "
                 f"to allow overwriting labels layer {labels_layer_1}, with aligned result, please set overwrite to True, "
@@ -175,9 +170,7 @@ def _align_dask_arrays(
 ):
     # we will align labels of x_label_1 with labels of x_labels_2.
 
-    assert (
-        x_label_1.shape == x_label_2.shape
-    ), "Only arrays with same shape are currently supported."
+    assert x_label_1.shape == x_label_2.shape, "Only arrays with same shape are currently supported."
 
     chunks = kwargs.pop("chunks", None)
     depth = kwargs.pop("depth", 100)
@@ -186,9 +179,7 @@ def _align_dask_arrays(
     if isinstance(depth, int):
         depth = {0: 0, 1: depth, 2: depth}
     else:
-        assert (
-            len(depth) == x_label_1.ndim
-        ), f"Please provide depth for each dimension ({x_label_1.ndim})."
+        assert len(depth) == x_label_1.ndim, f"Please provide depth for each dimension ({x_label_1.ndim})."
         if x_label_1.ndim == 2:
             depth = {0: 0, 1: depth[0], 2: depth[1]}
 
@@ -264,9 +255,7 @@ def _align_dask_arrays(
     return x_labels
 
 
-def _relabel_nuclei_with_cells_per_chunk(
-    masks_nuclear: NDArray, masks_whole_cell: NDArray
-) -> NDArray:
+def _relabel_nuclei_with_cells_per_chunk(masks_nuclear: NDArray, masks_whole_cell: NDArray) -> NDArray:
     nuclear_labels = np.unique(masks_nuclear)
     cell_labels = np.unique(masks_whole_cell)
 
@@ -281,9 +270,7 @@ def _relabel_nuclei_with_cells_per_chunk(
     # Now, we perform an operation to identify which cell each nucleus belongs to.
     # This creates a 2D array where each row corresponds to a nuclear label, and each column corresponds to a cell label.
     # The value is the count of the overlap area between that nucleus and cell.
-    overlap_matrix = np.zeros(
-        (nuclear_labels.max() + 1, cell_labels.max() + 1), dtype=int
-    )
+    overlap_matrix = np.zeros((nuclear_labels.max() + 1, cell_labels.max() + 1), dtype=int)
     np.add.at(overlap_matrix, (masks_nuclear.ravel(), masks_whole_cell.ravel()), 1)
 
     # For each nucleus, identify the cell with which it has the maximum overlap.

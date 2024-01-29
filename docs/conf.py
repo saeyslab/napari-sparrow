@@ -56,7 +56,7 @@ extensions = [
     "sphinx.ext.mathjax",
     "IPython.sphinxext.ipython_console_highlighting",
     "sphinx_design",
-    #*[p.stem for p in (HERE / "extensions").glob("*.py")],
+    # *[p.stem for p in (HERE / "extensions").glob("*.py")],
 ]
 
 autosummary_generate = True
@@ -89,14 +89,14 @@ source_suffix = {
     ".myst": "myst-nb",
 }
 
-#intersphinx_mapping = {
+# intersphinx_mapping = {
 #    "anndata": ("https://anndata.readthedocs.io/en/stable/", None),
 #    "numpy": ("https://numpy.org/doc/stable/", None),
 #    "geopandas": ("https://geopandas.org/en/stable/", None),
 #    "xarray": ("https://docs.xarray.dev/en/stable/", None),
 #    "datatree": ("https://datatree.readthedocs.io/en/latest/", None),
 #    "dask": ("https://docs.dask.org/en/latest/", None),
-#}
+# }
 
 
 # List of patterns, relative to source directory, that match files and
@@ -108,7 +108,7 @@ exclude_patterns = [
     "**.ipynb_checkpoints",
     "../notebooks/*",
     "../experiments/*",
-    "../configs/*"
+    "../configs/*",
 ]
 # Ignore warnings.
 nitpicky = False  # TODO: solve upstream.
@@ -141,4 +141,3 @@ nitpick_ignore = [
     # you can add an exception to this list.
     ("py:class", "igraph.Graph"),
 ]
-

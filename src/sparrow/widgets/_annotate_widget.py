@@ -1,6 +1,5 @@
-"""
-Annotation widget for scoring the genes, returns markergenes and adata objects.
-"""
+"""Annotation widget for scoring the genes, returns markergenes and adata objects."""
+
 import os
 import pathlib
 from typing import Any, Callable, Dict, List
@@ -24,7 +23,6 @@ def annotateImage(
     pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the annotation step, this calls all the needed functions to annotate the cells with the celltype."""
-
     sdata = pipeline.annotate(sdata)
 
     sdata = pipeline.visualize(
@@ -35,12 +33,8 @@ def annotateImage(
 
 
 @thread_worker(progress=True)
-def _annotation_worker(
-    sdata: SpatialData, method: Callable, fn_kwargs: Dict[str, Any]
-) -> SpatialData:
-    """
-    annotate data with marker genes in a thread worker
-    """
+def _annotation_worker(sdata: SpatialData, method: Callable, fn_kwargs: Dict[str, Any]) -> SpatialData:
+    """Annotate data with marker genes in a thread worker"""
     return method(sdata, **fn_kwargs)
 
 
@@ -52,11 +46,12 @@ def annotate_widget(
     viewer: napari.Viewer,
     markers_file: pathlib.Path = pathlib.Path(""),
     delimiter: str = ",",
-    del_celltypes: List[str] = [],
+    del_celltypes: List[str] = None,
 ):
     """This function represents the annotation widget and is called by the wizard to create the widget."""
-
     # Check if a file was passed
+    if del_celltypes is None:
+        del_celltypes = []
     if str(markers_file) in ["", "."]:
         raise ValueError("Please select marker file (.csv)")
     log.info(f"Marker file is {str(markers_file)}")
@@ -72,9 +67,7 @@ def annotate_widget(
     try:
         pipeline = allocation_layer.metadata["pipeline"]
     except KeyError:
-        raise RuntimeError(
-            f"Please run allocation step before running annotation step."
-        )
+        raise RuntimeError("Please run allocation step before running annotation step.")
 
     # need to load it back from zarr store, because otherwise not able to overwrite it
     sdata = read_zarr(pipeline.cfg.paths.sdata)
@@ -95,25 +88,18 @@ def annotate_widget(
         layer_name: str,
     ):
         """Add the metadata to the previous layer, this way it becomes available in the next steps."""
-
         if layer_name not in viewer.layers:
-            log.info(
-                f"Layer '{layer_name}' does not exist. Please run allocation step before running annotation step."
-            )
+            log.info(f"Layer '{layer_name}' does not exist. Please run allocation step before running annotation step.")
             raise KeyError(f"Layer '{layer_name}' does not exist")
 
         # Store data in previous layer
 
         viewer.layers[layer_name].metadata["pipeline"] = pipeline
-        viewer.layers[layer_name].metadata[
-            "adata"
-        ] = sdata.table  # spatialdata plugin uses this
+        viewer.layers[layer_name].metadata["adata"] = sdata.table  # spatialdata plugin uses this
 
         utils._export_config(
             pipeline.cfg.annotate,
-            os.path.join(
-                pipeline.cfg.paths.output_dir, "configs", "annotate", "plugin.yaml"
-            ),
+            os.path.join(pipeline.cfg.paths.output_dir, "configs", "annotate", "plugin.yaml"),
         )
 
         log.info("Annotation metadata added")

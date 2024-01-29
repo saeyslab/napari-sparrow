@@ -4,10 +4,7 @@ from anndata import AnnData
 from spatialdata import SpatialData
 
 from sparrow.image.segmentation._align_masks import align_labels_layers
-from sparrow.table._allocation_intensity import (
-    _calculate_intensity,
-    allocate_intensity,
-)
+from sparrow.table._allocation_intensity import _calculate_intensity, allocate_intensity
 from sparrow.table._regionprops import add_regionprop_features
 
 
@@ -28,9 +25,7 @@ def test_integration_allocate_intensity(sdata_multi_c: SpatialData):
 
     assert "masks_nuclear_aligned" in sdata_multi_c.labels
 
-    sdata_multi_c = allocate_intensity(
-        sdata_multi_c, img_layer="raw_image", labels_layer="masks_whole", chunks=100
-    )
+    sdata_multi_c = allocate_intensity(sdata_multi_c, img_layer="raw_image", labels_layer="masks_whole", chunks=100)
 
     sdata_multi_c = allocate_intensity(
         sdata_multi_c,
@@ -42,9 +37,7 @@ def test_integration_allocate_intensity(sdata_multi_c: SpatialData):
 
     sdata_multi_c = add_regionprop_features(sdata_multi_c, labels_layer="masks_whole")
 
-    sdata_multi_c = add_regionprop_features(
-        sdata_multi_c, labels_layer="masks_nuclear_aligned"
-    )
+    sdata_multi_c = add_regionprop_features(sdata_multi_c, labels_layer="masks_nuclear_aligned")
 
     assert isinstance(sdata_multi_c, SpatialData)
 
@@ -54,9 +47,7 @@ def test_integration_allocate_intensity(sdata_multi_c: SpatialData):
 
 
 def test_allocate_intensity(sdata_multi_c: SpatialData):
-    sdata_multi_c = allocate_intensity(
-        sdata_multi_c, img_layer="raw_image", labels_layer="masks_whole", chunks=100
-    )
+    sdata_multi_c = allocate_intensity(sdata_multi_c, img_layer="raw_image", labels_layer="masks_whole", chunks=100)
 
     assert isinstance(sdata_multi_c, SpatialData)
 

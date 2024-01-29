@@ -1,7 +1,8 @@
 from typing import List, Optional
-from spatialdata import SpatialData
+
 import matplotlib.pyplot as plt
 import scanpy as sc
+from spatialdata import SpatialData
 
 from sparrow.plot._plot import plot_shapes
 
@@ -47,12 +48,11 @@ def cluster_cleanliness(
     -------
     None
     """
-
     # Barplot with cell type composition of the clusters.
     stacked = (
         sdata.table.obs.groupby(["leiden", celltype_column], as_index=False)
         .size()
-        .pivot( index="leiden", columns=celltype_column)
+        .pivot(index="leiden", columns=celltype_column)
         .fillna(0)
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)

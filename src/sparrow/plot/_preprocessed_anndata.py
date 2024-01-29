@@ -1,13 +1,13 @@
 from typing import Optional
-import scanpy as sc
+
 import matplotlib.pyplot as plt
-from spatialdata import SpatialData
+import scanpy as sc
 import seaborn as sns
+from spatialdata import SpatialData
 
 
 def preprocess_anndata(sdata: SpatialData, output: Optional[str] = None) -> None:
     """This function plots the size of the nucleus/cell related to the counts."""
-
     sc.pl.pca(
         sdata.table,
         color="total_counts",

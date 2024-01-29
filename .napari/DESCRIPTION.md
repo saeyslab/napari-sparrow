@@ -1,5 +1,3 @@
-
-
 <!-- This file is designed to provide you with a starting template for documenting
 the functionality of your plugin. Its content will be rendered on your plugin's
 napari hub page.

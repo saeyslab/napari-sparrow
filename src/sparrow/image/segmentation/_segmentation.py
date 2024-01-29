@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Optional, Tuple
+from typing import Any, Callable, Mapping
 
 import dask.array as da
 import numpy as np
@@ -27,9 +27,7 @@ from sparrow.image.segmentation._utils import (
     _rechunk_overlap,
     _substract_depth_from_chunks_size,
 )
-from sparrow.image.segmentation.segmentation_models._cellpose import (
-    _cellpose as _model,
-)
+from sparrow.image.segmentation.segmentation_models._cellpose import _cellpose as _model
 from sparrow.shape._shape import _add_shapes_layer
 from sparrow.utils.pylogger import get_pylogger
 
@@ -38,16 +36,16 @@ log = get_pylogger(__name__)
 
 def segment(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
+    img_layer: str | None = None,
     model: Callable[..., NDArray] = _model,
     output_labels_layer: str = "segmentation_mask",
-    output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
+    output_shapes_layer: str | None = "segmentation_mask_boundaries",
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
     boundary: str = "reflect",
     trim: bool = False,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     **kwargs: Any,
 ):
@@ -100,7 +98,6 @@ def segment(
     TypeError
         If the provided `model` is not callable.
     """
-
     fn_kwargs = kwargs
 
     # take the last image as layer to do next step in pipeline
@@ -143,11 +140,11 @@ class SegmentationModel:
     def _segment_img_layer(
         self,
         sdata: SpatialData,
-        img_layer: Optional[str] = None,
+        img_layer: str | None = None,
         output_labels_layer: str = "segmentation_mask",
-        output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-        crd: Optional[Tuple[int, int, int, int]] = None,
-        scale_factors: Optional[ScaleFactors_t] = None,
+        output_shapes_layer: str | None = "segmentation_mask_boundaries",
+        crd: tuple[int, int, int, int] | None = None,
+        scale_factors: ScaleFactors_t | None = None,
         overwrite: bool = False,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
@@ -181,18 +178,14 @@ class SegmentationModel:
             # add trivial z dimension.
             x = x[None, ...]
         else:
-            raise ValueError(
-                "Only 3D and 4D arrays are supported, i.e. (c, (z), y, x)."
-            )
+            raise ValueError("Only 3D and 4D arrays are supported, i.e. (c, (z), y, x).")
 
         if "depth" in kwargs:
             depth = kwargs["depth"]
             if isinstance(depth, int):
                 kwargs["depth"] = {0: 0, 1: depth, 2: depth, 3: 0}
             else:
-                assert (
-                    len(depth) == x.ndim - 2
-                ), "Please (only) provide depth for ( 'y', 'x')."
+                assert len(depth) == x.ndim - 2, "Please (only) provide depth for ( 'y', 'x')."
                 # set depth for every dimension
                 depth2 = {0: 0, 1: depth[0], 2: depth[1], 3: 0}
                 kwargs["depth"] = depth2
@@ -201,9 +194,7 @@ class SegmentationModel:
             chunks = kwargs["chunks"]
             if chunks is not None:
                 if not isinstance(chunks, (int, str)):
-                    assert (
-                        len(chunks) == x.ndim - 2
-                    ), "Please (only) provide chunks for ( 'y', 'x')."
+                    assert len(chunks) == x.ndim - 2, "Please (only) provide chunks for ( 'y', 'x')."
                     chunks = (x.shape[0], chunks[0], chunks[1], x.shape[-1])
                     kwargs["chunks"] = chunks
 
@@ -275,9 +266,7 @@ class SegmentationModel:
         trim = kwargs.pop("trim", False)
 
         if not trim and depth[1] == 0 or depth[2] == 0:
-            log.warning(
-                "Depth equal to zero not supported with trim==False, setting trim to True."
-            )
+            log.warning("Depth equal to zero not supported with trim==False, setting trim to True.")
             trim = True
 
         _check_boundary(boundary)
@@ -303,9 +292,7 @@ class SegmentationModel:
         # this could lead to collisions.
         # ignore channel dim (num_blocks[3]), because channel dim of resulting label is supposed to be 1.
         num_blocks = x.numblocks
-        shift = int(
-            np.prod(num_blocks[0] * num_blocks[1] * num_blocks[2]) - 1
-        ).bit_length()
+        shift = int(np.prod(num_blocks[0] * num_blocks[1] * num_blocks[2]) - 1).bit_length()
 
         x_labels = da.map_overlap(
             self._segment_chunk,
@@ -348,9 +335,7 @@ class SegmentationModel:
                 **kwargs,
             )
 
-            output_chunks = _substract_depth_from_chunks_size(
-                x_labels.chunks, depth=depth
-            )
+            output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
 
             x_labels = da.map_overlap(
                 _merge_masks,
@@ -372,8 +357,8 @@ class SegmentationModel:
     def _segment_chunk(
         self,
         block: NDArray,
-        block_id: Tuple[int, ...],
-        num_blocks: Tuple[int, ...],
+        block_id: tuple[int, ...],
+        num_blocks: tuple[int, ...],
         shift: int,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
     ) -> NDArray:
@@ -388,16 +373,10 @@ class SegmentationModel:
                 )
 
             # note: ignore num_blocks[3]==1 and block_id[3]==0, because we assume c-dimension is 1
-            block_num = (
-                block_id[0] * (num_blocks[1] * num_blocks[2])
-                + block_id[1] * (num_blocks[2])
-                + block_id[2]
-            )
+            block_num = block_id[0] * (num_blocks[1] * num_blocks[2]) + block_id[1] * (num_blocks[2]) + block_id[2]
 
         else:
-            raise ValueError(
-                f"Expected `4` dimensional chunks, found `{len(num_blocks)}`."
-            )
+            raise ValueError(f"Expected `4` dimensional chunks, found `{len(num_blocks)}`.")
 
         labels = self._model(block, **fn_kwargs).astype(_SEG_DTYPE)
         mask: NDArray = labels > 0

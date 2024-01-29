@@ -31,24 +31,18 @@ def cleanImage(
     pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the cleaning step, this calls all the needed functions to improve the image quality."""
-
     sdata = pipeline.clean(sdata)
 
     return sdata
 
 
-@thread_worker(
-    progress=True
-)  # TODO: show string with description of current step in the napari progress bar
+@thread_worker(progress=True)  # TODO: show string with description of current step in the napari progress bar
 def _clean_worker(
     sdata: SpatialData,
     method: Callable,
     fn_kwargs: Dict[str, Any],
 ) -> SpatialData:
-    """
-    clean image in a thread worker
-    """
-
+    """Clean image in a thread worker"""
     res = method(sdata, **fn_kwargs)
 
     return res
@@ -62,12 +56,15 @@ def clean_widget(
     tiling_correction_step: bool = True,
     tile_size: int = 2144,
     min_max_filtering_step: bool = True,
-    size_min_max_filter: List[int] = [85],
+    size_min_max_filter: List[int] = None,
     contrast_enhancing_step: bool = True,
-    contrast_clip: List[float] = [3.5],
+    contrast_clip: List[float] = None,
 ):
     """This function represents the clean widget and is called by the wizard to create the widget."""
-
+    if contrast_clip is None:
+        contrast_clip = [3.5]
+    if size_min_max_filter is None:
+        size_min_max_filter = [85]
     if image is None:
         raise ValueError("Please select an image")
 
@@ -157,9 +154,7 @@ def clean_widget(
 
         utils._export_config(
             pipeline.cfg.clean,
-            os.path.join(
-                pipeline.cfg.paths.output_dir, "configs", "clean", "plugin.yaml"
-            ),
+            os.path.join(pipeline.cfg.paths.output_dir, "configs", "clean", "plugin.yaml"),
         )
         log.info("Cleaning finished")
         show_info("Cleaning finished")

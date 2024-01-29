@@ -1,13 +1,14 @@
 from typing import Optional
-from spatialdata import SpatialData
-import matplotlib.pyplot as plt
-import pandas as pd
-import matplotlib as mpl
-import scanpy as sc
-import numpy as np
 
-from sparrow.plot._plot import plot_shapes
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scanpy as sc
+from spatialdata import SpatialData
+
 from sparrow.image._image import _get_boundary, _get_spatial_element
+from sparrow.plot._plot import plot_shapes
 
 
 def score_genes(
@@ -21,7 +22,7 @@ def score_genes(
 ) -> None:
     """
     Function generates following plots:
-    
+
     - umap of assigned celltype next to umap of calculated cleanliness.
     - umap of assigned celltype next to umap of assigned leiden cluster.
     - assigned celltype for all cells in region of interest (crd).
@@ -66,12 +67,8 @@ def score_genes(
         crd = _get_boundary(se)
 
     # Custom colormap:
-    colors = np.concatenate(
-        (plt.get_cmap("tab20c")(np.arange(20)), plt.get_cmap("tab20b")(np.arange(20)))
-    )
-    colors = [
-        mpl.colors.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)
-    ]
+    colors = np.concatenate((plt.get_cmap("tab20c")(np.arange(20)), plt.get_cmap("tab20b")(np.arange(20))))
+    colors = [mpl.colors.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
 
     # Plot cleanliness and leiden next to annotation
     sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=False)
@@ -118,12 +115,7 @@ def score_genes(
     if filter_index:
         sc.pl.heatmap(
             sdata.table[
-                sdata.table.obs.leiden.isin(
-                    [
-                        str(index)
-                        for index in range(filter_index, len(sdata.table.obs.leiden))
-                    ]
-                )
+                sdata.table.obs.leiden.isin([str(index) for index in range(filter_index, len(sdata.table.obs.leiden))])
             ],
             var_names=scoresper_cluster.columns.values,
             groupby="leiden",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple, Union
+from typing import Iterable, Tuple
 
 import dask.array as da
 import numpy as np
@@ -21,21 +21,14 @@ log = get_pylogger(__name__)
 
 
 def create_sdata(
-    input: str
-    | Path
-    | np.ndarray
-    | da.Array
-    | List[str]
-    | List[Path]
-    | List[np.ndarray]
-    | List[da.Array],
-    output_path: Optional[str | Path] = None,
+    input: (str | Path | np.ndarray | da.Array | list[str] | list[Path] | list[np.ndarray] | list[da.Array]),
+    output_path: str | Path | None = None,
     img_layer: str = "raw_image",
-    chunks: Optional[str | Tuple[int, int, int, int] | int] = None,
-    dims: Optional[List[str]] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
-    c_coords: Optional[int | str | Iterable[int | str]] = None,
+    chunks: str | tuple[int, int, int, int] | int | None = None,
+    dims: list[str] | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
+    c_coords: int | str | Iterable[int | str] | None = None,
     z_projection: bool = True,
 ) -> SpatialData:
     """
@@ -50,8 +43,8 @@ def create_sdata(
 
     - Path to a single image, either grayscale or multiple channels.
 
-      Examples:
-
+    Examples
+    --------
       input=DAPI_z3.tif -> single channel
 
       input=DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
@@ -59,16 +52,16 @@ def create_sdata(
     - Pattern representing a collection of z-stacks
       (if this is the case, a z-projection is performed which selects the maximum intensity value across the z-dimension).
 
-      Examples:
-
+    Examples
+    --------
       input=DAPI_z*.tif -> z-projection performed
 
       input=DAPI_Poly_z*.tif -> z-projection performed
 
     - List of filename patterns (where each list item corresponds to a different channel)
 
-      Examples:
-
+    Examples
+    --------
       input=[ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
 
       input[ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
@@ -114,7 +107,6 @@ def create_sdata(
     If 'crd' is specified and some of its values are None, the function infers the missing
     values based on the input image's shape.
     """
-
     with tempfile.TemporaryDirectory() as tmp_dir:
         # tmp_dir is used to write results for each channel out to separate zarr store,
         # these results are then combined and written to sdata
@@ -129,9 +121,7 @@ def create_sdata(
 
         if c_coords is not None:
             c_coords = (
-                list(c_coords)
-                if isinstance(c_coords, Iterable) and not isinstance(c_coords, str)
-                else [c_coords]
+                list(c_coords) if isinstance(c_coords, Iterable) and not isinstance(c_coords, str) else [c_coords]
             )
 
             assert dask_array.shape[0] == len(c_coords), (
@@ -175,19 +165,12 @@ def create_sdata(
 
 
 def _load_image_to_dask(
-    input: str
-    | Path
-    | np.ndarray
-    | da.Array
-    | List[str]
-    | List[Path]
-    | List[np.ndarray]
-    | List[da.Array],
-    chunks: str | Tuple[int, int, int, int] | int | None = None,
-    dims: Optional[List[str]] = None,
-    crd: Optional[List[int]] = None,
+    input: (str | Path | np.ndarray | da.Array | list[str] | list[Path] | list[np.ndarray] | list[da.Array]),
+    chunks: str | tuple[int, int, int, int] | int | None = None,
+    dims: list[str] | None = None,
+    crd: list[int] | None = None,
     z_projection: bool = True,
-    output_dir: Optional[Union[Path, str]] = None,
+    output_dir: Path | str | None = None,
 ) -> da.Array:
     """
     Load images into a dask array.
@@ -219,14 +202,10 @@ def _load_image_to_dask(
     dask.array.Array
         The resulting 3D dask array with dimensions ordered as: (c, (z), y, x).
     """
-
     if isinstance(input, list):
         # if filename pattern is a list, create (c, (z), y, x) for each filename pattern
         dask_arrays = [
-            _load_image_to_dask(
-                f, chunks, dims, z_projection=z_projection, output_dir=output_dir
-            )
-            for f in input
+            _load_image_to_dask(f, chunks, dims, z_projection=z_projection, output_dir=output_dir) for f in input
         ]
 
         dask_array = da.concatenate(dask_arrays, axis=0)
@@ -245,11 +224,7 @@ def _load_image_to_dask(
 
     elif isinstance(input, (str, Path)):
         if dims is not None:
-            log.warning(
-                (
-                    f"dims parameter is equal to {dims}, but will be ignored when reading in images from a file"
-                )
-            )
+            log.warning(f"dims parameter is equal to {dims}, but will be ignored when reading in images from a file")
         # make sure we have (c,z,y,x)
         dask_array = imread.imread(input)
         if len(dask_array.shape) == 4:
@@ -264,9 +239,7 @@ def _load_image_to_dask(
             dims = ["y", "x"]
             dask_array = _fix_dimensions(dask_array, dims=dims)
         else:
-            raise ValueError(
-                f"Image has shape { dask_array.shape }, while (y, x) is required."
-            )
+            raise ValueError(f"Image has shape { dask_array.shape }, while (y, x) is required.")
     else:
         raise ValueError(f"input of type {type(input)} not supported.")
 
@@ -296,9 +269,9 @@ def _load_image_to_dask(
 
 
 def _fix_crd(
-    crd: Tuple[int, int, int, int],
+    crd: tuple[int, int, int, int],
     shape_y_x=Tuple[int, int],
-) -> Tuple[int, int, int, int]:
+) -> tuple[int, int, int, int]:
     x1, x2, y1, y2 = crd
 
     max_y, max_x = shape_y_x

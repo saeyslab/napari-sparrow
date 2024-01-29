@@ -16,14 +16,10 @@ import numpy as np
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
-from spatialdata import SpatialData
-
+from spatialdata import SpatialData, read_zarr
 
 import sparrow.utils as utils
-
 from sparrow.pipeline import SparrowPipeline
-
-from spatialdata import read_zarr
 
 log = utils.get_pylogger(__name__)
 
@@ -38,8 +34,7 @@ def segmentImage(
     pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the segmentation step, this calls the segmentation function."""
-
-    sdata = pipeline.segment( sdata)
+    sdata = pipeline.segment(sdata)
 
     return sdata
 
@@ -50,10 +45,7 @@ def _segmentation_worker(
     method: Callable,
     fn_kwargs: Dict[str, Any],
 ) -> SpatialData:
-    """
-    segment image in a thread worker
-    """
-
+    """Segment image in a thread worker"""
     return method(sdata, **fn_kwargs)
 
 
@@ -72,13 +64,14 @@ def segment_widget(
     diameter: int = 50,
     cellprob_threshold: int = -2,
     model_type: ModelOption = ModelOption.nuclei,
-    channels: List[int] = [1, 0],
+    channels: List[int] = None,
     voronoi_radius: int = 0,
     chunks: int = 2048,
     depth: int = 100,
 ):
     """This function represents the segment widget and is called by the wizard to create the widget."""
-
+    if channels is None:
+        channels = [1, 0]
     if image is None:
         raise ValueError("Please select an image")
 
@@ -90,21 +83,24 @@ def segment_widget(
     sdata = read_zarr(pipeline.cfg.paths.sdata)
 
     if image.name == utils.CLEAN:
-        log.info( f"Running segmentation on image layer '{utils.CLEAN}', "
-                 f"corresponding to image layer '{pipeline.cleaned_image_name}' in the SpatialData object used for backing." )
+        log.info(
+            f"Running segmentation on image layer '{utils.CLEAN}', "
+            f"corresponding to image layer '{pipeline.cleaned_image_name}' in the SpatialData object used for backing."
+        )
     elif image.name == utils.LOAD:
-        log.info( f"Running segmentation on image layer '{utils.LOAD}', "
-                 f"corresponding to image layer '{pipeline.loaded_image_name}' in the SpatialData object used for backing." )
-        # set cleaned image equal to loaded image in pipeline, 
+        log.info(
+            f"Running segmentation on image layer '{utils.LOAD}', "
+            f"corresponding to image layer '{pipeline.loaded_image_name}' in the SpatialData object used for backing."
+        )
+        # set cleaned image equal to loaded image in pipeline,
         # because we want to use image without cleaning applied for segmentation if we pick utils.LOAD
-        pipeline.cleaned_image_name=pipeline.loaded_image_name
+        pipeline.cleaned_image_name = pipeline.loaded_image_name
 
     else:
         raise ValueError(
             f"Please run the segmentation step on the layer with name '{utils.LOAD}' or '{utils.CLEAN}',"
             f"it seems layer with name '{image.name}' was selected."
         )
-    
 
     # Subset shape
     if subset:
@@ -138,12 +134,11 @@ def segment_widget(
     pipeline.cfg.segmentation.depth = depth
     pipeline.cfg.segmentation.voronoi_radius = voronoi_radius
 
-
     # Bug in spatialdata. We can not pass overwrite==True if the labels layer is not yet available.
     if [*sdata.labels]:
-        pipeline.cfg.segmentation.overwrite=True
+        pipeline.cfg.segmentation.overwrite = True
     else:
-        pipeline.cfg.segmentation.overwrite=False
+        pipeline.cfg.segmentation.overwrite = False
 
     fn_kwargs["pipeline"] = pipeline
 
@@ -187,19 +182,13 @@ def segment_widget(
 
         utils._export_config(
             pipeline.cfg.segmentation,
-            os.path.join(
-                pipeline.cfg.paths.output_dir, "configs", "segmentation", "plugin.yaml"
-            ),
+            os.path.join(pipeline.cfg.paths.output_dir, "configs", "segmentation", "plugin.yaml"),
         )
 
         show_info("Segmentation finished")
 
     worker.returned.connect(lambda data: add_shape(data, pipeline, utils.SEGMENT))  # type: ignore
-    show_info(
-        "Segmentation started" + ", CPU selected: might take some time"
-        if device == "cpu"
-        else ""
-    )
+    show_info("Segmentation started" + ", CPU selected: might take some time" if device == "cpu" else "")
     worker.start()
 
     return worker

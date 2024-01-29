@@ -1,4 +1,4 @@
-""" This file is used to create a large dataset config folder for the sparrow mutlirun analysis, see docs/hpc.md."""
+"""This file is used to create a large dataset config folder for the sparrow mutlirun analysis, see docs/hpc.md."""
 
 import argparse
 import logging
@@ -27,9 +27,7 @@ parser.add_argument(
     default="configs/dataset",
     help="Location of the config folder.",
 )
-parser.add_argument(
-    "--suffixes", "-s", metavar="N", type=str, nargs="+", help="List of all suffixes"
-)
+parser.add_argument("--suffixes", "-s", metavar="N", type=str, nargs="+", help="List of all suffixes")
 args = parser.parse_args()
 
 if not args.default_dataset:
@@ -61,8 +59,6 @@ for tiff in Path(args.dataset_folder).glob("*_DAPI.tiff"):
     logging.debug(file)
     with file.open("w") as f:
         print(
-            TEMPLATE.format(
-                default_dataset=args.default_dataset, tiff=tiff.name, txt=txt.name
-            ),
+            TEMPLATE.format(default_dataset=args.default_dataset, tiff=tiff.name, txt=txt.name),
             file=f,
         )
