@@ -62,3 +62,7 @@ convention = "numpy"
 "**/_tests/*" = ["D"]
 "*/__init__.py" = ["F401"]
 "**/test_data/*" = ["ALL"]
+
+
+[tool.pytest.ini_options]
+testpaths = ['src/sparrow/_tests']
