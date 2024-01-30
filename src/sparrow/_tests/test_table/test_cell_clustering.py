@@ -1,9 +1,9 @@
-import pytest
 import importlib.util
 
+import pytest
 
-@pytest.mark.skipif(not importlib.util.find_spec('sklearn'),
-                    reason="requires the scikit-learn library")
+
+@pytest.mark.skipif(not importlib.util.find_spec("sklearn"), reason="requires the scikit-learn library")
 def test_sklearn(sdata_multi_c):
     from sklearn.cluster import KMeans
 
@@ -12,8 +12,7 @@ def test_sklearn(sdata_multi_c):
     assert len(kmeans.labels_) == len(X)
 
 
-@pytest.mark.skipif(not importlib.util.find_spec('flowsom'),
-                    reason="requires the flowSOM library")
+@pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
 def test_flowsom(sdata_multi_c):
     from flowsom import FlowSOM
 
