@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 
 import numpy as np
+import pandas as pd
 from dask.array import Array
 from dask.array.overlap import ensure_minimum_chunksize
 from numpy.typing import NDArray
+from pandas import DataFrame
+from spatialdata import SpatialData
 
 from sparrow.utils.pylogger import get_pylogger
 
@@ -378,3 +381,64 @@ def _calculate_boundary_adjacent_block(chunk_shape, depth, block_id, adjacent_bl
         x_stop = depth[1]
 
     return (y_start, y_stop, x_start, x_stop)
+
+
+def _mask_to_original(
+    sdata: SpatialData, label_layer: str, original_labels_layers: List[str]
+) -> DataFrame:
+    def _zero_non_max(list_1, list_2):
+        if not list_1 or not list_2 or len(list_1) != len(list_2):
+            raise ValueError("Lists should be non-empty and of the same length.")
+
+        max_value = max(list_1)
+        for i in range(len(list_1)):
+            if list_1[i] != max_value:
+                list_2[i] = 0
+
+        return list_2
+
+    # utility function to get label from original masks
+    # TODO: scale this via dask/map_overlap. Do it in similar way as for _allocation_intensity function,
+    # but now using map_overlap, find which labels have interection with original chunk (i.e. without depth appended), then add them.
+    merged_all = sdata[label_layer].data.compute()
+
+    cell_ids = np.unique(merged_all)
+
+    arrays = []
+
+    for _label_layer in original_labels_layers:
+        arrays.append(sdata[_label_layer].data.compute())
+
+    df = pd.DataFrame(columns=original_labels_layers)
+
+    for label in cell_ids:
+        max_label_list = []
+        max_area_list = []
+
+        for _array in arrays:
+            positions = np.where(merged_all == label)
+            overlapping_labels = _array[positions]
+
+            label_areas = {
+                lbl: np.sum(overlapping_labels == lbl)
+                for lbl in np.unique(overlapping_labels)
+            }
+
+            label_areas.pop(0, None)
+
+            # Find the label with the maximum area
+            if label_areas:
+                max_label = max(label_areas, key=label_areas.get)
+                max_area = label_areas[max_label]
+            else:
+                max_label = 0  # Set to 0 if there's no overlap
+                max_area = 0
+
+            max_label_list.append(max_label)
+            max_area_list.append(max_area)
+
+        max_overlap = _zero_non_max(max_area_list, max_label_list)
+
+        df.loc[str(label)] = max_overlap
+
+    return df

@@ -7,4 +7,5 @@ from ._tiling import tiling_correction
 from ._transcripts import transcript_density
 from .segmentation._align_masks import align_labels_layers
 from .segmentation._expand_masks import expand_labels_layer
+from .segmentation._merge_masks import merge_labels_layers, merge_labels_layers_nuclei
 from .segmentation._segmentation import segment
