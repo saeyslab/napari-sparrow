@@ -130,7 +130,7 @@ def _clean_up_masks(
 
             # if intersection with mask and region outside chunk is bigger than inside region, set values of chunk to 0 for this masks.
             # For edge case where inside region and outside region is the same, it will be assigned to both chunks.
-            # Note that is better that both chunks claim the masks, than that no chunks are claiming the mask. If they both claim the mask,
+            # Note that is better that both chunks claim the masks, than that no chunks are claiming the mask.
             if outside_region > inside_region:
                 block[block == mask_label] = 0
                 break
@@ -383,6 +383,36 @@ def _calculate_boundary_adjacent_block(chunk_shape, depth, block_id, adjacent_bl
     return (y_start, y_stop, x_start, x_stop)
 
 
+def _get_block_position(
+    chunks: Tuple[Tuple[int, ...], ...], block_id: Tuple[int, int, int]
+) -> Tuple[int, int, int, int]:
+    """
+    Parameters
+
+    Given a block structure of a 4D Dask array and a block ID, return the
+    start and stop positions in the full array for that block for the 1st (y) and 2nd (x) dimension.
+
+    Parameters
+    ----------
+    block_structure: A tuple of tuples, where each inner tuple
+                            represents the sizes of the blocks in that dimension.
+    block_id: A tuple representing the position of the block in the
+                     block structure.
+
+    Returns
+    -------
+    A tuple (y_start, y_stop, x_start, x_stop)
+    """
+    y_structure, x_structure = chunks[1], chunks[2]
+    _, i, j, _ = block_id
+
+    y_start = sum(y_structure[:i])
+    y_stop = y_start + y_structure[i]
+
+    x_start = sum(x_structure[:j])
+    x_stop = x_start + x_structure[j]
+
+    return y_start, y_stop, x_start, x_stop
 def _mask_to_original(
     sdata: SpatialData, label_layer: str, original_labels_layers: List[str]
 ) -> DataFrame:

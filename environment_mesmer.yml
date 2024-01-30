@@ -34,3 +34,4 @@ dependencies:
     - xarray-spatial==0.3.5
     - pandas==1.4.3
     - deepcell==0.12.9
+    - nptyping==2.5.0
