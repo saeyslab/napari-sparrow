@@ -808,6 +808,5 @@ class SegmentationModelPoints(SegmentationModel):
         labels = self._model(block, df, **fn_kwargs).astype(_SEG_DTYPE)
         # for debug
         # labels = block.astype(_SEG_DTYPE)
-        del df
 
         return labels

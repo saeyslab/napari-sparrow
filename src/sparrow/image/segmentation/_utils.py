@@ -89,18 +89,16 @@ def _clean_up_masks(
     # get all masks id's that cross the boundary of original chunk (without depth appended)
     # masks that are on the boundary of the larger array (e.g. y==depth[0] axis are skipped)
 
-    crossing_masks = []
-    if block_id[0] != 0:
-        crossing_masks.append(block[:, depth[0], :])
-    if block_id[1] != 0:
-        crossing_masks.append(block[:, :, depth[1]])
-    if block_id[0] != total_blocks[0] - 1:
-        crossing_masks.append(block[:, block.shape[1] - depth[0], :])
-    if block_id[1] != total_blocks[1] - 1:
-        crossing_masks.append(block[:, :, block.shape[2] - depth[1]])
+    crossing_masks = set()
 
-    if crossing_masks:
-        crossing_masks = np.unique(np.hstack(crossing_masks))
+    if block_id[0] != 0:
+        crossing_masks.update((np.unique(block[:, depth[0], :])))
+    if block_id[1] != 0:
+        crossing_masks.update((np.unique(block[:, :, depth[1]])))
+    if block_id[0] != total_blocks[0] - 1:
+        crossing_masks.update((np.unique(block[:, block.shape[1] - depth[0], :])))
+    if block_id[1] != total_blocks[1] - 1:
+        crossing_masks.update((np.unique(block[:, :, block.shape[2] - depth[1]])))
 
     def calculate_area(crd, mask_position):
         return np.sum(
@@ -110,6 +108,7 @@ def _clean_up_masks(
             & (mask_position[1] < crd[3])
         )
 
+    masks_to_reset = []
     for mask_label in crossing_masks:
         if mask_label == 0:
             continue
@@ -132,8 +131,11 @@ def _clean_up_masks(
             # For edge case where inside region and outside region is the same, it will be assigned to both chunks.
             # Note that is better that both chunks claim the masks, than that no chunks are claiming the mask.
             if outside_region > inside_region:
-                block[block == mask_label] = 0
+                masks_to_reset.append(mask_label)
                 break
+
+    mask = np.isin(block, masks_to_reset)
+    block[mask] = 0
 
     # Set all masks that are fully outside the region to zero, they will be covered by other chunks
     subset = block[
@@ -413,6 +415,8 @@ def _get_block_position(
     x_stop = x_start + x_structure[j]
 
     return y_start, y_stop, x_start, x_stop
+
+
 def _mask_to_original(
     sdata: SpatialData, label_layer: str, original_labels_layers: List[str]
 ) -> DataFrame:

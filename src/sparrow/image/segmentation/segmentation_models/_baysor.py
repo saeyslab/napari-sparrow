@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import rasterio
 import shapely
 from geopandas import GeoDataFrame
@@ -25,7 +26,7 @@ def _baysor(
     name_x: str,
     name_y: str,
     name_gene: str,
-    config_path: str | Path, #path to config.toml file of baysor
+    config_path: str | Path,  # path to config.toml file of baysor
     output_dir: str | Path,
     threads: int,
     diameter: int = 40,  # this is scale in baysor, should be approx equal to the expected cell radius
@@ -48,6 +49,12 @@ def _baysor(
         name_gene in df.columns
     ), f"DataFrame should contain 'gene' column. '{name_gene}'."
 
+    if df.shape[0] < 50:
+        log.warning(
+            "Chunk contains less than 50 transcripts, returning array containing zeros."
+        )
+        return np.zeros(( img.shape ), dtype="uint32")
+    
     # squeeze the trivial c-channel
     img = img.squeeze(-1)
     # currently only support 2D segmentation with baysor.
