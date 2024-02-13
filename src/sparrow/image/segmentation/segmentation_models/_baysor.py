@@ -1,8 +1,11 @@
 import json
+import math
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 import geopandas as gpd
 import numpy as np
@@ -29,7 +32,8 @@ def _baysor(
     config_path: str | Path,  # path to config.toml file of baysor
     output_dir: str | Path,
     threads: int,
-    diameter: int = 40,  # this is scale in baysor, should be approx equal to the expected cell radius
+    diameter: int = 40,  # this is scale in baysor, should be approx equal to the expected cell ,
+    min_size: Optional[int] = None,
     use_prior_segmentation: bool = True,
     prior_confidence: int = 0.2,  # expected quality of the prior (i.e. masks). 0.0 will make algorithm ignore the prior, while 1.0 restricts the algorithm from contradicting the prior.
 ) -> NDArray:
@@ -53,62 +57,92 @@ def _baysor(
         log.warning(
             "Chunk contains less than 50 transcripts, returning array containing zeros."
         )
-        return np.zeros(( img.shape ), dtype="uint32")
-    
+        return np.zeros((img.shape), dtype="uint32")
+
     # squeeze the trivial c-channel
     img = img.squeeze(-1)
     # currently only support 2D segmentation with baysor.
     img = img.squeeze(0)
 
-    with tempfile.TemporaryDirectory(dir=output_dir) as temp_dir:
-        df.to_csv(os.path.join(temp_dir, "transcripts.csv"))
-        # Save the image as a TIFF file
-        if use_prior_segmentation:
-            image = Image.fromarray(img)
-            masks_path = os.path.join(temp_dir, "masks.tiff")
-            image.save(masks_path, format="TIFF")
-        else:
-            masks_path = ""
+    temp_dir = tempfile.mkdtemp(dir=output_dir)
+    # Define paths for the stdout and stderr files
+    stdout_path = os.path.join(temp_dir, "stdout.log")
+    stderr_path = os.path.join(temp_dir, "stderr.log")
 
-        output_html = os.path.join(temp_dir, "output.html")
+    df.to_csv(os.path.join(temp_dir, "transcripts.csv"))
+    # Save the image as a TIFF file
+    if use_prior_segmentation:
+        image = Image.fromarray(img)
+        masks_path = os.path.join(temp_dir, "masks.tiff")
+        image.save(masks_path, format="TIFF")
+    else:
+        masks_path = ""
 
-        # command to run baysor
-        command = (
-            f"JULIA_NUM_THREADS={threads} baysor run "
-            f"-s {diameter} "
-            f"-x {name_x} "
-            f"-y {name_y} "
-            f"-g {name_gene} "
-            f"-c {config_path} "
-            f"-o {output_html} "
-            f"--prior-segmentation-confidence={prior_confidence} "
-            f"{os.path.join( temp_dir, 'transcripts.csv' ) } "
-            "--save-polygons=geojson "
-            f"{masks_path}"
+    output_html = os.path.join(temp_dir, "output.html")
+
+    # command to run baysor
+    command = (
+        f"JULIA_NUM_THREADS={threads} baysor run "
+        f"-s {diameter} "
+        f"-x {name_x} "
+        f"-y {name_y} "
+        f"-g {name_gene} "
+        f"-c {config_path} "
+        f"-o {output_html} "
+        f"--prior-segmentation-confidence={prior_confidence} "
+        f"{os.path.join( temp_dir, 'transcripts.csv' ) } "
+        "--save-polygons=geojson "
+        f"{masks_path}"
+    )
+
+    with open(stdout_path, "w") as stdout_file, open(stderr_path, "w") as stderr_file:
+        try:
+            # Run the command and capture output
+            process = subprocess.run(
+                command,
+                shell=True,
+                check=True,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                text=True,
+            )
+
+        except subprocess.CalledProcessError as e:
+            log.error((f"Command failed with error: {e}."))
+
+            log.info("Retrying...")
+            try:
+                # Second attempt to run the command
+                process = subprocess.run(
+                    command,
+                    shell=True,
+                    check=True,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as e:
+                log.error(f"Second attempt failed with error: {e}.")
+                log.error(
+                    f"Temporary directory kept (with transcripts and masks) at: {temp_dir}"
+                )
+                # Re-raise the exception to be handled by the calling code or terminate the program with the traceback.
+                raise e
+
+    polygons = _read_baysor(
+        path_polygons=os.path.join(temp_dir, "output_polygons.json")
+    )
+
+    if min_size is None:
+        min_size = _calculate_area(diameter=diameter * 0.60)
+        log.warning(
+            f"Min size was set to 'None', setting min size to '{min_size}' (size of circle with diameter equal to 0.6*{diameter})."
         )
 
-        # Run the command and capture output
-        process = subprocess.run(
-            command,
-            shell=True,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+    polygons = polygons[polygons.geometry.area > min_size]
 
-        # Get the standard output
-        output = process.stdout
-
-        # Get the standard error
-        error = process.stderr
-
-        log.info(output)
-        log.error(error)
-
-        polygons = _read_baysor(
-            path_polygons=os.path.join(temp_dir, "output_polygons.json")
-        )
+    # clean up temp_dir
+    shutil.rmtree(temp_dir)
 
     # convert polygons to masks
     masks = rasterio.features.rasterize(
@@ -193,3 +227,9 @@ def _ensure_polygon(cell: Polygon | MultiPolygon | GeometryCollection) -> Polygo
 
     log.info(f"Removing cell of unknown type {type(cell)}")
     return None
+
+
+def _calculate_area(diameter: int):
+    radius = diameter / 2
+    area = math.pi * (radius**2)
+    return area
