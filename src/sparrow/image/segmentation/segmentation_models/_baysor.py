@@ -18,6 +18,9 @@ from PIL import Image
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, shape
 from shapely.validation import make_valid
 
+from skimage.segmentation import relabel_sequential
+
+
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -168,6 +171,8 @@ def _dummy(
     name_y: str,
     name_gene: str,
 ) -> NDArray:
+    img, _, _ = relabel_sequential(
+        img, )
     # dummu baysor segmentation, just return the labels layer
     # (used for benchmarking, and unit tests)
     return img

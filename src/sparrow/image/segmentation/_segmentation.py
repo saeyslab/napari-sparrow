@@ -109,10 +109,6 @@ def segment(
 
     fn_kwargs = kwargs
 
-    # take the last image as layer to do next step in pipeline
-    if img_layer is None:
-        img_layer = [*sdata.images][-1]
-
     if not callable(model):
         raise TypeError(f"Expected `model` to be a callable, found `{type(model)}`.")
 
@@ -180,7 +176,7 @@ def segment_points(
         Column name in the points_layer representing gene information, by default "gene".
     model : Callable[..., NDArray], default=_model_points
         The segmentation model function used to process the images.
-        Callable should take as input numpy arrays of dimension (z,y,x,c), a pandas dataframe with the transcripts, 
+        Callable should take as input numpy arrays of dimension (z,y,x,c), a pandas dataframe with the transcripts,
         and parameters 'name_x', 'name_y' and 'name_gene' with the column names of the x and y location and the column
         name for the transcripts. It should return labels of dimension (z,y,x,c), with c dimension==1.
         Currently only 2D segmentation is supported (y,x).
@@ -231,7 +227,7 @@ def segment_points(
         points_layer = [*sdata.points][-1]
     if labels_layer is None:
         raise ValueError("Please provide labels layer as prior.")
-        # eventually should support baysor segmentation without labels_layer provided.
+        # TODO eventually should support baysor segmentation without labels_layer provided.
 
     if not callable(model):
         raise TypeError(f"Expected `model` to be a callable, found `{type(model)}`.")
@@ -563,8 +559,13 @@ class SegmentationModelStains(SegmentationModel):
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
     ) -> SpatialData:
+
         if img_layer is None:
             img_layer = [*sdata.images][-1]
+            log.warning(
+                f"No image layer specified. "
+                f"Applying segmentation on last image layer '{img_layer}' of the provided SpatialData object."
+            )
 
         se = _get_spatial_element(sdata, layer=img_layer)
 
