@@ -164,13 +164,13 @@ def mask_to_original(
 ) -> DataFrame:
     """
     Maps labels from a mask layer to their corresponding labels in original labels layers within a SpatialData object.
-    The labels in `labels_layers` will be mapped to the label in of the the labels layers in `original_labels_layers` 
-    with which it has maximum overlap.  
+    The labels in `labels_layers` will be mapped to the label in of the the labels layers in `original_labels_layers`
+    with which it has maximum overlap.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial data object containing the mask and original labels layers.
+        Spatialdata object containing the mask and original labels layers.
     labels_layer : str
         The name of the labels layer used as a mask for mapping.
     original_labels_layers : List[str]
@@ -278,7 +278,7 @@ def mask_to_original(
         ), "Depth not equal to 0 in z dimension is currently not supported."
         assert len(depth) == 3, "Please provide depth values for z,y and x."
 
-        # img_gs, gold standard labels
+        # x_labels_gs, gold standard labels
         labels_gs = np.unique(
             x_labels_gs[:, _depth[1] : -_depth[1], _depth[2] : -_depth[2]]
         )
