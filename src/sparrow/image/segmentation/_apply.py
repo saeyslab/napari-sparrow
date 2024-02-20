@@ -234,11 +234,12 @@ def _combine_dask_arrays(
         else:
             _labels_arrays.append(x_label)
 
+    _x_label=_labels_arrays[0]
     if isinstance(depth, int):
         depth = {0: 0, 1: depth, 2: depth}
     else:
         assert (
-            len(depth) == x_label.ndim - 1
+            len(depth) == _x_label.ndim - 1
         ), "Please (only) provide depth for ( 'y', 'x')."
         # set depth for every dimension
         depth2 = {0: 0, 1: depth[0], 2: depth[1]}
@@ -247,9 +248,9 @@ def _combine_dask_arrays(
     if chunks is not None:
         if not isinstance(chunks, (int, str)):
             assert (
-                len(chunks) == x_label.ndim - 1
+                len(chunks) == _x_label.ndim - 1
             ), "Please (only) provide chunks for ( 'y', 'x')."
-            chunks = (x_label.shape[0], chunks[0], chunks[1])
+            chunks = (_x_label.shape[0], chunks[0], chunks[1])
 
     _check_boundary(boundary)
 
@@ -279,7 +280,7 @@ def _combine_dask_arrays(
         dtype=_SEG_DTYPE,
         trim=False,  # we do not trim, but we clean up and merge in subsequent steps.
         allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-        chunks=output_chunks,  # e.g. ((7,) ,(1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60), (1,) ),
+        chunks=output_chunks,  # e.g. ((7,) ,(1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60), ),
         depth=depth,
         boundary=boundary,
         num_blocks=num_blocks,
