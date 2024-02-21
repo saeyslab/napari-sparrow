@@ -24,6 +24,7 @@ def merge_labels_layers(
     sdata: SpatialData,
     labels_layer_1: str,
     labels_layer_2: str,
+    threshold: float = 0.5,
     depth: Tuple[int, ...] | int = 100,
     chunks: Optional[str | int | Tuple[int, ...]] = "auto",
     output_labels_layer: Optional[str] = None,
@@ -31,6 +32,58 @@ def merge_labels_layers(
     scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
 ) -> SpatialData:
+    """
+    Merges two labels layers within a SpatialData object based on a specified threshold.
+
+    This function applies a merge operation between two specified labels layers (`labels_layer_1` and `labels_layer_2`)
+    in a SpatialData object. The function will copy all labels from `labels_layer_1` to `output_labels_layer`, and for all labels
+    in `labels_layer_2` it will check if they have less than `threshold` overlap with labels from `labels_layer_1`, if so,
+    label in `labels_layer_2` will be copied to `output_labels_layer` at locations where 'labels_layer_1' is 0.
+    the label
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object containing the labels layers to be merged.
+    labels_layer_1 : str
+        The name of the first labels layer. This layer will get priority.
+    labels_layer_2 : str
+        The name of the second labels layer to be merged in `labels_layer_1`.
+    threshold : float, default=0.5
+        The threshold value to control the merging of labels. This value determines how the merge operation is
+        conducted based on the overlap between the labels in `labels_layer_1` and `labels_layer_2`.
+    depth : Tuple[int, ...] | int, default=100
+        The depth around the boundary of each block to load when the array is split into blocks
+        (for alignment). This ensures that the split isn't causing misalignment along the edges.
+    chunks : Optional[str | int | Tuple[int, ...]], default="auto"
+        Specification for rechunking the data before applying the merge operation. This parameter defines how the data
+        is divided into chunks for processing.
+    output_labels_layer : Optional[str], default=None
+        The name of the output labels layer where the merged results will be stored.
+    output_shapes_layer : Optional[str], default=None
+        The name of the output shapes layer where results will be stored if shape data is produced from the merge operation.
+    scale_factors : Optional[ScaleFactors_t], default=None
+        Scale factors to apply for multiscale processing.
+    overwrite : bool, default=False
+        If True, overwrites the output layer if it already exists in `sdata`.
+
+    Returns
+    -------
+    SpatialData
+        The `sdata` object with the merged labels layer added to the specified output layer. If `output_shapes_layer` is
+        provided, a shapes layer will be created corresponding to this labels layer.
+
+    Raises
+    ------
+    ValueError
+        - If any of the specified labels layers cannot be found in `sdata`.
+
+    Notes
+    -----
+    This function leverages dask for potential parallelism and out-of-core computation, enabling the processing of large
+    datasets that may not fit entirely in memory. It is particularly useful in scenarios where two segmentation results
+    need to be combined to achieve a more accurate or comprehensive segmentation outcome.
+    """
     sdata = apply_labels_layers(
         sdata,
         func=_merge_masks_block,
@@ -42,6 +95,7 @@ def merge_labels_layers(
         scale_factors=scale_factors,
         overwrite=overwrite,
         relabel_chunks=True,
+        threshold=threshold,
     )
     return sdata
 
@@ -51,6 +105,7 @@ def merge_labels_layers_nuclei(
     labels_layer: str,
     labels_layer_nuclei_expanded: str,
     labels_layer_nuclei: str,
+    threshold: float = 0.5,
     depth: Tuple[int, ...] | int = 100,
     chunks: Optional[str | int | Tuple[int, ...]] = "auto",
     output_labels_layer: Optional[str] = None,
@@ -58,6 +113,59 @@ def merge_labels_layers_nuclei(
     scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
 ) -> SpatialData:
+    """
+    Given a labels layer obtained from nuclei segmentation (`labels_layer_nuclei`),
+    and corresponding expanded nuclei (`labels_layer_nuclei_expanded`), e.g. obtained through `sp.im.expand_labels_layer`,
+    this function merges labels in labels layer `labels_layer_nuclei_expanded` with `labels_layer` in the SpatialData object,
+    if corresponding nuclei in `labels_layer_nuclei` have less than `threshold` overlap with labels from `labels_layer`.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object containing the labels layers.
+    labels_layer : str
+        The name of the labels layer to merge with nuclei labels.
+    labels_layer_nuclei_expanded : str
+        The name of the expanded nuclei labels layer.
+    labels_layer_nuclei : str
+        The name of the nuclei labels layer.
+    threshold : float, default=0.5
+        The threshold value to control the merging of labels. This value determines how the merge operation is
+        conducted based on the overlap between the labels in `labels_layer_nuclei` and `labels_layer`.
+    depth : Tuple[int, ...] | int, default=100
+        The depth around the boundary of each block to load when the array is split into blocks
+        (for alignment). This ensures that the split isn't causing misalignment along the edges.
+    chunks : Optional[str | int | Tuple[int, ...]], default="auto"
+        Specification for rechunking the data before applying the merge operation. This parameter defines how the data
+        is divided into chunks for processing. If 'auto', the chunking strategy is determined automatically.
+    output_labels_layer : Optional[str], default=None
+        The name of the output labels layer where the merged results will be stored.
+    output_shapes_layer : Optional[str], default=None
+        The name of the output shapes layer where results will be stored if shape data is produced from the merge operation.
+    scale_factors : Optional[ScaleFactors_t], default=None
+        Scale factors to apply for multiscale processing.
+    overwrite : bool, default=False
+        If True, overwrites the output layer if it already exists in `sdata`.
+
+    Returns
+    -------
+    SpatialData
+        The `sdata` object with the merged labels layer added to the specified output layer.
+        If `output_shapes_layer` is provided, a shapes layer will be created corresponding to this labels layer.
+
+    Raises
+    ------
+    ValueError
+        - If any of the specified labels layers cannot be found in `sdata`.
+        - If the labels in `labels_layer_nuclei_expanded` do not match the labels in `labels_layer_nuclei`.
+
+    Notes
+    -----
+    This function is designed to facilitate the merging of expanded nuclei labels with other label layers within a SpatialData
+    object.
+    It leverages dask for potential parallelism and out-of-core computation.
+    """
+
     labels_layers = [labels_layer, labels_layer_nuclei_expanded, labels_layer_nuclei]
     for layer in labels_layers:
         if layer not in [*sdata.labels]:
@@ -83,6 +191,7 @@ def merge_labels_layers_nuclei(
         scale_factors=scale_factors,
         overwrite=overwrite,
         relabel_chunks=True,
+        threshold=threshold,
     )
     return sdata
 
@@ -90,6 +199,7 @@ def merge_labels_layers_nuclei(
 def _merge_masks_block(
     array_1: NDArray,  # array_1 gets priority
     array_2: NDArray,
+    threshold: float = 0.5,
 ) -> NDArray:
     # this is func for merging of arrays.
     # we need to relabel to avoid collisions in the merged_masks.
@@ -97,16 +207,30 @@ def _merge_masks_block(
     array_2, _, _ = relabel_sequential(array_2, offset=array_1.max() + 1)
 
     merged_masks = array_1
-    # TODO: do this more strict. Check if more than half of label in array_2 is not in
-    # one of the labels in array_1
-    merged_masks[merged_masks == 0] = array_2[merged_masks == 0]
+    unique_labels_2 = np.unique(
+        array_2[array_2 > 0]
+    )  # Get unique labels from array_2, excluding zero.
+    for label in unique_labels_2:
+        area_2 = np.sum(array_2 == label)
+        # Calculate the overlap area of array_2's label with array_1
+        overlap_area = np.sum((array_2 == label) & (array_1 > 0))
+        # Check if more than thresh of the overlap area ( e.g., if thresh==0.5 ->half of the area ) is not in array_1
+        if overlap_area <= area_2 * threshold:
+            # Find the corresponding area in array_2 and merge it into array_1 (only at places where array_1==0)
+            merge_condition = (array_2 == label) & (array_1 == 0)
+            array_1[merge_condition] = label
     return merged_masks
 
 
-def _merge_masks_nuclei_block(array_1, array_2, array_3):
+def _merge_masks_nuclei_block(
+    array_1: NDArray, array_2: NDArray, array_3: NDArray, threshold: float = 0.5
+):
     # array_1 is priority segmentation
     # array_2 is expanded_nucleus
     # array_3 is nucleus
+
+    # labels in expanded_nucleus are added to priority_segmentation,
+    # if corresponding nucleus does not overlap for more than half with labels in priority_segmentation.
 
     def _relabel_array(arr, original_values, new_values):
         relabeled_array = np.zeros_like(arr)
@@ -145,10 +269,9 @@ def _merge_masks_nuclei_block(array_1, array_2, array_3):
 
         # Calculate the overlap area of array_3's label with array_1
         overlap_area = np.sum((array_3 == label) & (array_1 > 0))
-
-        # Check if more than half of the area is not in array_1
-        if overlap_area <= area_3 / 2:
-            # Find the corresponding area in array_2 and merge it into array_1
+        # Check if more than threshold of the overlap area ( e.g., if thresh==0.5 ->half of the area ) is not in array_1
+        if overlap_area <= area_3 * threshold:
+            # Find the corresponding area in array_2 and merge it into array_1 (only at places where array_1==0)
             merge_condition = (array_2 == label) & (array_1 == 0)
             array_1[merge_condition] = label
 
@@ -163,8 +286,8 @@ def mask_to_original(
     chunks: str | int | Tuple[int, ...] = "auto",
 ) -> DataFrame:
     """
-    Maps labels from a mask layer to their corresponding labels in original labels layers within a SpatialData object.
-    The labels in `labels_layers` will be mapped to the label in of the the labels layers in `original_labels_layers`
+    Maps labels from a labels layer (`labels_layer`) to their corresponding labels in original labels layers within a SpatialData object.
+    The labels in `labels_layers` will be mapped to the label of the labels layers in `original_labels_layers`
     with which it has maximum overlap.
 
     Parameters
@@ -181,7 +304,8 @@ def mask_to_original(
         cell size to avoid chunking effects.
     chunks : str | int | Tuple[int, ...], default="auto"
         Specification for rechunking the data before applying the function. If chunks is a Tuple, they should contain
-        desired chunk size for 'y', 'x'. 'auto' allows the function to determine optimal chunking.
+        desired chunk size for 'y', 'x'. 'auto' allows the function to determine optimal chunking. Setting chunks to a
+        relative small size (~1000) will significantly speed up the computations.
 
     Returns
     -------
