@@ -25,8 +25,8 @@ def merge_labels_layers(
     labels_layer_1: str,
     labels_layer_2: str,
     threshold: float = 0.5,
-    depth: Tuple[int, ...] | int = 100,
-    chunks: Optional[str | int | Tuple[int, ...]] = "auto",
+    depth: Tuple[int, int] | int = 100,
+    chunks: Optional[str | int | Tuple[int, int]] = "auto",
     output_labels_layer: Optional[str] = None,
     output_shapes_layer: Optional[str] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
@@ -52,10 +52,11 @@ def merge_labels_layers(
     threshold : float, default=0.5
         The threshold value to control the merging of labels. This value determines how the merge operation is
         conducted based on the overlap between the labels in `labels_layer_1` and `labels_layer_2`.
-    depth : Tuple[int, ...] | int, default=100
+    depth : Tuple[int, int] | int, default=100
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
-    chunks : Optional[str | int | Tuple[int, ...]], default="auto"
+        Please set depth>cell diameter + distance to avoid chunking effects.
+    chunks : Optional[str | int | Tuple[int, int]], default="auto"
         Specification for rechunking the data before applying the merge operation. This parameter defines how the data
         is divided into chunks for processing.
     output_labels_layer : Optional[str], default=None
@@ -106,8 +107,8 @@ def merge_labels_layers_nuclei(
     labels_layer_nuclei_expanded: str,
     labels_layer_nuclei: str,
     threshold: float = 0.5,
-    depth: Tuple[int, ...] | int = 100,
-    chunks: Optional[str | int | Tuple[int, ...]] = "auto",
+    depth: Tuple[int, int] | int = 100,
+    chunks: Optional[str | int | Tuple[int, int]] = "auto",
     output_labels_layer: Optional[str] = None,
     output_shapes_layer: Optional[str] = None,
     scale_factors: Optional[ScaleFactors_t] = None,
@@ -132,10 +133,11 @@ def merge_labels_layers_nuclei(
     threshold : float, default=0.5
         The threshold value to control the merging of labels. This value determines how the merge operation is
         conducted based on the overlap between the labels in `labels_layer_nuclei` and `labels_layer`.
-    depth : Tuple[int, ...] | int, default=100
+    depth : Tuple[int, int] | int, default=100
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
-    chunks : Optional[str | int | Tuple[int, ...]], default="auto"
+        Please set depth>cell diameter + distance to avoid chunking effects.
+    chunks : Optional[str | int | Tuple[int, int]], default="auto"
         Specification for rechunking the data before applying the merge operation. This parameter defines how the data
         is divided into chunks for processing. If 'auto', the chunking strategy is determined automatically.
     output_labels_layer : Optional[str], default=None
@@ -282,8 +284,8 @@ def mask_to_original(
     sdata: SpatialData,
     labels_layer: str,
     original_labels_layers: List[str],
-    depth: Tuple[int, ...] | int = 400,
-    chunks: str | int | Tuple[int, ...] = "auto",
+    depth: Tuple[int, int] | int = 400,
+    chunks: Optional[str | int | Tuple[int, int]] = "auto",
 ) -> DataFrame:
     """
     Maps labels from a labels layer (`labels_layer`) to their corresponding labels in original labels layers within a SpatialData object.
@@ -298,11 +300,11 @@ def mask_to_original(
         The name of the labels layer used as a mask for mapping.
     original_labels_layers : List[str]
         The names of the original labels layers to which the mask labels are mapped.
-    depth : Tuple[int, ...] | int, default=400
+    depth : Tuple[int, int] | int, default=100
         The depth around the boundary of each block to load when the array is split into blocks. This ensures
         that the split doesn't cause misalignment along the edges. Default is 400. Set depth larger than the maximum
-        cell size to avoid chunking effects.
-    chunks : str | int | Tuple[int, ...], default="auto"
+        cell diameter to avoid chunking effects.
+    chunks : Optional[str | int | Tuple[int, int]], default="auto"
         Specification for rechunking the data before applying the function. If chunks is a Tuple, they should contain
         desired chunk size for 'y', 'x'. 'auto' allows the function to determine optimal chunking. Setting chunks to a
         relative small size (~1000) will significantly speed up the computations.

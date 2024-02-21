@@ -37,11 +37,12 @@ def apply_labels_layers(
     labels_layers: List[str] | str,
     output_labels_layer: Optional[str] = None,
     output_shapes_layer: Optional[str] = None,
-    depth: Tuple[int, ...] | int = 100,
-    chunks: str | int | Tuple[int, ...] = "auto",
+    depth: Tuple[int, int] | int = 100,
+    chunks: Optional[str | int | Tuple[int, int]] = "auto",
     scale_factors: Optional[ScaleFactors_t] = None,
     overwrite: bool = False,
     relabel_chunks: bool = True,
+    trim: bool = False,  # set to True if you do not expect chunking effects from func, e.g. func is a filter on size, or on shape of individual labels.
     **kwargs: Any,  # keyword arguments to be passed to func
 ):
     """
@@ -59,19 +60,23 @@ def apply_labels_layers(
         The name of the output labels layer where results will be stored. This must be specified.
     output_shapes_layer : Optional[str], default=None.
         The name of the output shapes layer where results will be stored.
-    depth : Tuple[int, ...], default=100.
+    depth : Tuple[int, int] | int, default=100
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
-        Default is 100. Please set depth>cell size to avoid chunking effects.
-    chunks : str | Tuple[int, ...] | int, default=None.
+        Default is 100. Please set depth>cell diameter to avoid chunking effects.
+    chunks : Optional[str | int | Tuple[int, int]], default="auto"
         Specification for rechunking the data before applying the function.
         If chunks is a Tuple, they should contain desired chunk size for 'y', 'x'.
-    scale_factors
+    scale_factors, default=None
         Scale factors to apply for multiscale.
     overwrite : bool, default=False
         If True, overwrites the output layer if it already exists in `sdata`.
     relabel_chunks: bool, default=True.
         Whether to relabel the labels of each chunk after being processed by func. If set to True, a bit shift will be applied, ensuring no collisions.
+    trim: bool, default=False.
+        Whether to trim overlap added by map_overlap, or postprocess the chunks to avoid chunking effects.
+        Set to true if you do not expect chunking effects from `func`, e.g. `func` is a filter on size or shape of individual labels, and is designed carefully 
+        to prevent chunking effects.
     **kwargs : Any
         Keyword arguments to be passed to func.
 
@@ -166,6 +171,7 @@ def apply_labels_layers(
     array = _combine_dask_arrays(
         labels_arrays,
         relabel_chunks=relabel_chunks,
+        trim=trim,
         func=func,
         fn_kwargs=fn_kwargs,
         **kwargs,
@@ -202,6 +208,7 @@ def apply_labels_layers(
 def _combine_dask_arrays(
     labels_arrays: Iterable[Array],
     relabel_chunks: bool,
+    trim: bool,
     func: Callable[..., NDArray],
     fn_kwargs: Mapping[str, Any] = MappingProxyType(
         {}
@@ -234,7 +241,7 @@ def _combine_dask_arrays(
         else:
             _labels_arrays.append(x_label)
 
-    _x_label=_labels_arrays[0]
+    _x_label = _labels_arrays[0]
     if isinstance(depth, int):
         depth = {0: 0, 1: depth, 2: depth}
     else:
@@ -265,6 +272,8 @@ def _combine_dask_arrays(
         if i == 0:
             # output_chunks can be derived from any rechunked x_label in labels_arrays
             output_chunks = _add_depth_to_chunks_size(x_label.chunks, depth)
+            # else:
+            #    output_chunks = x_label.chunks
 
         rechunked_arrays.append(x_label)
 
@@ -278,7 +287,7 @@ def _combine_dask_arrays(
         ),  # Unpack and pass all arrays to _process_masks
         *rechunked_arrays,  # Unpack the list of Dask arrays as individual arguments
         dtype=_SEG_DTYPE,
-        trim=False,  # we do not trim, but we clean up and merge in subsequent steps.
+        trim=trim,  # we do not trim, but we clean up and merge in subsequent steps.
         allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
         chunks=output_chunks,  # e.g. ((7,) ,(1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60), ),
         depth=depth,
@@ -291,28 +300,29 @@ def _combine_dask_arrays(
         **kwargs,  # additional kwargs passed to map_overlap
     )
 
-    x_labels = da.map_blocks(
-        _clean_up_masks,
-        x_labels,
-        dtype=_SEG_DTYPE,
-        depth=depth,
-        **kwargs,
-    )
+    if not trim:
+        x_labels = da.map_blocks(
+            _clean_up_masks,
+            x_labels,
+            dtype=_SEG_DTYPE,
+            depth=depth,
+            **kwargs,
+        )
 
-    output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
+        output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
 
-    x_labels = da.map_overlap(
-        _merge_masks,
-        x_labels,
-        dtype=_SEG_DTYPE,
-        num_blocks=x_labels.numblocks,
-        trim=False,
-        allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-        chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
-        depth=depth,
-        boundary=boundary,
-        _depth=depth,
-    )
+        x_labels = da.map_overlap(
+            _merge_masks,
+            x_labels,
+            dtype=_SEG_DTYPE,
+            num_blocks=x_labels.numblocks,
+            trim=False,
+            allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
+            chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
+            depth=depth,
+            boundary=boundary,
+            _depth=depth,
+        )
 
     x_labels = x_labels.rechunk(x_labels.chunksize)
 
