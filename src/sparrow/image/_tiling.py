@@ -71,6 +71,10 @@ def tiling_correction(
 
     if img_layer is None:
         img_layer = [*sdata.images][-1]
+        log.warning(
+            f"No image layer specified. "
+            f"Applying image processing on the last image layer '{img_layer}' of the provided SpatialData object."
+        )
 
     se = _get_spatial_element(sdata, layer=img_layer)
 

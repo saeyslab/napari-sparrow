@@ -1,6 +1,8 @@
+from pandas import DataFrame
 from spatialdata import SpatialData
 
 from sparrow.image.segmentation._merge_masks import (
+    mask_to_original,
     merge_labels_layers,
     merge_labels_layers_nuclei,
 )
@@ -37,3 +39,16 @@ def test_merge_labels_layers_nuclei(sdata_multi_c: SpatialData):
 
     assert "masks_merged_nuclear" in sdata_multi_c.labels
     assert isinstance(sdata_multi_c, SpatialData)
+
+
+def test_mask_to_original(sdata_multi_c: SpatialData):
+    df = mask_to_original(
+        sdata_multi_c,
+        labels_layer="masks_whole",
+        original_labels_layers=["masks_nuclear"],
+        depth=100,
+        chunks=256,
+    )
+
+    assert df.shape == (674, 1)
+    assert isinstance(df, DataFrame)

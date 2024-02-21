@@ -3,13 +3,16 @@ from __future__ import annotations
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import cv2
-from numpy.typing import NDArray
 import numpy as np
+from numpy.typing import NDArray
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
 from sparrow.image._apply import apply
 from sparrow.image._image import _get_spatial_element
+from sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def enhance_contrast(
@@ -104,6 +107,13 @@ def enhance_contrast(
             image = image[None, None, ...]
 
         return image
+
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
+        log.warning(
+            f"No image layer specified. "
+            f"Applying image processing on the last image layer '{img_layer}' of the provided SpatialData object."
+        )
 
     se = _get_spatial_element(sdata, img_layer)
 
