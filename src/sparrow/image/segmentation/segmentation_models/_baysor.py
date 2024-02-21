@@ -9,6 +9,7 @@ from typing import Optional
 
 import geopandas as gpd
 import numpy as np
+import numpy as np
 import rasterio
 import shapely
 from geopandas import GeoDataFrame
