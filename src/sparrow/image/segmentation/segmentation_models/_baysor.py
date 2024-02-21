@@ -173,8 +173,9 @@ def _dummy(
     name_gene: str,
 ) -> NDArray:
     img, _, _ = relabel_sequential(
-        img, )
-    # dummu baysor segmentation, just return the labels layer
+        img,
+    )
+    # dummy points segmentation, just return the labels layer
     # (used for benchmarking, and unit tests)
     return img
 
