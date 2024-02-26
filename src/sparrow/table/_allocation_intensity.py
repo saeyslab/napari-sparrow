@@ -28,6 +28,7 @@ def allocate_intensity(
     channels: Optional[int | str | Iterable[int] | Iterable[str]] = None,
     chunks: Optional[str | int | tuple[int, ...]] = 10000,
     append: bool = False,
+    remove_background_intensity: bool = True,
 ) -> SpatialData:
     """
     Allocates intensity values from a specified image layer to corresponding cells in a SpatialData object and
@@ -57,6 +58,8 @@ def allocate_intensity(
         If set to True, and the `labels_layer` does not yet exist as an `_INSTANCE_KEY` in `sdata.table.obs`,
         the intensity values extracted during the current function call will be appended (along axis=0) to any existing intensity data
         within the SpatialData object's table attribute. If False, any existing data in `sdata.table` will be overwritten by the newly extracted intensity values.
+    remove_background_intensity: bool, optional.
+        If set to True, the calculated intensity for the background (INSTANCE_KEY==0) will not be added to `sdata.table`.
 
     Returns
     -------
@@ -163,6 +166,8 @@ def allocate_intensity(
 
     adata.obs[_INSTANCE_KEY] = _cells_id
     adata.obs[_REGION_KEY] = pd.Categorical([labels_layer] * len(adata.obs))
+    if remove_background_intensity:
+        adata = adata[adata.obs[_INSTANCE_KEY] != 0]
 
     if sdata.table is None:
         sdata.table = spatialdata.models.TableModel.parse(
