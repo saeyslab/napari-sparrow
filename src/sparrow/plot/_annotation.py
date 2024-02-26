@@ -1,13 +1,15 @@
 from typing import Optional
-from spatialdata import SpatialData
-import matplotlib.pyplot as plt
-import pandas as pd
-import matplotlib as mpl
-import scanpy as sc
-import numpy as np
 
-from sparrow.plot._plot import plot_shapes
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import scanpy as sc
+from spatialdata import SpatialData
+
 from sparrow.image._image import _get_boundary, _get_spatial_element
+from sparrow.plot._plot import plot_shapes
+from sparrow.table._keys import _ANNOTATION_KEY, _CLEANLINESS_KEY
 
 
 def score_genes(
@@ -21,7 +23,7 @@ def score_genes(
 ) -> None:
     """
     Function generates following plots:
-    
+
     - umap of assigned celltype next to umap of calculated cleanliness.
     - umap of assigned celltype next to umap of assigned leiden cluster.
     - assigned celltype for all cells in region of interest (crd).
@@ -74,31 +76,33 @@ def score_genes(
     ]
 
     # Plot cleanliness and leiden next to annotation
-    sc.pl.umap(sdata.table, color=["Cleanliness", "annotation"], show=False)
+    sc.pl.umap(sdata.table, color=[_CLEANLINESS_KEY, _ANNOTATION_KEY], show=False)
 
     if output:
-        plt.savefig(output + "_Cleanliness_annotation", bbox_inches="tight")
+        plt.savefig(
+            output + f"_{_CLEANLINESS_KEY}_{_ANNOTATION_KEY}", bbox_inches="tight"
+        )
     else:
         plt.show()
     plt.close()
 
-    sc.pl.umap(sdata.table, color=["leiden", "annotation"], show=False)
+    sc.pl.umap(sdata.table, color=["leiden", _ANNOTATION_KEY], show=False)
 
     if output:
-        plt.savefig(output + "_leiden_annotation", bbox_inches="tight")
+        plt.savefig(output + f"_leiden_{_ANNOTATION_KEY}", bbox_inches="tight")
     else:
         plt.show()
     plt.close()
 
     # Plot annotation and cleanliness columns of sdata.table (AnnData) object
-    sdata.table.uns["annotation_colors"] = colors
+    sdata.table.uns[f"{_ANNOTATION_KEY}_colors"] = colors
     plot_shapes(
         sdata=sdata,
-        column="annotation",
+        column=_ANNOTATION_KEY,
         crd=crd,
         img_layer=img_layer,
         shapes_layer=shapes_layer,
-        output=output + "_annotation" if output else None,
+        output=output + f"_{_ANNOTATION_KEY}" if output else None,
     )
 
     # Plot heatmap of celltypes and filtered celltypes based on filter index

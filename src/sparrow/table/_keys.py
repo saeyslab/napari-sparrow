@@ -1,0 +1,6 @@
+_CELL_INDEX = "cells"
+_INSTANCE_KEY = "cell_ID"
+_REGION_KEY = "fov_labels"
+_ANNOTATION_KEY = "annotation"
+_UNKNOWN_CELLTYPE_KEY = "unknown_celltype"
+_CLEANLINESS_KEY = "Cleanliness"

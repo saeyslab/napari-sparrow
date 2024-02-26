@@ -9,6 +9,7 @@ from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element
 from sparrow.shape._shape import _filter_shapes_layer
+from sparrow.table._keys import _CELL_INDEX
 from sparrow.table._table import _back_sdata_table_to_zarr
 from sparrow.utils.pylogger import get_pylogger
 
@@ -82,7 +83,7 @@ def preprocess_anndata(
     sc.pp.filter_genes(sdata.table, min_cells=min_cells)
 
     if shapes_layer is not None and labels_layer is not None:
-        raise ValueError( "Either specify shapes_layer or labels_layer, not both." )
+        raise ValueError("Either specify shapes_layer or labels_layer, not both.")
 
     if shapes_layer is not None:
         has_z = sdata.shapes[shapes_layer]["geometry"].apply(lambda geom: geom.has_z)
@@ -163,6 +164,6 @@ def _get_mask_area(mask: Array) -> pd.Series:
                 combined_counts[str(label)] += count
 
     combined_counts = pd.Series(combined_counts)
-    combined_counts.index.name = "cells"
+    combined_counts.index.name = _CELL_INDEX
 
     return combined_counts

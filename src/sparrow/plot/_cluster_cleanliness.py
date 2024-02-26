@@ -1,9 +1,11 @@
 from typing import List, Optional
-from spatialdata import SpatialData
+
 import matplotlib.pyplot as plt
 import scanpy as sc
+from spatialdata import SpatialData
 
 from sparrow.plot._plot import plot_shapes
+from sparrow.table._keys import _ANNOTATION_KEY
 
 
 def cluster_cleanliness(
@@ -12,7 +14,7 @@ def cluster_cleanliness(
     shapes_layer: str = "segmentation_mask_boundaries",
     crd: Optional[List[int]] = None,
     color_dict: Optional[dict] = None,
-    celltype_column: str = "annotation",
+    celltype_column: str = _ANNOTATION_KEY,
     output: Optional[str] = None,
 ) -> None:
     """
@@ -36,7 +38,7 @@ def cluster_cleanliness(
     color_dict : dict, optional
         Custom colormap dictionary for coloring cell types in the barplot.
     celltype_column : str, optional
-        Name of the column in sdata.table containing cell type annotations (default is "annotation").
+        Name of the column in sdata.table containing cell type annotations (default is `_ANNOTATION_KEY`).
     output : str, optional
         The file path prefix for the plots (default is None).
         If provided, the plots will be saved to the specified output file path with "_barplot.png",
@@ -52,11 +54,11 @@ def cluster_cleanliness(
     stacked = (
         sdata.table.obs.groupby(["leiden", celltype_column], as_index=False)
         .size()
-        .pivot( index="leiden", columns=celltype_column)
+        .pivot(index="leiden", columns=celltype_column)
         .fillna(0)
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
-    stacked_norm.columns = list(sdata.table.obs.annotation.cat.categories)
+    stacked_norm.columns = list(sdata.table.obs[_ANNOTATION_KEY].cat.categories)
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
     if color_dict:

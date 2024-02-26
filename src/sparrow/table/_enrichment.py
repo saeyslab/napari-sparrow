@@ -1,11 +1,12 @@
 import squidpy as sq
 from spatialdata import SpatialData
 
+from sparrow.table._keys import _ANNOTATION_KEY
 from sparrow.table._table import _back_sdata_table_to_zarr
 
 
 def nhood_enrichment(
-    sdata: SpatialData, celltype_column: str = "annotation", seed: int = 0
+    sdata: SpatialData, celltype_column: str = _ANNOTATION_KEY, seed: int = 0
 ) -> SpatialData:
     """Returns the AnnData object.
 

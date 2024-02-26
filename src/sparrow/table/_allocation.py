@@ -17,6 +17,7 @@ from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element, _get_translation
 from sparrow.shape._shape import _filter_shapes_layer
+from sparrow.table._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -154,7 +155,7 @@ def allocate(
             int(coords.x0) + x_start
         )
 
-        filtered_partition.loc[:, "cells"] = chunk[
+        filtered_partition.loc[:, _CELL_INDEX] = chunk[
             z_coords,
             y_coords,
             x_coords,
@@ -186,11 +187,11 @@ def allocate(
     combined_partitions = dd.from_delayed(processed_partitions)
 
     if "z" in combined_partitions:
-        coordinates = combined_partitions.groupby("cells")["x", "y", "z"].mean()
+        coordinates = combined_partitions.groupby(_CELL_INDEX)["x", "y", "z"].mean()
     else:
-        coordinates = combined_partitions.groupby("cells")["x", "y"].mean()
+        coordinates = combined_partitions.groupby(_CELL_INDEX)["x", "y"].mean()
 
-    cell_counts = combined_partitions.groupby(["cells", "gene"]).size()
+    cell_counts = combined_partitions.groupby([_CELL_INDEX, "gene"]).size()
 
     coordinates, cell_counts = dask.compute(
         coordinates, cell_counts, scheduler="threads"
@@ -214,15 +215,16 @@ def allocate(
     adata = AnnData(cell_counts[cell_counts.index != "0"])
     coordinates.index = coordinates.index.map(str)
     adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
+    adata.obs[_INSTANCE_KEY] = adata.obs.index.astype(int)
 
-    adata.obs["region"] = pd.Categorical([1] * len(adata.obs))
-    adata.obs["instance"] = 1
+    # currently only support adding only one field of view
+    adata.obs[_REGION_KEY] = pd.Categorical([labels_layer] * len(adata.obs))
 
     if sdata.table:
         del sdata.table
 
     sdata.table = spatialdata.models.TableModel.parse(
-        adata, region_key="region", region=1, instance_key="instance"
+        adata, region_key=_REGION_KEY, region=[labels_layer], instance_key=_INSTANCE_KEY
     )
 
     indexes_to_keep = sdata.table.obs.index.values.astype(int)
