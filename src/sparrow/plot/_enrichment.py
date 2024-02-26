@@ -5,12 +5,13 @@ import numpy as np
 import squidpy as sq
 from spatialdata import SpatialData
 
+from sparrow.table._keys import _ANNOTATION_KEY
 from sparrow.table._table import _back_sdata_table_to_zarr
 
 
 def nhood_enrichment(
     sdata: SpatialData,
-    celltype_column: str = "annotation",
+    celltype_column: str = _ANNOTATION_KEY,
     output: Optional[str] = None,
 ) -> None:
     """
@@ -25,7 +26,7 @@ def nhood_enrichment(
         The SpatialData object containing the data for analysis.
     celltype_column : str, optional
         The column name in the SpatialData object's table that specifies the cell type annotations.
-        The default value is "annotation".
+        The default value is `_ANNOTATION_KEY`.
     output : str or None, optional
         If provided, the plot will be displayed and also saved to a file with the specified filename.
         If None, the plot will be displayed directly without saving.
