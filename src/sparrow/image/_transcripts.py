@@ -116,7 +116,7 @@ def transcript_density(
             min(img_boundary[3], crd[3]),
         ]
         if _crd != crd:
-            log.warn(
+            log.warning(
                 f"Provided crd didn't fully fit within the image layer '{img_layer}' with image boundary '{img_boundary}'. "
                 f"The crd was updated from '{crd}' to '{_crd}'."
             )
