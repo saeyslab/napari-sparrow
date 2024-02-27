@@ -9,7 +9,6 @@ from typing import Optional
 
 import geopandas as gpd
 import numpy as np
-import numpy as np
 import rasterio
 import shapely
 from geopandas import GeoDataFrame
@@ -18,9 +17,7 @@ from pandas import DataFrame as PandasDataFrame
 from PIL import Image
 from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, shape
 from shapely.validation import make_valid
-
 from skimage.segmentation import relabel_sequential
-
 
 from sparrow.utils.pylogger import get_pylogger
 
@@ -44,23 +41,15 @@ def _baysor(
     # img is (z,y,x,c), and returned masks are also (z,y,x,c)
     log.info(f"Prior segmentation: {use_prior_segmentation}")
     log.info(f"Prior confidence: {prior_confidence}")
-    assert (
-        img.ndim == 4
-    ), "Please provide img with (z,y,x,c) dimension. z and c dimension should be 1."
-    assert (
-        img.shape[0] == 1
-    ), "Currently only 2D segmentation is supported. I.e. z-dimension should be 1"
+    assert img.ndim == 4, "Please provide img with (z,y,x,c) dimension. z and c dimension should be 1."
+    assert img.shape[0] == 1, "Currently only 2D segmentation is supported. I.e. z-dimension should be 1"
     assert img.shape[-1] == 1, "Channel dimension should be 1."
     assert name_x in df.columns, f"DataFrame should contain 'x' coordinate '{name_x}'."
     assert name_y in df.columns, f"DataFrame should contain 'y' coordinate '{name_y}'."
-    assert (
-        name_gene in df.columns
-    ), f"DataFrame should contain 'gene' column. '{name_gene}'."
+    assert name_gene in df.columns, f"DataFrame should contain 'gene' column. '{name_gene}'."
 
     if df.shape[0] < 50:
-        log.warning(
-            "Chunk contains less than 50 transcripts, returning array containing zeros."
-        )
+        log.warning("Chunk contains less than 50 transcripts, returning array containing zeros.")
         return np.zeros((img.shape), dtype="uint32")
 
     # squeeze the trivial c-channel
@@ -102,7 +91,7 @@ def _baysor(
     with open(stdout_path, "w") as stdout_file, open(stderr_path, "w") as stderr_file:
         try:
             # Run the command and capture output
-            process = subprocess.run(
+            subprocess.run(
                 command,
                 shell=True,
                 check=True,
@@ -112,12 +101,12 @@ def _baysor(
             )
 
         except subprocess.CalledProcessError as e:
-            log.error((f"Command failed with error: {e}."))
+            log.error(f"Command failed with error: {e}.")
 
             log.info("Retrying...")
             try:
                 # Second attempt to run the command
-                process = subprocess.run(
+                subprocess.run(
                     command,
                     shell=True,
                     check=True,
@@ -127,15 +116,11 @@ def _baysor(
                 )
             except subprocess.CalledProcessError as e:
                 log.error(f"Second attempt failed with error: {e}.")
-                log.error(
-                    f"Temporary directory kept (with transcripts and masks) at: {temp_dir}"
-                )
+                log.error(f"Temporary directory kept (with transcripts and masks) at: {temp_dir}")
                 # Re-raise the exception to be handled by the calling code or terminate the program with the traceback.
                 raise e
 
-    polygons = _read_baysor(
-        path_polygons=os.path.join(temp_dir, "output_polygons.json")
-    )
+    polygons = _read_baysor(path_polygons=os.path.join(temp_dir, "output_polygons.json"))
 
     if min_size is None:
         min_size = _calculate_area(diameter=diameter * 0.60)
@@ -185,11 +170,7 @@ def _read_baysor(path_polygons: str | Path, min_vertices: int = 4) -> GeoDataFra
         polygons_dict = json.load(f)
         polygons_dict = {c["cell"]: c for c in polygons_dict["geometries"]}
 
-    polygons_dict = {
-        num: data
-        for num, data in polygons_dict.items()
-        if len(data["coordinates"][0]) >= min_vertices
-    }
+    polygons_dict = {num: data for num, data in polygons_dict.items() if len(data["coordinates"][0]) >= min_vertices}
 
     polygons = [shape(data) for _, data in polygons_dict.items()]
 
@@ -208,7 +189,8 @@ def _ensure_polygon(cell: Polygon | MultiPolygon | GeometryCollection) -> Polygo
     Args:
         cell: A shapely Polygon or MultiPolygon or GeometryCollection
 
-    Returns:
+    Returns
+    -------
         The shape as a Polygon
     """
     cell = shapely.make_valid(cell)
@@ -225,9 +207,7 @@ def _ensure_polygon(cell: Polygon | MultiPolygon | GeometryCollection) -> Polygo
         geoms = [geom for geom in cell.geoms if isinstance(geom, Polygon)]
 
         if not geoms:
-            log.info(
-                f"Removing cell of type {type(cell)} as it contains no Polygon geometry"
-            )
+            log.info(f"Removing cell of type {type(cell)} as it contains no Polygon geometry")
             return None
 
         return max(geoms, key=lambda polygon: polygon.area)

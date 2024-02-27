@@ -1,6 +1,4 @@
-"""
-Napari widget for managing the other widgets and giving a general overview of the workflow.
-"""
+"""Napari widget for managing the other widgets and giving a general overview of the workflow."""
 
 
 from magicgui.widgets import ComboBox, Container, Label, TextEdit
@@ -21,9 +19,7 @@ log = get_pylogger(__name__)
 
 # Class for step widgets
 class Step:
-    """This class represents the steps of the plugin.
-    It consists of a name, a label, the widget itself and a description about the arguments.
-    """
+    """Class represents the steps of the plugin. It consists of a name, a label, the widget itself and a description about the arguments."""
 
     def __init__(self, name, label, widget, description):
         """Initalisation of steps."""
@@ -58,7 +54,7 @@ class Step:
 
 # Step as choices
 def get_choices():
-    """This function represents the choices that will be displayed in the selection menu of the Wizard widget."""
+    """Function represents the choices that will be displayed in the selection menu of the Wizard widget."""
     return [
         (
             "Step 0: Load",
@@ -170,10 +166,7 @@ def get_choices():
 
 
 def wizard_widget() -> None:
-    """
-    Napari widget for managing the other widgets and giving a general overview of the workflow.
-    """
-
+    """Napari widget for managing the other widgets and giving a general overview of the workflow."""
     # Set DaMBi Icon
     icon = Label(name="icon", value="Made by DaMBi")
     pixmap = QPixmap("./src/sparrow/widgets/dambi-white.png")
@@ -197,9 +190,7 @@ def wizard_widget() -> None:
     container.native.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
 
     def step_changed(event):
-        """This is a callback that updates the current step
-        when the step menu selection changes
-        """
+        """Callback that updates the current step when the step menu selection changes."""
         name = str(event)
 
         # Add widget if not yet exists

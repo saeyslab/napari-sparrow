@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Iterable, Mapping
 
 import dask.array as da
 import numpy as np
@@ -34,12 +34,12 @@ log = get_pylogger(__name__)
 def apply_labels_layers(
     sdata: SpatialData,
     func: Callable[..., NDArray | Array],
-    labels_layers: List[str] | str,
-    output_labels_layer: Optional[str] = None,
-    output_shapes_layer: Optional[str] = None,
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
-    scale_factors: Optional[ScaleFactors_t] = None,
+    labels_layers: list[str] | str,
+    output_labels_layer: str | None = None,
+    output_shapes_layer: str | None = None,
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     relabel_chunks: bool = True,
     trim: bool = False,  # set to True if you do not expect chunking effects from func, e.g. func is a filter on size, or on shape of individual labels.
@@ -75,7 +75,7 @@ def apply_labels_layers(
         Whether to relabel the labels of each chunk after being processed by func. If set to True, a bit shift will be applied, ensuring no collisions.
     trim: bool, default=False.
         Whether to trim overlap added by map_overlap, or postprocess the chunks to avoid chunking effects.
-        Set to true if you do not expect chunking effects from `func`, e.g. `func` is a filter on size or shape of individual labels, and is designed carefully 
+        Set to true if you do not expect chunking effects from `func`, e.g. `func` is a filter on size or shape of individual labels, and is designed carefully
         to prevent chunking effects.
     **kwargs : Any
         Keyword arguments to be passed to func.
@@ -100,7 +100,6 @@ def apply_labels_layers(
     This function is designed for processing labels layers stored in a SpatialData object using dask for potential
     parallelism and out-of-core computation. It takes care of relabeling across chunks, to avoid collisions.
     """
-
     fn_kwargs = kwargs
 
     labels_layers = (
@@ -113,19 +112,17 @@ def apply_labels_layers(
         raise ValueError("Please specify a name for the output layer.")
 
     # first do the precondition.
-    def _get_layers(
-        sdata: SpatialData, labels_layers: List[str]
-    ) -> Tuple[List[Array], Translation]:
+    def _get_layers(sdata: SpatialData, labels_layers: list[str]) -> tuple[list[Array], Translation]:
         """
+        Get layers.
+
         Process multiple labels layers and return the label data (list of dask arrays)
         and the translation associated with the dask arrays.
         """
         # sanity check
         for layer in labels_layers:
             if layer not in [*sdata.labels]:
-                raise ValueError(
-                    f"Layer '{layer}' not found in available label layers '{[*sdata.labels]}' of sdata."
-                )
+                raise ValueError(f"Layer '{layer}' not found in available label layers '{[*sdata.labels]}' of sdata.")
         labels_data = []
 
         # Initial checks for the first layer to set a reference for comparison
@@ -147,15 +144,12 @@ def apply_labels_layers(
 
             # Ensure the translation is the same as the first label layer
             assert translation == first_translation, (
-                f"Labels layer with name {layer} should "
-                f"have the same translation as the first labels layer."
+                f"Labels layer with name {layer} should " f"have the same translation as the first labels layer."
             )
 
             labels_data.append(x_label)
 
-        translation = Translation(
-            [first_translation[0], first_translation[1]], axes=("x", "y")
-        )
+        translation = Translation([first_translation[0], first_translation[1]], axes=("x", "y"))
 
         return labels_data, translation
 
@@ -176,8 +170,6 @@ def apply_labels_layers(
         fn_kwargs=fn_kwargs,
         **kwargs,
     )
-
-    translation
 
     sdata = _add_label_layer(
         sdata,
@@ -210,9 +202,7 @@ def _combine_dask_arrays(
     relabel_chunks: bool,
     trim: bool,
     func: Callable[..., NDArray],
-    fn_kwargs: Mapping[str, Any] = MappingProxyType(
-        {}
-    ),  # keyword arguments to be passed to func
+    fn_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments to be passed to func
     **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
 ) -> Array:
     # combines a list of dask arrays
@@ -223,9 +213,7 @@ def _combine_dask_arrays(
     # Check for consistent shapes
     first_shape = labels_arrays[0].shape
     for x_label in labels_arrays:
-        assert (
-            x_label.shape == first_shape
-        ), "Only arrays with same shape are currently supported."
+        assert x_label.shape == first_shape, "Only arrays with same shape are currently supported."
 
     chunks = kwargs.pop("chunks", None)
     depth = kwargs.pop("depth", 100)
@@ -234,7 +222,7 @@ def _combine_dask_arrays(
     # First make dimension uniform (z,y,x).
     _to_squeeze = False
     _labels_arrays = []
-    for i, x_label in enumerate(labels_arrays):
+    for x_label in labels_arrays:
         if x_label.ndim == 2:
             _to_squeeze = True
             _labels_arrays.append(x_label[None, ...])
@@ -245,18 +233,14 @@ def _combine_dask_arrays(
     if isinstance(depth, int):
         depth = {0: 0, 1: depth, 2: depth}
     else:
-        assert (
-            len(depth) == _x_label.ndim - 1
-        ), "Please (only) provide depth for ( 'y', 'x')."
+        assert len(depth) == _x_label.ndim - 1, "Please (only) provide depth for ( 'y', 'x')."
         # set depth for every dimension
         depth2 = {0: 0, 1: depth[0], 2: depth[1]}
         depth = depth2
 
     if chunks is not None:
         if not isinstance(chunks, (int, str)):
-            assert (
-                len(chunks) == _x_label.ndim - 1
-            ), "Please (only) provide chunks for ( 'y', 'x')."
+            assert len(chunks) == _x_label.ndim - 1, "Please (only) provide chunks for ( 'y', 'x')."
             chunks = (_x_label.shape[0], chunks[0], chunks[1])
 
     _check_boundary(boundary)
@@ -335,8 +319,8 @@ def _combine_dask_arrays(
 
 def _process_masks(
     *arrays: NDArray,
-    block_id: Tuple[int, ...],
-    num_blocks: Tuple[int, ...],
+    block_id: tuple[int, ...],
+    num_blocks: tuple[int, ...],
     shift: int,
     relabel_chunks: bool,
     _func: Callable,
@@ -344,14 +328,8 @@ def _process_masks(
 ):
     if len(num_blocks) == 3:
         if num_blocks[0] != 1:
-            raise ValueError(
-                f"Expected the number of blocks in the Z-dimension to be `1`, found `{num_blocks[0]}`."
-            )
-        block_num = (
-            block_id[0] * (num_blocks[1] * num_blocks[2])
-            + block_id[1] * (num_blocks[2])
-            + block_id[2]
-        )
+            raise ValueError(f"Expected the number of blocks in the Z-dimension to be `1`, found `{num_blocks[0]}`.")
+        block_num = block_id[0] * (num_blocks[1] * num_blocks[2]) + block_id[1] * (num_blocks[2]) + block_id[2]
 
     else:
         raise ValueError(f"Expected `3` dimensional chunks, found `{len(num_blocks)}`.")

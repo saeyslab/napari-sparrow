@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import dask.array as da
 import numpy as np
@@ -28,14 +28,16 @@ def align_labels_layers(
     sdata: SpatialData,
     labels_layer_1: str,
     labels_layer_2: str,
-    depth: Tuple[int, ...] | int = 100,
-    chunks: Optional[str | int | Tuple[int, ...]] = "auto",
-    output_labels_layer: Optional[str] = None,
-    output_shapes_layer: Optional[str] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    depth: tuple[int, ...] | int = 100,
+    chunks: str | int | tuple[int, ...] | None = "auto",
+    output_labels_layer: str | None = None,
+    output_shapes_layer: str | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ):
     """
+    Align two labels layers.
+
     This function aligns two label layers by examining the labels in labels_layer_1
     and identifying their maximum overlap with labels in labels_layer_2.
     It then updates the labels in labels_layer_1,
@@ -122,9 +124,7 @@ def _align_dask_arrays(
 ):
     # we will align labels of x_label_1 with labels of x_labels_2.
 
-    assert (
-        x_label_1.shape == x_label_2.shape
-    ), "Only arrays with same shape are currently supported."
+    assert x_label_1.shape == x_label_2.shape, "Only arrays with same shape are currently supported."
 
     chunks = kwargs.pop("chunks", None)
     depth = kwargs.pop("depth", 100)
@@ -133,9 +133,7 @@ def _align_dask_arrays(
     if isinstance(depth, int):
         depth = {0: 0, 1: depth, 2: depth}
     else:
-        assert (
-            len(depth) == x_label_1.ndim
-        ), f"Please provide depth for each dimension ({x_label_1.ndim})."
+        assert len(depth) == x_label_1.ndim, f"Please provide depth for each dimension ({x_label_1.ndim})."
         if x_label_1.ndim == 2:
             depth = {0: 0, 1: depth[0], 2: depth[1]}
 
@@ -213,9 +211,7 @@ def _align_dask_arrays(
     return x_labels
 
 
-def _relabel_array_1_to_array_2_per_chunk(
-    array_1: NDArray, array_2: NDArray
-) -> NDArray:
+def _relabel_array_1_to_array_2_per_chunk(array_1: NDArray, array_2: NDArray) -> NDArray:
     assert array_1.shape == array_2.shape
 
     new_array = np.zeros((array_1.shape), dtype=int)
@@ -229,10 +225,7 @@ def _relabel_array_1_to_array_2_per_chunk(
 
         overlapping_labels = array_2[positions]
 
-        label_areas = {
-            lbl: np.sum(overlapping_labels == lbl)
-            for lbl in np.unique(overlapping_labels)
-        }
+        label_areas = {lbl: np.sum(overlapping_labels == lbl) for lbl in np.unique(overlapping_labels)}
 
         # Remove the area count for label 0 (background)
         label_areas.pop(0, None)

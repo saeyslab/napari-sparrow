@@ -30,9 +30,7 @@ defaults:
 # Create subset of the image and data based on image pixels
 subset: []
 
-
 device: "cpu"
-
 
 # Result dict
 result: null
@@ -46,12 +44,11 @@ task_name: "segment"
 # appending lists from command line is currently not supported :(
 # https://github.com/facebookresearch/hydra/issues/1547
 tags: ["dev"]
-
 # pass configs via command line, because this is part of source code
 #hydra:
 #  searchpath:
-    # add local configs to search path
-    #-  file://${oc.env:PWD}/configs #oc.env:PWD not recognized on windows
-    # You can also use file based schema:
-    # - file:///etc/my_app
-    # - file://${oc.env:HOME}/.my_app
+# add local configs to search path
+#-  file://${oc.env:PWD}/configs #oc.env:PWD not recognized on windows
+# You can also use file based schema:
+# - file:///etc/my_app
+# - file://${oc.env:HOME}/.my_app

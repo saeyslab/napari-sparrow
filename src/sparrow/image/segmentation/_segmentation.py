@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from types import MappingProxyType
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Mapping
 
 import dask.array as da
 import numpy as np
@@ -44,22 +44,21 @@ log = get_pylogger(__name__)
 
 def segment(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
+    img_layer: str | None = None,
     model: Callable[..., NDArray] = _model,
     output_labels_layer: str = "segmentation_mask",
-    output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
+    output_shapes_layer: str | None = "segmentation_mask_boundaries",
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
     boundary: str = "reflect",
     trim: bool = False,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     **kwargs: Any,
 ):
     """
-    Segment images using a provided model and add segmentation results
-    (labels layer and shapes layer) to the SpatialData object.
+    Segment images using a provided model and add segmentation results (labels layer and shapes layer) to the SpatialData object.
 
     Parameters
     ----------
@@ -106,7 +105,6 @@ def segment(
     TypeError
         If the provided `model` is not callable.
     """
-
     fn_kwargs = kwargs
 
     if not callable(model):
@@ -137,26 +135,26 @@ def segment(
 
 def segment_points(
     sdata: SpatialData,
-    labels_layer: Optional[str] = None,  # the prior
-    points_layer: Optional[str] = None,
+    labels_layer: str | None = None,  # the prior
+    points_layer: str | None = None,
     name_x: str = "x",
     name_y: str = "y",
     name_gene: str = "gene",
     model: Callable[..., NDArray] = _model_points,
     output_labels_layer: str = "segmentation_mask",
-    output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
+    output_shapes_layer: str | None = "segmentation_mask_boundaries",
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
     boundary: str = "reflect",
     trim: bool = False,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     **kwargs: Any,
 ):
     """
-    Segment images using a `points_layer` and a prior (`labels_layer`) and add segmentation results
-    (labels layer and shapes layer) to the SpatialData object.
+    Segment images using a `points_layer` and a prior (`labels_layer`) and add segmentation results (labels layer and shapes layer) to the SpatialData object.
+
     Currently only segmentation using a prior is supported.
     The `points_layer` and the `labels_layer` should be registered (i.e. same coordinate space in `sdata`).
 
@@ -219,7 +217,6 @@ def segment_points(
     TypeError
         If the provided `model` is not callable.
     """
-
     fn_kwargs = kwargs
 
     # take the last points layer as layer to do next step in pipeline
@@ -272,9 +269,7 @@ class SegmentationModel(ABC):
     ) -> SpatialData:
         pass
 
-    def _precondition(
-        self, se: Union[SpatialImage, DataArray], kwargs: Dict[Any, Any]
-    ) -> Tuple[Array, Dict[Any, Any]]:
+    def _precondition(self, se: SpatialImage | DataArray, kwargs: dict[Any, Any]) -> tuple[Array, dict[Any, Any]]:
         # take dask array and put channel dimension last,
         # so we have ( z, y, x, c ), also do some checks on depth and chunks
 
@@ -299,18 +294,14 @@ class SegmentationModel(ABC):
             # add trivial z dimension.
             x = x[None, ...]
         else:
-            raise ValueError(
-                "Only 3D and 4D arrays are supported, i.e. (c, (z), y, x)."
-            )
+            raise ValueError("Only 3D and 4D arrays are supported, i.e. (c, (z), y, x).")
 
         if "depth" in kwargs:
             depth = kwargs["depth"]
             if isinstance(depth, int):
                 kwargs["depth"] = {0: 0, 1: depth, 2: depth, 3: 0}
             else:
-                assert (
-                    len(depth) == x.ndim - 2
-                ), "Please (only) provide depth for ( 'y', 'x')."
+                assert len(depth) == x.ndim - 2, "Please (only) provide depth for ( 'y', 'x')."
                 # set depth for every dimension
                 depth2 = {0: 0, 1: depth[0], 2: depth[1], 3: 0}
                 kwargs["depth"] = depth2
@@ -319,9 +310,7 @@ class SegmentationModel(ABC):
             chunks = kwargs["chunks"]
             if chunks is not None:
                 if not isinstance(chunks, (int, str)):
-                    assert (
-                        len(chunks) == x.ndim - 2
-                    ), "Please (only) provide chunks for ( 'y', 'x')."
+                    assert len(chunks) == x.ndim - 2, "Please (only) provide chunks for ( 'y', 'x')."
                     chunks = (x.shape[0], chunks[0], chunks[1], x.shape[-1])
                     kwargs["chunks"] = chunks
 
@@ -332,9 +321,9 @@ class SegmentationModel(ABC):
         sdata: SpatialData,
         x_labels: Array,
         output_labels_layer: str,
-        output_shapes_layer: Optional[str],
-        translation: Union[Translation, Identity] = None,
-        scale_factors: Optional[ScaleFactors_t] = None,
+        output_shapes_layer: str | None,
+        translation: Translation | Identity = None,
+        scale_factors: ScaleFactors_t | None = None,
         overwrite: bool = False,
     ) -> SpatialData:
         # squeeze the z-dim if it is 1 (i.e. case where you did not do 3D segmentation),
@@ -383,9 +372,7 @@ class SegmentationModel(ABC):
         trim = kwargs.pop("trim", False)
 
         if not trim and depth[1] == 0 or depth[2] == 0:
-            log.warning(
-                "Depth equal to zero not supported with trim==False, setting trim to True."
-            )
+            log.warning("Depth equal to zero not supported with trim==False, setting trim to True.")
             trim = True
 
         _check_boundary(boundary)
@@ -411,9 +398,7 @@ class SegmentationModel(ABC):
         # this could lead to collisions.
         # ignore channel dim (num_blocks[3]), because channel dim of resulting label is supposed to be 1.
         num_blocks = x.numblocks
-        shift = int(
-            np.prod(num_blocks[0] * num_blocks[1] * num_blocks[2]) - 1
-        ).bit_length()
+        shift = int(np.prod(num_blocks[0] * num_blocks[1] * num_blocks[2]) - 1).bit_length()
 
         x_labels = da.map_overlap(
             self._segment_chunk,
@@ -460,9 +445,7 @@ class SegmentationModel(ABC):
                 **kwargs,
             )
 
-            output_chunks = _substract_depth_from_chunks_size(
-                x_labels.chunks, depth=depth
-            )
+            output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
 
             x_labels = da.map_overlap(
                 _merge_masks,
@@ -483,16 +466,14 @@ class SegmentationModel(ABC):
 
     def _segment_chunk(
         self,
-        block: NDArray[Shape["Any, Any, Any, Any"]],
-        block_id: Tuple[int, ...],
-        num_blocks: Tuple[int, ...],
+        block: NDArray[Shape[Any, Any, Any, Any]],
+        block_id: tuple[int, ...],
+        num_blocks: tuple[int, ...],
         shift: int,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs,
-    ) -> NDArray[Shape["Any, Any, Any, Any"]]:
-        """
-        This method should be implemented in each subclass to handle the segmentation logic on each chunk
-        """
+    ) -> NDArray[Shape[Any, Any, Any, Any]]:
+        """Method should be implemented in each subclass to handle the segmentation logic on each chunk"""
         if len(num_blocks) == 4:
             if num_blocks[0] != 1:
                 raise ValueError(
@@ -504,20 +485,12 @@ class SegmentationModel(ABC):
                 )
 
             # note: ignore num_blocks[3]==1 and block_id[3]==0, because we assume c-dimension is 1
-            block_num = (
-                block_id[0] * (num_blocks[1] * num_blocks[2])
-                + block_id[1] * (num_blocks[2])
-                + block_id[2]
-            )
+            block_num = block_id[0] * (num_blocks[1] * num_blocks[2]) + block_id[1] * (num_blocks[2]) + block_id[2]
 
         else:
-            raise ValueError(
-                f"Expected `4` dimensional chunks, found `{len(num_blocks)}`."
-            )
+            raise ValueError(f"Expected `4` dimensional chunks, found `{len(num_blocks)}`.")
 
-        labels = self._custom_segment_chunk(
-            block, block_id, fn_kwargs=fn_kwargs, **kwargs
-        )
+        labels = self._custom_segment_chunk(block, block_id, fn_kwargs=fn_kwargs, **kwargs)
 
         mask: NDArray = labels > 0
         labels[mask] = (labels[mask] << shift) | block_num
@@ -527,13 +500,14 @@ class SegmentationModel(ABC):
     @abstractmethod
     def _custom_segment_chunk(
         self,
-        block: NDArray[Shape["Any, Any, Any, Any"]],
-        block_id: Tuple[int, ...],
+        block: NDArray[Shape[Any, Any, Any, Any]],
+        block_id: tuple[int, ...],
         fn_kwargs: Mapping[str, Any],
         **kwargs,
-    ) -> NDArray[Shape["Any, Any, Any, Any"]]:
+    ) -> NDArray[Shape[Any, Any, Any, Any]]:
         """
         Implement the unique part of _segment_chunk in each subclass.
+
         Takes as input a numpy array (('z', 'y', 'x', 'c')),
         and returns a numpy array containing predicted labels (('z', 'y', 'x', 'c')), with c-dimension==1
         """
@@ -550,16 +524,15 @@ class SegmentationModelStains(SegmentationModel):
     def _segment_layer(
         self,
         sdata: SpatialData,
-        img_layer: Optional[str] = None,
+        img_layer: str | None = None,
         output_labels_layer: str = "segmentation_mask",
-        output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-        crd: Optional[Tuple[int, int, int, int]] = None,
-        scale_factors: Optional[ScaleFactors_t] = None,
+        output_shapes_layer: str | None = "segmentation_mask_boundaries",
+        crd: tuple[int, int, int, int] | None = None,
+        scale_factors: ScaleFactors_t | None = None,
         overwrite: bool = False,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
     ) -> SpatialData:
-
         if img_layer is None:
             img_layer = [*sdata.images][-1]
             log.warning(
@@ -608,11 +581,11 @@ class SegmentationModelStains(SegmentationModel):
 
     def _custom_segment_chunk(
         self,
-        block: NDArray[Shape["Any, Any, Any, Any"]],
-        block_id: Tuple[int, ...],
+        block: NDArray[Shape[Any, Any, Any, Any]],
+        block_id: tuple[int, ...],
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs,
-    ) -> NDArray[Shape["Any, Any, Any, Any"]]:
+    ) -> NDArray[Shape[Any, Any, Any, Any]]:
         labels = self._model(block, **fn_kwargs).astype(_SEG_DTYPE)
         return labels
 
@@ -627,15 +600,15 @@ class SegmentationModelPoints(SegmentationModel):
     def _segment_layer(
         self,
         sdata: SpatialData,
-        labels_layer: Optional[str] = None,  # prior, required for now
-        points_layer: Optional[str] = None,
+        labels_layer: str | None = None,  # prior, required for now
+        points_layer: str | None = None,
         name_x: str = "x",
         name_y: str = "y",
         name_gene: str = "gene",
         output_labels_layer: str = "segmentation_mask",
-        output_shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-        crd: Optional[Tuple[int, int, int, int]] = None,
-        scale_factors: Optional[ScaleFactors_t] = None,
+        output_shapes_layer: str | None = "segmentation_mask_boundaries",
+        crd: tuple[int, int, int, int] | None = None,
+        scale_factors: ScaleFactors_t | None = None,
         overwrite: bool = False,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,
@@ -685,9 +658,7 @@ class SegmentationModelPoints(SegmentationModel):
             # we write to points layer,
             # otherwise we would need to do this query again for every chunk we process later on
             # TODO should we do a persist here for the _ddf if sdata is not backed by .zarr store? Probably yes
-            _crd_points_layer = (
-                f"{points_layer}_{'_'.join(str(item) for item in _crd_points)}"
-            )
+            _crd_points_layer = f"{points_layer}_{'_'.join(str(item) for item in _crd_points)}"
 
             sdata.add_points(
                 name=_crd_points_layer,
@@ -735,13 +706,13 @@ class SegmentationModelPoints(SegmentationModel):
 
     def _custom_segment_chunk(
         self,
-        block: NDArray[Shape["Any, Any, Any, Any"]],
-        block_id: Tuple[int, ...],
-        _output_chunks: Tuple[Tuple[int, ...], ...],
-        _depth: Dict[int, int],
+        block: NDArray[Shape[Any, Any, Any, Any]],
+        block_id: tuple[int, ...],
+        _output_chunks: tuple[tuple[int, ...], ...],
+        _depth: dict[int, int],
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs,
-    ) -> NDArray[Shape["Any, Any, Any, Any"]]:
+    ) -> NDArray[Shape[Any, Any, Any, Any]]:
         name_x = fn_kwargs.setdefault("name_x", "x")
         name_y = fn_kwargs.setdefault("name_y", "y")
         _ = fn_kwargs.setdefault("name_gene", "gene")
@@ -750,9 +721,7 @@ class SegmentationModelPoints(SegmentationModel):
         original_chunks = _substract_depth_from_chunks_size(_output_chunks, _depth)
 
         # find position in larger array
-        y_start, y_stop, x_start, x_stop = _get_block_position(
-            original_chunks, block_id
-        )
+        y_start, y_stop, x_start, x_stop = _get_block_position(original_chunks, block_id)
 
         # shape size of original image
         shape_size = (
@@ -777,22 +746,16 @@ class SegmentationModelPoints(SegmentationModel):
             assert y_start >= _crd_points[2], "Provided query not inside labels region."
         if y_stop != shape_size[1] + _crd_points[2]:
             y_stop = y_stop + _depth[1]
-            assert (
-                y_stop <= shape_size[1] + _crd_points[2]
-            ), "Provided query not inside labels region."
+            assert y_stop <= shape_size[1] + _crd_points[2], "Provided query not inside labels region."
         if x_start != _crd_points[0]:
             x_start = x_start - _depth[2]
             assert x_start >= _crd_points[0], "Provided query not inside labels region."
         if x_stop != shape_size[2] + _crd_points[0]:
             x_stop = x_stop + _depth[2]
-            assert (
-                x_stop <= shape_size[2] + _crd_points[0]
-            ), "Provided query not inside labels region."
+            assert x_stop <= shape_size[2] + _crd_points[0], "Provided query not inside labels region."
 
         # query the dask dataframe
-        _ddf = self._ddf.query(
-            f"{ x_start } <= {name_x} < { x_stop } and { y_start } <= {name_y} < { y_stop }"
-        )
+        _ddf = self._ddf.query(f"{ x_start } <= {name_x} < { x_stop } and { y_start } <= {name_y} < { y_stop }")
 
         df = _ddf.compute()
         # account for the fact that we do a reflect at the boundaries,

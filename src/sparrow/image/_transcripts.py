@@ -1,4 +1,3 @@
-import warnings
 from typing import Optional, Tuple
 
 import dask.array as da
@@ -7,7 +6,7 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation
 
-from sparrow.image._image import _get_boundary, _get_spatial_element, _add_image_layer
+from sparrow.image._image import _add_image_layer, _get_boundary, _get_spatial_element
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -56,7 +55,7 @@ def transcript_density(
     name_gene_column : str, optional
         Column name in the points_layer representing gene information, by default "gene".
     z_index: int or None, optional
-        The z index in the points layer for which to calculate transcript density. If set to None for a 3D points layer 
+        The z index in the points layer for which to calculate transcript density. If set to None for a 3D points layer
         (and `name_z` is not equal to None), an y-x transcript density projection will be calculated.
     scaling_factor : float, optional
         Factor to scale the transcript density image, by default 100.
@@ -85,8 +84,10 @@ def transcript_density(
 
     """
     if z_index is not None and name_z is None:
-        raise ValueError( "Please specify column name for the z-coordinates of the transcripts in the points layer "
-                         "when specifying z_index." )
+        raise ValueError(
+            "Please specify column name for the z-coordinates of the transcripts in the points layer "
+            "when specifying z_index."
+        )
 
     ddf = sdata.points[points_layer]
 
@@ -115,16 +116,12 @@ def transcript_density(
             min(img_boundary[3], crd[3]),
         ]
         if _crd != crd:
-            warnings.warn(
-                (
-                    f"Provided crd didn't fully fit within the image layer '{img_layer}' with image boundary '{img_boundary}'. "
-                    f"The crd was updated from '{crd}' to '{_crd}'."
-                )
+            log.warning(
+                f"Provided crd didn't fully fit within the image layer '{img_layer}' with image boundary '{img_boundary}'. "
+                f"The crd was updated from '{crd}' to '{_crd}'."
             )
         crd = _crd
-    ddf = ddf.query(
-        f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }"
-    )
+    ddf = ddf.query(f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }")
 
     if z_index is not None:
         ddf = ddf.query(f"{name_z} == {z_index}")
@@ -133,9 +130,7 @@ def transcript_density(
     if n_sample is not None:
         size = len(ddf)
         if size > n_sample:
-            log.info(
-                f"The number of transcripts ( {size} ) is larger than n_sample, sampling {n_sample} transcripts."
-            )
+            log.info(f"The number of transcripts ( {size} ) is larger than n_sample, sampling {n_sample} transcripts.")
             fraction = n_sample / size
             ddf = ddf.sample(frac=fraction)
             log.info("sampling finished")
@@ -172,9 +167,7 @@ def transcript_density(
     y_values = counts_location_transcript[name_y].values
     gene_values = counts_location_transcript[name_gene_column].values
 
-    image = image.map_blocks(
-        populate_chunk, x=x_values, y=y_values, values=gene_values, dtype=int
-    )
+    image = image.map_blocks(populate_chunk, x=x_values, y=y_values, values=gene_values, dtype=int)
 
     image = scaling_factor * (image / da.max(image))
 
@@ -186,9 +179,7 @@ def transcript_density(
     # take overlap to be 3 times sigma
     overlap = sigma * 3
 
-    blurred_transcripts = image.map_overlap(
-        chunked_gaussian_filter, depth=overlap, boundary="reflect"
-    )
+    blurred_transcripts = image.map_overlap(chunked_gaussian_filter, depth=overlap, boundary="reflect")
 
     blurred_transcripts = blurred_transcripts.T
     # rechunk, otherwise possible issues when saving to zarr
@@ -197,11 +188,11 @@ def transcript_density(
     if crd:
         translation = Translation([crd[0], crd[2]], axes=("x", "y"))
     else:
-        translation=None
+        translation = None
 
-    arr=blurred_transcripts[None,]
+    arr = blurred_transcripts[None,]
 
-    sdata=_add_image_layer(
+    sdata = _add_image_layer(
         sdata,
         arr=arr,
         output_layer=output_layer,

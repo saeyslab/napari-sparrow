@@ -27,6 +27,7 @@ def preprocess_anndata(
 ) -> SpatialData:
     """
     Preprocess the table (AnnData) attribute of a SpatialData object.
+
     Calculates nucleus/cell size from either shapes_layer or labels_layer, and adds it
     to sdata.table.obs as column "shapeSize".
     Filters cells and genes, normalizes based on nucleus/cell size, calculates QC metrics and principal components.
@@ -73,7 +74,6 @@ def preprocess_anndata(
     - If the dimensionality of the table attribute is smaller than the desired number of principal components,
       `n_comps` is set to the minimum dimensionality and a message is printed.
     """
-
     # Calculate QC Metrics
 
     sc.pp.calculate_qc_metrics(sdata.table, inplace=True, percent_top=[2, 5])
@@ -120,9 +120,7 @@ def preprocess_anndata(
     if min(sdata.table.shape) < n_comps:
         n_comps = min(sdata.table.shape)
         log.warning(
-            (
-                f"amount of pc's was set to {min( sdata.table.shape)} because of the dimensionality of the AnnData object."
-            )
+            f"amount of pc's was set to {min( sdata.table.shape)} because of the dimensionality of the AnnData object."
         )
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
 
@@ -141,9 +139,7 @@ def preprocess_anndata(
 
 
 def _get_mask_area(mask: Array) -> pd.Series:
-    """
-    Calculate area of each label in mask. Return as pd.Series.
-    """
+    """Calculate area of each label in mask. Return as pd.Series."""
 
     @dask.delayed
     def calculate_area(mask_chunk: np.ndarray) -> tuple:

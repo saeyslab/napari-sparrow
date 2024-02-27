@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional, Tuple, Union
+from typing import Iterable
 
 import dask.array as da
 from dask.array import Array
@@ -23,16 +23,17 @@ log = get_pylogger(__name__)
 
 def combine(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
-    output_layer: Optional[str] = None,
-    nuc_channels: Optional[int | str | Iterable[int | str]] = None,
-    mem_channels: Optional[int | str | Iterable[int | str]] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    img_layer: str | None = None,
+    output_layer: str | None = None,
+    nuc_channels: int | str | Iterable[int | str] | None = None,
+    mem_channels: int | str | Iterable[int | str] | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
     Combines specific channels within an image layer of a SpatialData object.
+
     When given, nuc_channels are aggregated together, as are mem_channels.
 
     Parameters
@@ -84,7 +85,6 @@ def combine(
 
     >>> sdata = combine(sdata, img_layer="raw_image", output_layer="nuc_combined", nuc_channels=[0,1])
     """
-
     if img_layer is None:
         img_layer = [*sdata.images][-1]
         log.warning(
@@ -99,20 +99,14 @@ def combine(
     se = _get_spatial_element(sdata, layer=img_layer)
 
     def _process_channels(
-        channels: Optional[int | Iterable[int]],
-        se: Union[SpatialImage, DataArray],
-        crd: Optional[Tuple[int, int, int, int]],
+        channels: int | Iterable[int] | None,
+        se: SpatialImage | DataArray,
+        crd: tuple[int, int, int, int] | None,
     ) -> Array:
-        channels = (
-            list(channels)
-            if isinstance(channels, Iterable) and not isinstance(channels, str)
-            else [channels]
-        )
+        channels = list(channels) if isinstance(channels, Iterable) and not isinstance(channels, str) else [channels]
 
         all_channels = list(se.c.data)
-        ch_indices = [
-            all_channels.index(_ch) for _ch in channels if _ch in all_channels
-        ]
+        ch_indices = [all_channels.index(_ch) for _ch in channels if _ch in all_channels]
 
         if len(ch_indices) == 0:
             raise ValueError(

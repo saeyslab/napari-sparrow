@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Optional, Tuple
+from typing import Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,13 +12,13 @@ from sparrow.plot import plot_shapes
 
 def tiling_correction(
     sdata: SpatialData,
-    img_layer: Tuple[str, str] = ["raw_image", "tiling_correction"],
-    channel: Optional[int | Iterable[int]] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    figsize: Optional[Tuple[int, int]] = None,
+    img_layer: tuple[str, str] = ["raw_image", "tiling_correction"],
+    channel: int | Iterable[int] | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    figsize: tuple[int, int] | None = None,
     img_title=True,
     channel_title=True,
-    output: Optional[str | Path] = None,
+    output: str | Path | None = None,
 ) -> None:
     """
     Visualizes the effect of tiling correction.
@@ -73,7 +73,7 @@ def tiling_correction(
     )
 
 
-def flatfield(flatfield: np.ndarray, output: Optional[str | Path] = None) -> None:
+def flatfield(flatfield: np.ndarray, output: str | Path | None = None) -> None:
     """
     Visualize the correction performed per tile using a flatfield image.
 

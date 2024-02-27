@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Iterable, Mapping
 
 import dask.array as da
 from dask.array import Array
@@ -26,16 +26,16 @@ def apply(
     sdata: SpatialData,
     func: Callable[..., NDArray | Array] | Mapping[str, Any],
     fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
-    img_layer: Optional[str] = None,
-    output_layer: Optional[str] = None,
-    channel: Optional[int | Iterable[int] | str | Iterable[str]] = None,
-    z_slice: Optional[float | Iterable[float]] = None,
+    img_layer: str | None = None,
+    output_layer: str | None = None,
+    channel: int | Iterable[int] | str | Iterable[str] | None = None,
+    z_slice: float | Iterable[float] | None = None,
     combine_c=True,
     combine_z=True,
-    chunks: Optional[str | int | Tuple[int, ...]] = None,
-    output_chunks: Optional[Tuple[Tuple[int, ...], ...]] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    chunks: str | int | tuple[int, ...] | None = None,
+    output_chunks: tuple[tuple[int, ...], ...] | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     **kwargs: Any,
 ) -> SpatialData:
@@ -166,7 +166,6 @@ def apply(
     >>> fn_kwargs={ 0: {  0.5: { "parameter": 2 }, 1.5: { "parameter": 3 } }, 1: {  0.5: { "parameter": 4 }, 1.5: { "parameter": 5 } }  }
     >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_c=False, combine_z=False)
     """
-
     if img_layer is None:
         img_layer = [*sdata.images][-1]
         log.warning(
@@ -188,9 +187,9 @@ def apply(
             if isinstance(arr, Array):
                 arr = arr.rechunk(arr.chunksize)
             arr = func(arr, **fn_kwargs)
-            arr = da.asarray( arr )
+            arr = da.asarray(arr)
             # func could have cause irregular chunking
-            return arr.rechunk( arr.chunksize )
+            return arr.rechunk(arr.chunksize)
         if not isinstance(chunks, (int, str)):
             if len(chunks) != arr.ndim:
                 raise ValueError(
@@ -239,22 +238,14 @@ def apply(
 
     # here you specify the channels the function is applied on
     if channel is not None:
-        channel = (
-            list(channel)
-            if isinstance(channel, Iterable) and not isinstance(channel, str)
-            else [channel]
-        )
+        channel = list(channel) if isinstance(channel, Iterable) and not isinstance(channel, str) else [channel]
     else:
         channel = se.c.data
 
     # here you specify the z-stacks the function is applied on
     if "z" in se.dims:
         if z_slice is not None:
-            z_slice = (
-                list(z_slice)
-                if isinstance(z_slice, Iterable) and not isinstance(z_slice, str)
-                else [z_slice]
-            )
+            z_slice = list(z_slice) if isinstance(z_slice, Iterable) and not isinstance(z_slice, str) else [z_slice]
         else:
             z_slice = se.z.data
     else:
@@ -366,12 +357,12 @@ def apply(
 
 
 def _precondition(
-    fn_kwargs: Dict[Any:Any],
-    func: Callable | Dict[Any:Any],
+    fn_kwargs: dict[Any:Any],
+    func: Callable | dict[Any:Any],
     combine_c: bool,
     combine_z: bool,
-    channels: List[str] | List[int],
-    z_slices: List[float],
+    channels: list[str] | list[int],
+    z_slices: list[float],
 ):
     def collect_keys_fn_kwargs(d):
         if d == {}:
@@ -413,7 +404,13 @@ def _precondition(
 
     def make_mapping(keys, value):
         result = {}
-        for item in keys:
+        previous_item = None
+        for i, item in enumerate(keys):
+            if i % 2 == 0:
+                if isinstance(item, list):
+                    raise ValueError(
+                        "'keys' should be a list, with only at uneven positions a list, e.g. [ 0, [0.5, 1.5], 1, [0.5, 1.5] ]."
+                    )
             if isinstance(item, list):
                 sub_dict = {k: value for k in item}
                 result[previous_item] = sub_dict

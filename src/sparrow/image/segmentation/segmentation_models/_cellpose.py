@@ -1,6 +1,7 @@
-from typing import List, Optional
-from numpy.typing import NDArray
 from pathlib import Path
+from typing import List, Optional
+
+from numpy.typing import NDArray
 
 from sparrow.utils.pylogger import get_pylogger
 
@@ -29,31 +30,25 @@ def _cellpose(
     diameter: int = 55,
     model_type: Optional[str] = "nuclei",
     pretrained_model: Optional[str | Path] = None,
-    channels: List[int] = [0, 0],
+    channels: List[int] = None,
     device: str = "cpu",
     z_axis: int = 0,
     channel_axis: int = 3,
     do_3D: bool = False,
     anisotropy: float = 2,
 ) -> NDArray:
+    if channels is None:
+        channels = [0, 0]
     if not TORCH_AVAILABLE:
-        raise RuntimeError(
-            "The torch module is not available. Please install it to use this function."
-        )
+        raise RuntimeError("The torch module is not available. Please install it to use this function.")
 
     if not CELLPOSE_AVAILABLE:
-        raise RuntimeError(
-            "The cellpose module is not available. Please install it to use this function."
-        )
+        raise RuntimeError("The cellpose module is not available. Please install it to use this function.")
     gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
     if pretrained_model is not None:
-        model = models.CellposeModel(
-            gpu=gpu, pretrained_model=pretrained_model, device=torch.device(device)
-        )
+        model = models.CellposeModel(gpu=gpu, pretrained_model=pretrained_model, device=torch.device(device))
     elif model_type is not None:
-        model = models.Cellpose(
-            gpu=gpu, model_type=model_type, device=torch.device(device)
-        )
+        model = models.Cellpose(gpu=gpu, model_type=model_type, device=torch.device(device))
     else:
         raise ValueError(
             "Please provide either 'model_type' or 'pretrained_model (i.e. a path to a pretrained model)'."
@@ -71,7 +66,7 @@ def _cellpose(
         anisotropy=anisotropy,
     )
 
-    masks=results[0]
+    masks = results[0]
 
     # make sure we always return z,y,x for labels.
     if not do_3D:

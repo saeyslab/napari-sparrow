@@ -19,6 +19,7 @@ def cluster_cleanliness(
 ) -> None:
     """
     Generate plots that allow assessing the "cleanliness" or accuracy of the cell clustering:
+
     - a barplot with a bar for each cluster, showing the composition by cell type of that cluster;
     - a UMAP with cells colored by cell type;
     - an image of the tissue with cells colored by cell type.
@@ -49,7 +50,6 @@ def cluster_cleanliness(
     -------
     None
     """
-
     # Barplot with cell type composition of the clusters.
     stacked = (
         sdata.table.obs.groupby(["leiden", celltype_column], as_index=False)

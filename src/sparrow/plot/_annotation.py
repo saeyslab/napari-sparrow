@@ -68,20 +68,14 @@ def score_genes(
         crd = _get_boundary(se)
 
     # Custom colormap:
-    colors = np.concatenate(
-        (plt.get_cmap("tab20c")(np.arange(20)), plt.get_cmap("tab20b")(np.arange(20)))
-    )
-    colors = [
-        mpl.colors.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)
-    ]
+    colors = np.concatenate((plt.get_cmap("tab20c")(np.arange(20)), plt.get_cmap("tab20b")(np.arange(20))))
+    colors = [mpl.colors.rgb2hex(colors[j * 4 + i]) for i in range(4) for j in range(10)]
 
     # Plot cleanliness and leiden next to annotation
     sc.pl.umap(sdata.table, color=[_CLEANLINESS_KEY, _ANNOTATION_KEY], show=False)
 
     if output:
-        plt.savefig(
-            output + f"_{_CLEANLINESS_KEY}_{_ANNOTATION_KEY}", bbox_inches="tight"
-        )
+        plt.savefig(output + f"_{_CLEANLINESS_KEY}_{_ANNOTATION_KEY}", bbox_inches="tight")
     else:
         plt.show()
     plt.close()
@@ -122,12 +116,7 @@ def score_genes(
     if filter_index:
         sc.pl.heatmap(
             sdata.table[
-                sdata.table.obs.leiden.isin(
-                    [
-                        str(index)
-                        for index in range(filter_index, len(sdata.table.obs.leiden))
-                    ]
-                )
+                sdata.table.obs.leiden.isin([str(index) for index in range(filter_index, len(sdata.table.obs.leiden))])
             ],
             var_names=scoresper_cluster.columns.values,
             groupby="leiden",

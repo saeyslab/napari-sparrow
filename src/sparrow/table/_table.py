@@ -19,7 +19,6 @@ def correct_marker_genes(
     Corrects celltypes that are higher expessed by dividing them by a value if they exceed a certain threshold.
     The celltype_correction_dict has as keys the celltypes that should be corrected and as values the threshold and the divider.
     """
-
     # Correct for all the genes
     for celltype, values in celltype_correction_dict.items():
         if celltype not in sdata.table.obs.columns:
@@ -43,7 +42,6 @@ def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 1000
 
     All cells with a size outside of the min and max size range are removed.
     """
-
     start = sdata.table.shape[0]
 
     # Filter cells based on size and distance

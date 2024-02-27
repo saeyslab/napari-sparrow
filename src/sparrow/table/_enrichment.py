@@ -5,15 +5,12 @@ from sparrow.table._keys import _ANNOTATION_KEY
 from sparrow.table._table import _back_sdata_table_to_zarr
 
 
-def nhood_enrichment(
-    sdata: SpatialData, celltype_column: str = _ANNOTATION_KEY, seed: int = 0
-) -> SpatialData:
+def nhood_enrichment(sdata: SpatialData, celltype_column: str = _ANNOTATION_KEY, seed: int = 0) -> SpatialData:
     """Returns the AnnData object.
 
     Performs some adaptations to save the data.
     Calculate the nhood enrichment"
     """
-
     # Adaptations for saving
     sdata.table.raw.var.index.names = ["genes"]
     sdata.table.var.index.names = ["genes"]

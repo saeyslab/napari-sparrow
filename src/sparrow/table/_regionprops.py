@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -20,11 +18,10 @@ log = get_pylogger(__name__)
 
 def add_regionprop_features(
     sdata: SpatialData,
-    labels_layer: Optional[str] = None,
+    labels_layer: str | None = None,
 ):
     """
-    Enhances a SpatialData object with region property features calculated from the specified labels layer,
-    updating its table attribute with these computed cellular properties.
+    Enhances a SpatialData object with region property features calculated from the specified labels layer, updating its table attribute with these computed cellular properties.
 
     This function computes various geometric and morphological properties for each labeled region (presumed cells)
     found in the specified layer of the SpatialData object. These properties include measures such as area,
@@ -84,7 +81,6 @@ def add_regionprop_features(
     ...     sdata, labels_layer="masks_nuclear_aligned"
     ... )
     """
-
     if labels_layer is None:
         labels_layer = [*sdata.labels][-1]
         log.warning(
@@ -99,12 +95,8 @@ def add_regionprop_features(
 
     cell_props = _calculate_regionprop_features(masks)
 
-    assert (
-        _INSTANCE_KEY in cell_props.columns
-    ), f"'cell_props' should contain '{_INSTANCE_KEY}' column"
-    assert (
-        _REGION_KEY not in cell_props.columns
-    ), f"'cell_props' should not contain '{_REGION_KEY}' columns."
+    assert _INSTANCE_KEY in cell_props.columns, f"'cell_props' should contain '{_INSTANCE_KEY}' column"
+    assert _REGION_KEY not in cell_props.columns, f"'cell_props' should not contain '{_REGION_KEY}' columns."
     assert (
         _REGION_KEY in sdata.table.obs
     ), f"Please link observation to a labels_layer using the '{_REGION_KEY}' column in 'sdata.table.obs'"
@@ -114,9 +106,7 @@ def add_regionprop_features(
 
     cell_props[_REGION_KEY] = pd.Categorical([labels_layer] * len(cell_props))
 
-    extra_cells = sum(
-        ~cell_props[_INSTANCE_KEY].isin(sdata.table.obs[_INSTANCE_KEY].values)
-    )
+    extra_cells = sum(~cell_props[_INSTANCE_KEY].isin(sdata.table.obs[_INSTANCE_KEY].values))
     if extra_cells:
         log.warning(
             f"Calculated properties of {  extra_cells  } cells/nuclei obtained from labels layer '{labels_layer}' "
@@ -140,9 +130,7 @@ def add_regionprop_features(
         if _column_name in [_REGION_KEY, _INSTANCE_KEY, _CELL_INDEX]:
             continue
         if f"{_column_name}_y" in sdata.table.obs.columns:
-            sdata.table.obs[_column_name] = sdata.table.obs[f"{_column_name}_y"].fillna(
-                sdata.table.obs[_column_name]
-            )
+            sdata.table.obs[_column_name] = sdata.table.obs[f"{_column_name}_y"].fillna(sdata.table.obs[_column_name])
             sdata.table.obs.drop(columns=f"{_column_name}_y", inplace=True)
 
     sdata.table.obs.set_index(_CELL_INDEX, inplace=True, drop=True)
@@ -222,9 +210,7 @@ def _centroid_dif(prop: RegionProperties) -> float:
 
     convex_image = prop.convex_image
     convex_M = moments(convex_image)
-    convex_centroid = np.array(
-        [convex_M[1, 0] / convex_M[0, 0], convex_M[0, 1] / convex_M[0, 0]]
-    )
+    convex_centroid = np.array([convex_M[1, 0] / convex_M[0, 0], convex_M[0, 1] / convex_M[0, 0]])
 
     centroid_dist = np.linalg.norm(cell_centroid - convex_centroid) / np.sqrt(prop.area)
 

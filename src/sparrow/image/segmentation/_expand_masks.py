@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 from numpy.typing import NDArray
 from skimage.segmentation import expand_labels
 from spatialdata import SpatialData
@@ -17,11 +15,11 @@ def expand_labels_layer(
     sdata: SpatialData,
     labels_layer: str,
     distance: int = 10,
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
-    output_labels_layer: Optional[str] = None,
-    output_shapes_layer: Optional[str] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
+    output_labels_layer: str | None = None,
+    output_shapes_layer: str | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ):
     """
@@ -75,7 +73,6 @@ def expand_labels_layer(
             overwrite=True,
         )
     """
-
     sdata = apply_labels_layers(
         sdata,
         labels_layers=[labels_layer],
