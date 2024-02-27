@@ -40,11 +40,8 @@ def create_voronoi_boundaries(
     ValueError
         If the provided radius is negative.
     """
-
     if radius < 0:
-        raise ValueError(
-            f"radius should be >0, provided value for radius is '{radius}'"
-        )
+        raise ValueError(f"radius should be >0, provided value for radius is '{radius}'")
 
     sdata[shapes_layer].index = sdata[shapes_layer].index.astype("str")
 
@@ -71,9 +68,7 @@ def create_voronoi_boundaries(
     sdata[expanded_layer_name]["geometry"] = sdata[shapes_layer].simplify(2)
 
     vd = voronoiDiagram4plg(sdata[expanded_layer_name], boundary)
-    voronoi = geopandas.sjoin(
-        vd, sdata[expanded_layer_name], predicate="contains", how="left"
-    )
+    voronoi = geopandas.sjoin(vd, sdata[expanded_layer_name], predicate="contains", how="left")
     voronoi.index = voronoi.index_right
     voronoi = voronoi[~voronoi.index.duplicated(keep="first")]
     voronoi = _delete_overlap(voronoi, sdata[expanded_layer_name])

@@ -1,6 +1,5 @@
 """This file tests the napari widgets and should be used for development purposes."""
 import pytest
-
 import tifffile as tiff
 from hydra.core.hydra_config import HydraConfig
 
@@ -73,7 +72,6 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
     assert f"Added '{utils.ALLOCATION}' layer" in caplog.text
 
     if cfg_pipeline.dataset.markers is not None:
-
         # Start annotate widget
         _annotate_widget = annotate_widget()
 
@@ -145,6 +143,7 @@ def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
 
 def _run_event_loop_until_worker_finishes(worker):
     from PyQt5.QtCore import QEventLoop
+
     loop = QEventLoop()
     worker.finished.connect(loop.quit)
     loop.exec_()

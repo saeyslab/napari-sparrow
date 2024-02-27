@@ -4,7 +4,6 @@ from sparrow.image.segmentation._align_masks import align_labels_layers
 
 
 def test_align_labels_layers(sdata_multi_c: SpatialData):
-
     sdata_multi_c = align_labels_layers(
         sdata_multi_c,
         labels_layer_1="masks_nuclear",

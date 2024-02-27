@@ -18,9 +18,7 @@ def _watershed(
     # output is z,y,x,c
 
     if img.shape[0] != 1:
-        raise ValueError(
-            "Z dimension not equal to 1 is not supported for watershed segmentation."
-        )
+        raise ValueError("Z dimension not equal to 1 is not supported for watershed segmentation.")
     img = img.squeeze(0)
     img = img[..., channel]
 

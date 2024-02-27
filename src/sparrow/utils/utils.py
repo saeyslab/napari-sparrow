@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -16,7 +16,7 @@ from spatialdata.models import get_axes_names
 from xarray import DataArray
 
 
-def linestring_to_arrays(geometries):
+def _linestring_to_arrays(geometries):
     arrays = []
     for geometry in geometries:
         if isinstance(geometry, LineString):
@@ -28,7 +28,7 @@ def linestring_to_arrays(geometries):
 
 
 # https://github.com/scverse/napari-spatialdata/blob/main/src/napari_spatialdata/_viewer.py#L105
-def _get_polygons_in_napari_format(df: GeoDataFrame) -> List:
+def _get_polygons_in_napari_format(df: GeoDataFrame) -> list:
     polygons = []
     # affine = _get_transform(sdata.shapes[key], selected_cs)
 
@@ -50,9 +50,7 @@ def _get_polygons_in_napari_format(df: GeoDataFrame) -> List:
         for i in range(
             0, len(df)
         ):  # This can be removed once napari is sped up in the plotting. It changes the shapes only very slightly
-            polygons.append(
-                list(df.geometry.iloc[i].exterior.simplify(tolerance=2).coords)
-            )
+            polygons.append(list(df.geometry.iloc[i].exterior.simplify(tolerance=2).coords))
     # this will only work for polygons and not for multipolygons
     # switch x,y positions of polygon indices, napari wants (y,x)
     polygons = _swap_coordinates(polygons)

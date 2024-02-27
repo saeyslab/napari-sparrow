@@ -50,7 +50,6 @@ Please see our preprint ... for citation and to learn more.
 
 ```
 
-
 ```{toctree}
 :hidden: true
 :maxdepth: 1

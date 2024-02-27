@@ -207,8 +207,6 @@ def test_precondition_multiple_func():
             z_slices=[0.5],
         )
 
-        fn_kwargs_post, func_post
-
 
 def test_precondition_empty_fn_kwargs():
     fn_kwargs = {}
@@ -241,6 +239,24 @@ def test_precondition_empty_fn_kwargs():
     assert fn_kwargs_post == {0: {0.5: {}, 1.5: {}}, 1: {0.5: {}, 1.5: {}}}
     assert func_post == {0: {0.5: _multiply, 1.5: _add}, 1: {0.5: _multiply, 1.5: _add}}
 
+    fn_kwargs = {}
+    func = {0: {0.5: _multiply}, 1: {0.5: _add}}
+
+    fn_kwargs_post, func_post = _precondition(
+        fn_kwargs=fn_kwargs,
+        func=func,
+        combine_c=False,
+        combine_z=False,
+        channels=[0, 1],
+        z_slices=[0.5],
+    )
+
+    assert fn_kwargs_post == {0: {0.5: {}}, 1: {0.5: {}}}
+    assert func_post == {0: {0.5: _multiply}, 1: {0.5: _add}}
+
+    fn_kwargs = {}
+    func = {0.5: _multiply, 1.5: _add}
+
     # if keys specified they should be in channels or z_slices, otherwise raise ValueError.
     with pytest.raises(ValueError):
         fn_kwargs_post, func_post = _precondition(
@@ -252,9 +268,21 @@ def test_precondition_empty_fn_kwargs():
             z_slices=[0.5],
         )
 
+    fn_kwargs = {}
+    func = {0: {0.5: _multiply, 1.5: _add}, 1: {0.5: _add, 1.5: _add}}
+    # keys for channels can not be specified if combine_c is set to True.
+    with pytest.raises(ValueError):
+        fn_kwargs_post, func_post = _precondition(
+            fn_kwargs=fn_kwargs,
+            func=func,
+            combine_c=True,
+            combine_z=False,
+            channels=[0, 1],
+            z_slices=[0.5, 1.5],
+        )
+
 
 def test_apply(sdata_multi_c: SpatialData):
-
     fn_kwargs = {
         0: {0.5: {"parameter": 4}, 1.5: {"parameter": 8}},
         1: {0.5: {"parameter": 10}, 1.5: {"parameter": 20}},

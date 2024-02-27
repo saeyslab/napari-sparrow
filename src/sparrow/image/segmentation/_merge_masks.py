@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
-
 import dask.array as da
 import numpy as np
 import pandas as pd
@@ -25,11 +23,11 @@ def merge_labels_layers(
     labels_layer_1: str,
     labels_layer_2: str,
     threshold: float = 0.5,
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
-    output_labels_layer: Optional[str] = None,
-    output_shapes_layer: Optional[str] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
+    output_labels_layer: str | None = None,
+    output_shapes_layer: str | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -107,14 +105,16 @@ def merge_labels_layers_nuclei(
     labels_layer_nuclei_expanded: str,
     labels_layer_nuclei: str,
     threshold: float = 0.5,
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
-    output_labels_layer: Optional[str] = None,
-    output_shapes_layer: Optional[str] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
+    output_labels_layer: str | None = None,
+    output_shapes_layer: str | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
+    Merge labels layers using nuclei segmentation.
+
     Given a labels layer obtained from nuclei segmentation (`labels_layer_nuclei`),
     and corresponding expanded nuclei (`labels_layer_nuclei_expanded`), e.g. obtained through `sp.im.expand_labels_layer`,
     this function merges labels in labels layer `labels_layer_nuclei_expanded` with `labels_layer` in the SpatialData object,
@@ -167,20 +167,18 @@ def merge_labels_layers_nuclei(
     object.
     It leverages dask for potential parallelism and out-of-core computation.
     """
-
     labels_layers = [labels_layer, labels_layer_nuclei_expanded, labels_layer_nuclei]
     for layer in labels_layers:
         if layer not in [*sdata.labels]:
-            raise ValueError(
-                f"Layer '{layer}' not found in available label layers '{[*sdata.labels]}' of sdata."
-            )
+            raise ValueError(f"Layer '{layer}' not found in available label layers '{[*sdata.labels]}' of sdata.")
 
     se_nuclei_expanded = _get_spatial_element(sdata, labels_layer_nuclei_expanded)
     se_nuclei = _get_spatial_element(sdata, labels_layer_nuclei)
 
-    np.array_equal(
-        da.unique(se_nuclei_expanded.data), da.unique(se_nuclei.data)
-    ), f"Labels layer '{labels_layer_nuclei_expanded}' should contain same labels as '{labels_layer_nuclei}'."
+    (
+        np.array_equal(da.unique(se_nuclei_expanded.data), da.unique(se_nuclei.data)),
+        f"Labels layer '{labels_layer_nuclei_expanded}' should contain same labels as '{labels_layer_nuclei}'.",
+    )
 
     sdata = apply_labels_layers(
         sdata,
@@ -209,9 +207,7 @@ def _merge_masks_block(
     array_2, _, _ = relabel_sequential(array_2, offset=array_1.max() + 1)
 
     merged_masks = array_1
-    unique_labels_2 = np.unique(
-        array_2[array_2 > 0]
-    )  # Get unique labels from array_2, excluding zero.
+    unique_labels_2 = np.unique(array_2[array_2 > 0])  # Get unique labels from array_2, excluding zero.
     for label in unique_labels_2:
         area_2 = np.sum(array_2 == label)
         # Calculate the overlap area of array_2's label with array_1
@@ -224,9 +220,7 @@ def _merge_masks_block(
     return merged_masks
 
 
-def _merge_masks_nuclei_block(
-    array_1: NDArray, array_2: NDArray, array_3: NDArray, threshold: float = 0.5
-):
+def _merge_masks_nuclei_block(array_1: NDArray, array_2: NDArray, array_3: NDArray, threshold: float = 0.5):
     # array_1 is priority segmentation
     # array_2 is expanded_nucleus
     # array_3 is nucleus
@@ -244,26 +238,18 @@ def _merge_masks_nuclei_block(
     # array_2 and array_3 can contain different labels due to chunking
     # (i.e. array_3 contains nuclei, which are smaller than expanded nuclei from array_2), but they need to be
     # relabeled in the same way.
-    original_values = np.unique(
-        np.concatenate([np.unique(array_2), np.unique(array_3)])
-    )
+    original_values = np.unique(np.concatenate([np.unique(array_2), np.unique(array_3)]))
 
     new_values = np.arange(original_values.size)
-    array_2 = _relabel_array(
-        array_2, original_values=original_values, new_values=new_values
-    )
-    array_3 = _relabel_array(
-        array_3, original_values=original_values, new_values=new_values
-    )
+    array_2 = _relabel_array(array_2, original_values=original_values, new_values=new_values)
+    array_3 = _relabel_array(array_3, original_values=original_values, new_values=new_values)
 
     # relabel array_1 to avoid collisions
     array_1, _, _ = relabel_sequential(
         array_1, offset=max(array_2.max(), array_3.max()) + 1
     )  # necessary, to avoid collisions
 
-    unique_labels_3 = np.unique(
-        array_3[array_3 > 0]
-    )  # Get unique labels from array_3, excluding zero
+    unique_labels_3 = np.unique(array_3[array_3 > 0])  # Get unique labels from array_3, excluding zero
 
     for label in unique_labels_3:
         # Determine the area of the label in array_3
@@ -283,11 +269,13 @@ def _merge_masks_nuclei_block(
 def mask_to_original(
     sdata: SpatialData,
     labels_layer: str,
-    original_labels_layers: List[str],
-    depth: Tuple[int, int] | int = 400,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
+    original_labels_layers: list[str],
+    depth: tuple[int, int] | int = 400,
+    chunks: str | int | tuple[int, int] | None = "auto",
 ) -> DataFrame:
     """
+    Map to original.
+
     Maps labels from a labels layer (`labels_layer`) to their corresponding labels in original labels layers within a SpatialData object.
     The labels in `labels_layers` will be mapped to the label of the labels layers in `original_labels_layers`
     with which it has maximum overlap.
@@ -340,13 +328,11 @@ def mask_to_original(
     # Check for consistent shapes
     first_shape = labels_arrays[0].shape
     for x_label in labels_arrays:
-        assert (
-            x_label.shape == first_shape
-        ), "Only arrays with same shape are currently supported."
+        assert x_label.shape == first_shape, "Only arrays with same shape are currently supported."
 
     # First make dimension uniform (z,y,x).
     _labels_arrays = []
-    for i, x_label in enumerate(labels_arrays):
+    for x_label in labels_arrays:
         if x_label.ndim == 2:
             _labels_arrays.append(x_label[None, ...])
         else:
@@ -357,22 +343,18 @@ def mask_to_original(
     if isinstance(depth, int):
         depth = {0: 0, 1: depth, 2: depth}
     else:
-        assert (
-            len(depth) == _x_label.ndim - 1
-        ), "Please (only) provide depth for ( 'y', 'x')."
+        assert len(depth) == _x_label.ndim - 1, "Please (only) provide depth for ( 'y', 'x')."
         # set depth for every dimension
         depth2 = {0: 0, 1: depth[0], 2: depth[1]}
         depth = depth2
 
     if chunks is not None:
         if not isinstance(chunks, (int, str)):
-            assert (
-                len(chunks) == _x_label.ndim - 1
-            ), "Please (only) provide chunks for ( 'y', 'x')."
+            assert len(chunks) == _x_label.ndim - 1, "Please (only) provide chunks for ( 'y', 'x')."
             chunks = (_x_label.shape[0], chunks[0], chunks[1])
 
     rechunked_arrays = []
-    for i, x_label in enumerate(_labels_arrays):
+    for x_label in _labels_arrays:
         #  rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
         x_label = _rechunk_overlap(x_label, depth=depth, chunks=chunks)
         assert (
@@ -382,9 +364,9 @@ def mask_to_original(
 
     def _mask_to_original_chunks(
         x_labels_gs: NDArray,
-        *arrays: Tuple[NDArray],
+        *arrays: tuple[NDArray],
         block_info,
-        _depth: Dict[int, int],
+        _depth: dict[int, int],
     ):
         def _zero_non_max(list_1, list_2):
             if not list_1 or not list_2 or len(list_1) != len(list_2):
@@ -399,15 +381,11 @@ def mask_to_original(
         assert (
             total_blocks[0] == 1
         ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
-        assert (
-            depth[0] == 0
-        ), "Depth not equal to 0 in z dimension is currently not supported."
+        assert depth[0] == 0, "Depth not equal to 0 in z dimension is currently not supported."
         assert len(depth) == 3, "Please provide depth values for z,y and x."
 
         # x_labels_gs, gold standard labels
-        labels_gs = np.unique(
-            x_labels_gs[:, _depth[1] : -_depth[1], _depth[2] : -_depth[2]]
-        )
+        labels_gs = np.unique(x_labels_gs[:, _depth[1] : -_depth[1], _depth[2] : -_depth[2]])
 
         result = np.zeros((cell_ids.shape[0], len(arrays)), dtype=_SEG_DTYPE)
 
@@ -421,10 +399,7 @@ def mask_to_original(
                 positions = np.where(x_labels_gs == label)
                 overlapping_labels = _array[positions]
 
-                label_areas = {
-                    lbl: np.sum(overlapping_labels == lbl)
-                    for lbl in np.unique(overlapping_labels)
-                }
+                label_areas = {lbl: np.sum(overlapping_labels == lbl) for lbl in np.unique(overlapping_labels)}
                 label_areas.pop(0, None)
 
                 # Find the label with the maximum area
@@ -458,9 +433,7 @@ def mask_to_original(
         chunks=(len(cell_ids), len(original_labels_layers)),
     )
 
-    result_of_chunks = da.zeros(
-        (len(cell_ids), len(original_labels_layers)), dtype=result.dtype
-    )
+    result_of_chunks = da.zeros((len(cell_ids), len(original_labels_layers)), dtype=result.dtype)
 
     num_chunks = result.numblocks
 

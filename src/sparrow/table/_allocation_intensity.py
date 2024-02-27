@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Iterable, Optional
+from typing import Iterable
 
 import anndata as ad
 import dask.array as da
@@ -23,17 +23,15 @@ log = get_pylogger(__name__)
 
 def allocate_intensity(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
-    labels_layer: Optional[str] = None,
-    channels: Optional[int | str | Iterable[int] | Iterable[str]] = None,
-    chunks: Optional[str | int | tuple[int, ...]] = 10000,
+    img_layer: str | None = None,
+    labels_layer: str | None = None,
+    channels: int | str | Iterable[int] | Iterable[str] | None = None,
+    chunks: str | int | tuple[int, ...] | None = 10000,
     append: bool = False,
     remove_background_intensity: bool = True,
 ) -> SpatialData:
     """
-    Allocates intensity values from a specified image layer to corresponding cells in a SpatialData object and
-    returns an updated SpatialData object with an attached table attribute containing the AnnData object with intensity values
-    for each cell and each (specified) channel.
+    Allocates intensity values from a specified image layer to corresponding cells in a SpatialData object and returns an updated SpatialData object with an attached table attribute containing the AnnData object with intensity values for each cell and each (specified) channel.
 
     It requires that the image layer and the labels layer have the same shape and alignment.
 
@@ -98,7 +96,6 @@ def allocate_intensity(
     ...     sdata, img_layer="raw_image", labels_layer="masks_nuclear_aligned", chunks=100, append=True
     ... )
     """
-
     if img_layer is None:
         img_layer = [*sdata.images][-1]
         log.warning(
@@ -114,11 +111,7 @@ def allocate_intensity(
         )
 
     if channels is not None:
-        channels = (
-            list(channels)
-            if isinstance(channels, Iterable) and not isinstance(channels, str)
-            else [channels]
-        )
+        channels = list(channels) if isinstance(channels, Iterable) and not isinstance(channels, str) else [channels]
 
     # currently this function will only work if img_layer and labels_layer have the same shape.
     # And are in same position, i.e. if one is translated, other should be translated with same offset
@@ -145,9 +138,7 @@ def allocate_intensity(
     for channel in channels:
         channel_idx = list(se_image.c.data).index(channel)
         channel_intensities.append(
-            _calculate_intensity(
-                se_image.isel(c=channel_idx).data, se_labels.data, chunks=chunks
-            )
+            _calculate_intensity(se_image.isel(c=channel_idx).data, se_labels.data, chunks=chunks)
         )
 
     channel_intensities = np.concatenate(channel_intensities, axis=1)
@@ -180,9 +171,7 @@ def allocate_intensity(
 
     if append:
         if labels_layer in sdata.table.obs[_REGION_KEY]:
-            raise ValueError(
-                f"labels_layer '{labels_layer}' already exists as region in the `sdata` object."
-            )
+            raise ValueError(f"labels_layer '{labels_layer}' already exists as region in the `sdata` object.")
         adata = ad.concat([sdata.table, adata], axis=0)
         # get the regions already in sdata, and append the new one
         region = sdata.table.obs[_REGION_KEY].cat.categories.to_list()
@@ -201,7 +190,7 @@ def allocate_intensity(
 def _calculate_intensity(
     float_dask_array: Array,
     mask_dask_array: Array,
-    chunks: Optional[str | int | tuple[int, ...]] = 10000,
+    chunks: str | int | tuple[int, ...] | None = 10000,
 ) -> NDArray:
     # lazy computation of pixel intensities on one channel for each label in mask_dask_array
     # result is an array of shape (len(unique(mask_dask_array).compute(), 1 ), so be aware that if
@@ -215,9 +204,7 @@ def _calculate_intensity(
 
     labels = unique(mask_dask_array).compute()
 
-    def _calculate_intensity_per_chunk(
-        mask_block: NDArray, float_block: NDArray
-    ) -> NDArray:
+    def _calculate_intensity_per_chunk(mask_block: NDArray, float_block: NDArray) -> NDArray:
         sums = np.bincount(mask_block.ravel(), weights=float_block.ravel())
 
         num_padding = (max(labels) + 1) - len(sums)

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Optional, Union
-
 from dask.array import Array
 from geopandas import GeoDataFrame
 from numpy.typing import NDArray
@@ -14,9 +12,9 @@ from sparrow.shape._manager import ShapesLayerManager
 
 def _add_shapes_layer(
     sdata: SpatialData,
-    input: Union[Array, GeoDataFrame],
+    input: Array | GeoDataFrame,
     output_layer: str,
-    transformation: Union[Translation, Identity] = None,
+    transformation: Translation | Identity = None,
     overwrite: bool = False,
 ) -> SpatialData:
     manager = ShapesLayerManager()
@@ -59,9 +57,7 @@ def _extract_boundaries_from_geometry_collection(geometry):
         return []
 
 
-def intersect_rectangles(
-    rect1: List[int | float], rect2: List[int | float]
-) -> Optional[List[int | float]]:
+def intersect_rectangles(rect1: list[int | float], rect2: list[int | float]) -> list[int | float] | None:
     """
     Calculate the intersection of two (axis aligned) rectangles.
 

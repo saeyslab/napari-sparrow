@@ -16,6 +16,7 @@ def nhood_enrichment(
 ) -> None:
     """
     Plot the neighborhood enrichment across cell-type annotations.
+
     Enrichment is shown in a hierarchically clustered heatmap. Each entry in the heatmap indicates
     if the corresponding cluster pair (or cell-type pair) is over-represented or over-depleted for node-node
     interactions in the spatial connectivity graph.
@@ -44,12 +45,9 @@ def nhood_enrichment(
     --------
     - tb.nhood_enrichment : Calculate neighborhood enrichment.
     """
-
     # remove 'nan' values from "adata.uns['annotation_nhood_enrichment']['zscore']"
     tmp = sdata.table.uns[f"{celltype_column}_nhood_enrichment"]["zscore"]
-    sdata.table.uns[f"{celltype_column}_nhood_enrichment"]["zscore"] = np.nan_to_num(
-        tmp
-    )
+    sdata.table.uns[f"{celltype_column}_nhood_enrichment"]["zscore"] = np.nan_to_num(tmp)
     _back_sdata_table_to_zarr(sdata=sdata)
 
     sq.pl.nhood_enrichment(sdata.table, cluster_key=celltype_column, method="ward")

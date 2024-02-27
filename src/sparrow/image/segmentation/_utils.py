@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-from typing import Dict, Optional, Tuple, List
-
 import numpy as np
-import pandas as pd
 from dask.array import Array
 from dask.array.overlap import ensure_minimum_chunksize
 from numpy.typing import NDArray
-from pandas import DataFrame
-from spatialdata import SpatialData
 
 from sparrow.utils.pylogger import get_pylogger
 
@@ -19,8 +14,8 @@ _SEG_DTYPE = np.uint32
 
 def _rechunk_overlap(
     x: Array,
-    depth: Dict[int, int],
-    chunks: Optional[str | int | Tuple[int, ...]] = "auto",
+    depth: dict[int, int],
+    chunks: str | int | tuple[int, ...] | None = "auto",
 ) -> Array:
     # rechunk, so that we ensure minimum overlap
 
@@ -43,10 +38,7 @@ def _rechunk_overlap(
                 )
                 depth[i] = int(x.chunksize[i] // 4)
 
-    new_chunks = tuple(
-        ensure_minimum_chunksize(size + 1, c)
-        for size, c in zip(depth.values(), x.chunks)
-    )
+    new_chunks = tuple(ensure_minimum_chunksize(size + 1, c) for size, c in zip(depth.values(), x.chunks))
 
     x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
 
@@ -55,18 +47,16 @@ def _rechunk_overlap(
 
 def _clean_up_masks(
     block: NDArray,
-    block_id: Tuple[int, int, int],
+    block_id: tuple[int, int, int],
     block_info,
-    depth: Dict[int, int],
+    depth: dict[int, int],
 ) -> NDArray:
     total_blocks = block_info[0]["num-chunks"]
     assert (
         total_blocks[0] == 1
     ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
     total_blocks = total_blocks[1:]
-    assert (
-        depth[0] == 0
-    ), "Depth not equal to 0 in z dimension is currently not supported."
+    assert depth[0] == 0, "Depth not equal to 0 in z dimension is currently not supported."
     assert len(depth) == 3, "Please provide depth values for z,y and x."
 
     # remove z-dimension from depth
@@ -92,13 +82,13 @@ def _clean_up_masks(
     crossing_masks = set()
 
     if block_id[0] != 0:
-        crossing_masks.update((np.unique(block[:, depth[0], :])))
+        crossing_masks.update(np.unique(block[:, depth[0], :]))
     if block_id[1] != 0:
-        crossing_masks.update((np.unique(block[:, :, depth[1]])))
+        crossing_masks.update(np.unique(block[:, :, depth[1]]))
     if block_id[0] != total_blocks[0] - 1:
-        crossing_masks.update((np.unique(block[:, block.shape[1] - depth[0], :])))
+        crossing_masks.update(np.unique(block[:, block.shape[1] - depth[0], :]))
     if block_id[1] != total_blocks[1] - 1:
-        crossing_masks.update((np.unique(block[:, :, block.shape[2] - depth[1]])))
+        crossing_masks.update(np.unique(block[:, :, block.shape[2] - depth[1]]))
 
     def calculate_area(crd, mask_position):
         return np.sum(
@@ -116,14 +106,10 @@ def _clean_up_masks(
         # not interested in which z-slice these mask_positions are
         mask_position = mask_position[1:]
 
-        inside_region = calculate_area(
-            (y_start, y_stop, x_start, x_stop), mask_position
-        )
+        inside_region = calculate_area((y_start, y_stop, x_start, x_stop), mask_position)
 
         for adjacent_block_id in adjacent_blocks:
-            crd = _calculate_boundary_adjacent_block(
-                block.shape[1:], depth, block_id, adjacent_block_id
-            )
+            crd = _calculate_boundary_adjacent_block(block.shape[1:], depth, block_id, adjacent_block_id)
 
             outside_region = calculate_area(crd, mask_position)
 
@@ -138,9 +124,7 @@ def _clean_up_masks(
     block[mask] = 0
 
     # Set all masks that are fully outside the region to zero, they will be covered by other chunks
-    subset = block[
-        :, depth[0] : block.shape[1] - depth[0], depth[1] : block.shape[2] - depth[1]
-    ]
+    subset = block[:, depth[0] : block.shape[1] - depth[0], depth[1] : block.shape[2] - depth[1]]
     # Unique masks gives you all masks that are in 'original' array (i.e. without depth added)
     unique_masks = np.unique(subset)
 
@@ -153,9 +137,9 @@ def _clean_up_masks(
 
 def _merge_masks(
     array: NDArray,
-    _depth: Dict[int, int],
-    num_blocks: Tuple[int, int, int],
-    block_id: Tuple[int, int, int],
+    _depth: dict[int, int],
+    num_blocks: tuple[int, int, int],
+    block_id: tuple[int, int, int],
 ) -> NDArray:
     # helper function to merge the chunks
 
@@ -163,9 +147,7 @@ def _merge_masks(
         num_blocks[0] == 1
     ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
 
-    assert (
-        _depth[0] == 0
-    ), "Depth not equal to 0 in z dimension is currently not supported."
+    assert _depth[0] == 0, "Depth not equal to 0 in z dimension is currently not supported."
     assert len(_depth) == 3, "Please provide depth values for z,y and x."
 
     new_array = array[:, _depth[1] * 2 : -_depth[1] * 2, _depth[2] * 2 : -_depth[2] * 2]
@@ -211,9 +193,7 @@ def _merge_masks(
         overlap = array[:, -_depth[1] :, _depth[2] * 2 : -_depth[2] * 2]
         sliced_new_array = new_array[:, -_depth[1] :, :]
         non_zero_mask = (sliced_new_array == 0) & (overlap != 0)
-        new_array[:, -_depth[1] :, :] = np.where(
-            non_zero_mask, overlap, sliced_new_array
-        )
+        new_array[:, -_depth[1] :, :] = np.where(non_zero_mask, overlap, sliced_new_array)
     # under right ( y+1, x-1 )
     if block_id[1] + 1 != num_blocks[1] and block_id[2] != 0:
         overlap = array[:, -_depth[1] :, : _depth[2]]
@@ -308,14 +288,10 @@ def _check_boundary(boundary: str) -> None:
     valid_boundaries = ["reflect", "periodic", "nearest"]
 
     if boundary not in valid_boundaries:
-        raise ValueError(
-            f"'{boundary}' is not a valid boundary. It must be one of {valid_boundaries}."
-        )
+        raise ValueError(f"'{boundary}' is not a valid boundary. It must be one of {valid_boundaries}.")
 
 
-def _add_depth_to_chunks_size(
-    chunks: Tuple[Tuple[int, ...], ...], depth: Dict[int, int, int]
-):
+def _add_depth_to_chunks_size(chunks: tuple[tuple[int, ...], ...], depth: dict[int, int, int]):
     result = []
     for i, item in enumerate(chunks):
         if i in depth:  # check if there's a corresponding depth value
@@ -325,9 +301,7 @@ def _add_depth_to_chunks_size(
     return tuple(result)
 
 
-def _substract_depth_from_chunks_size(
-    chunks: Tuple[Tuple[int, ...], ...], depth: Dict[int, int]
-):
+def _substract_depth_from_chunks_size(chunks: tuple[tuple[int, ...], ...], depth: dict[int, int]):
     result = []
     for i, item in enumerate(chunks):
         if i in depth:  # check if there's a corresponding depth value
@@ -353,11 +327,7 @@ def _get_ajdacent_block_ids(block_id, total_blocks):
     ]
 
     # Filter out neighbors that have negative IDs or exceed the total number of blocks
-    neighbors = [
-        neighbor
-        for neighbor in potential_neighbors
-        if 0 <= neighbor[0] < max_y and 0 <= neighbor[1] < max_x
-    ]
+    neighbors = [neighbor for neighbor in potential_neighbors if 0 <= neighbor[0] < max_y and 0 <= neighbor[1] < max_x]
     return neighbors
 
 
@@ -386,13 +356,10 @@ def _calculate_boundary_adjacent_block(chunk_shape, depth, block_id, adjacent_bl
 
 
 def _get_block_position(
-    chunks: Tuple[Tuple[int, ...], ...], block_id: Tuple[int, int, int]
-) -> Tuple[int, int, int, int]:
+    chunks: tuple[tuple[int, ...], ...], block_id: tuple[int, int, int]
+) -> tuple[int, int, int, int]:
     """
-    Parameters
-
-    Given a block structure of a 4D Dask array and a block ID, return the
-    start and stop positions in the full array for that block for the 1st (y) and 2nd (x) dimension.
+    Given a block structure of a 4D Dask array and a block ID, return the start and stop positions in the full array for that block for the 1st (y) and 2nd (x) dimension.
 
     Parameters
     ----------
@@ -415,64 +382,3 @@ def _get_block_position(
     x_stop = x_start + x_structure[j]
 
     return y_start, y_stop, x_start, x_stop
-
-
-def _mask_to_original(
-    sdata: SpatialData, label_layer: str, original_labels_layers: List[str]
-) -> DataFrame:
-    def _zero_non_max(list_1, list_2):
-        if not list_1 or not list_2 or len(list_1) != len(list_2):
-            raise ValueError("Lists should be non-empty and of the same length.")
-
-        max_value = max(list_1)
-        for i in range(len(list_1)):
-            if list_1[i] != max_value:
-                list_2[i] = 0
-
-        return list_2
-
-    # utility function to get label from original masks
-    # TODO: scale this via dask/map_overlap. Do it in similar way as for _allocation_intensity function,
-    # but now using map_overlap, find which labels have interection with original chunk (i.e. without depth appended), then add them.
-    merged_all = sdata[label_layer].data.compute()
-
-    cell_ids = np.unique(merged_all)
-
-    arrays = []
-
-    for _label_layer in original_labels_layers:
-        arrays.append(sdata[_label_layer].data.compute())
-
-    df = pd.DataFrame(columns=original_labels_layers)
-
-    for label in cell_ids:
-        max_label_list = []
-        max_area_list = []
-
-        for _array in arrays:
-            positions = np.where(merged_all == label)
-            overlapping_labels = _array[positions]
-
-            label_areas = {
-                lbl: np.sum(overlapping_labels == lbl)
-                for lbl in np.unique(overlapping_labels)
-            }
-
-            label_areas.pop(0, None)
-
-            # Find the label with the maximum area
-            if label_areas:
-                max_label = max(label_areas, key=label_areas.get)
-                max_area = label_areas[max_label]
-            else:
-                max_label = 0  # Set to 0 if there's no overlap
-                max_area = 0
-
-            max_label_list.append(max_label)
-            max_area_list.append(max_area)
-
-        max_overlap = _zero_non_max(max_area_list, max_label_list)
-
-        df.loc[str(label)] = max_overlap
-
-    return df

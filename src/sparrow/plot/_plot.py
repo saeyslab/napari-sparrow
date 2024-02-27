@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Iterable
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from geopandas.geoseries import GeoSeries
 from geopandas.geodataframe import GeoDataFrame
+from geopandas.geoseries import GeoSeries
 from spatialdata import SpatialData
 
 from sparrow.image._image import (
@@ -25,11 +25,11 @@ log = get_pylogger(__name__)
 def plot_image(
     sdata: SpatialData,
     img_layer: str = "raw_image",
-    channel: Optional[int | str | Iterable[int | str]] = None,
-    z_slice: Optional[float] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    output: Optional[str | Path] = None,
-    **kwargs: Dict[str, Any],
+    channel: int | str | Iterable[int | str] | None = None,
+    z_slice: float | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    output: str | Path | None = None,
+    **kwargs: dict[str, Any],
 ) -> None:
     """
     Plot an image based on given parameters.
@@ -66,10 +66,10 @@ def plot_image(
 def plot_labels(
     sdata: SpatialData,
     labels_layer: str = "segmentation_mask",
-    z_slice: Optional[float] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    output: Optional[str | Path] = None,
-    **kwargs: Dict[str, Any],
+    z_slice: float | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    output: str | Path | None = None,
+    **kwargs: dict[str, Any],
 ) -> None:
     """
     Plot a labels layer (masks) based on given parameters.
@@ -102,33 +102,34 @@ def plot_labels(
 
 def plot_shapes(
     sdata: SpatialData,
-    img_layer: Optional[str | Iterable[str]] = None,
-    labels_layer: Optional[str | Iterable[str]] = None,
-    shapes_layer: Optional[str | Iterable[str]] = None,
-    column: Optional[str] = None,
-    cmap: Optional[str] = "magma",
-    channel: Optional[int | str | Iterable[int] | Iterable[str]] = None,
-    z_slice: Optional[float] = None,
+    img_layer: str | Iterable[str] | None = None,
+    labels_layer: str | Iterable[str] | None = None,
+    shapes_layer: str | Iterable[str] | None = None,
+    column: str | None = None,
+    cmap: str | None = "magma",
+    channel: int | str | Iterable[int] | Iterable[str] | None = None,
+    z_slice: float | None = None,
     alpha: float = 0.5,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    vmin: Optional[float] = None,
-    vmax: Optional[float] = None,
-    vmin_img: Optional[float] = None,
-    vmax_img: Optional[float] = None,
-    shapes_layer_filtered: Optional[str | Iterable[str]] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    vmin: float | None = None,
+    vmax: float | None = None,
+    vmin_img: float | None = None,
+    vmax_img: float | None = None,
+    shapes_layer_filtered: str | Iterable[str] | None = None,
     img_title: bool = False,
     shapes_title: bool = False,
     channel_title: bool = True,
     aspect: str = "equal",
-    figsize: Optional[Tuple[int, int]] = None,
-    output: Optional[str | Path] = None,
+    figsize: tuple[int, int] | None = None,
+    output: str | Path | None = None,
 ) -> None:
     """
     Plot shapes and/or images/labels from a SpatialData object.
+
     The number of provided 'img_layer' or 'labels_layer' and 'shapes_layer' should be equal if both are iterables and if their length is greater than 1.
 
-    Examples:
-
+    Examples
+    --------
     1. For `img_layer=['raw_image', 'clahe']` and `shapes_layer=['segmentation_mask_boundaries', 'expanded_cells20']`:
     Subplots:
     - Column 1: 'raw_image' with 'segmentation_mask_boundaries'
@@ -209,11 +210,11 @@ def plot_shapes(
     **kwargs : dict
         Additional arguments to be passed to the internal `_plot` function.
 
-        
+
     Raises
     ------
     ValueError
-        - If both `img_layer` and `labels_layer` are specified. 
+        - If both `img_layer` and `labels_layer` are specified.
         - If z_slice is specified, and it is not a z_slice in specified `img_layer` or `labels_layer`.
 
 
@@ -222,11 +223,9 @@ def plot_shapes(
     - This function offers advanced visualization options for `sdata` with support for multiple image layers, labels layers shape layers, and channels.
     - Either img_layer or labels_layer should be specified, not both.
     """
-
     if img_layer is not None and labels_layer is not None:
         raise ValueError(
-            "Both img_layer and labels_layer is not None. "
-            "Please specify either img_layer or labels_layer, not both."
+            "Both img_layer and labels_layer is not None. " "Please specify either img_layer or labels_layer, not both."
         )
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
@@ -245,22 +244,14 @@ def plot_shapes(
         )
 
     # Make code also work if user would provide another iterable than List
-    layer = (
-        list(layer)
-        if isinstance(layer, Iterable) and not isinstance(layer, str)
-        else [layer]
-    )
+    layer = list(layer) if isinstance(layer, Iterable) and not isinstance(layer, str) else [layer]
     shapes_layer = (
         list(shapes_layer)
         if isinstance(shapes_layer, Iterable) and not isinstance(shapes_layer, str)
         else [shapes_layer]
     )
     if channel is not None:
-        channel = (
-            list(channel)
-            if isinstance(channel, Iterable) and not isinstance(channel, str)
-            else [channel]
-        )
+        channel = list(channel) if isinstance(channel, Iterable) and not isinstance(channel, str) else [channel]
 
     # if multiple shapes are provided, and one img_layer, then len(shapes_layer) subfigures with same img_layer beneath are plotted.
     if len(layer) == 1 and shapes_layer != 1:
@@ -269,14 +260,8 @@ def plot_shapes(
     if len(shapes_layer) == 1 and layer != 1:
         shapes_layer = shapes_layer * len(layer)
 
-    if (
-        isinstance(layer, list)
-        and isinstance(shapes_layer, list)
-        and len(layer) != len(shapes_layer)
-    ):
-        raise ValueError(
-            f"Length of '{layer}' is not equal to the length of shapes_layer '{shapes_layer}'."
-        )
+    if isinstance(layer, list) and isinstance(shapes_layer, list) and len(layer) != len(shapes_layer):
+        raise ValueError(f"Length of '{layer}' is not equal to the length of shapes_layer '{shapes_layer}'.")
 
     nr_of_columns = max(len(layer), len(shapes_layer))
 
@@ -347,20 +332,20 @@ def plot_shapes(
 def _plot(
     sdata: SpatialData,
     ax: plt.Axes,
-    img_layer: Optional[str] = None,
-    labels_layer: Optional[str] = None,
-    shapes_layer: Optional[str] = "segmentation_mask_boundaries",
-    column: Optional[str] = None,
-    cmap: Optional[str] = "magma",
-    channel: Optional[int | str] = None,
-    z_slice: Optional[float] = None,
+    img_layer: str | None = None,
+    labels_layer: str | None = None,
+    shapes_layer: str | None = "segmentation_mask_boundaries",
+    column: str | None = None,
+    cmap: str | None = "magma",
+    channel: int | str | None = None,
+    z_slice: float | None = None,
     alpha: float = 0.5,
-    crd: Tuple[int, int, int, int] = None,
-    vmin: Optional[float] = None,
-    vmax: Optional[float] = None,
-    vmin_img: Optional[float] = None,
-    vmax_img: Optional[float] = None,
-    shapes_layer_filtered: Optional[str | Iterable[str]] = None,
+    crd: tuple[int, int, int, int] = None,
+    vmin: float | None = None,
+    vmax: float | None = None,
+    vmin_img: float | None = None,
+    vmax_img: float | None = None,
+    shapes_layer_filtered: str | Iterable[str] | None = None,
     img_title: bool = False,
     shapes_title: bool = False,
     channel_title: bool = True,
@@ -433,8 +418,7 @@ def _plot(
     """
     if img_layer is not None and labels_layer is not None:
         raise ValueError(
-            "Both img_layer and labels_layer is not None. "
-            "Please specify either img_layer or labels_layer, not both."
+            "Both img_layer and labels_layer is not None. " "Please specify either img_layer or labels_layer, not both."
         )
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
@@ -455,8 +439,7 @@ def _plot(
     if shapes_layer_filtered is not None:
         shapes_layer_filtered = (
             list(shapes_layer_filtered)
-            if isinstance(shapes_layer_filtered, Iterable)
-            and not isinstance(shapes_layer_filtered, str)
+            if isinstance(shapes_layer_filtered, Iterable) and not isinstance(shapes_layer_filtered, str)
             else [shapes_layer_filtered]
         )
 
@@ -472,11 +455,9 @@ def _plot(
         crd = intersect_rectangles(crd, image_boundary)
         if crd is None:
             log.warning(
-                (
-                    f"Provided crd '{_crd}' and image_boundary '{image_boundary}' do not have any overlap. "
-                    f"Please provide a crd that has some overlap with the image. "
-                    f"Setting crd to image_boundary '{image_boundary}'."
-                )
+                f"Provided crd '{_crd}' and image_boundary '{image_boundary}' do not have any overlap. "
+                f"Please provide a crd that has some overlap with the image. "
+                f"Setting crd to image_boundary '{image_boundary}'."
             )
             crd = image_boundary
     # if crd is None, set crd equal to image_boundary
@@ -488,8 +469,10 @@ def _plot(
     if z_slice is not None:
         if "z" in se.dims:
             if z_slice not in se.z.data:
-                raise ValueError( f"z_slice {z_slice} not a z slice in layer '{layer}' of `sdata`. "
-                                 f"Please specify a z_slice from the list '{se.z.data}'." )
+                raise ValueError(
+                    f"z_slice {z_slice} not a z slice in layer '{layer}' of `sdata`. "
+                    f"Please specify a z_slice from the list '{se.z.data}'."
+                )
             z_index = np.where(se.z.data == z_slice)[0][0]
 
     polygons = None
@@ -509,9 +492,7 @@ def _plot(
             if column in sdata.table.obs.columns:
                 column = sdata.table[polygons.index, :].obs[column]
             elif column in sdata.table.var.index:
-                column = sdata.table[polygons.index, :].X[
-                    :, np.where(sdata.table.var.index == column)[0][0]
-                ]
+                column = sdata.table[polygons.index, :].X[:, np.where(sdata.table.var.index == column)[0][0]]
             else:
                 log.info(
                     f"The column '{column}' is not a column in the dataframe sdata.table.obs, "
@@ -523,9 +504,9 @@ def _plot(
             log.warning(f"Shapes layer '{shapes_layer}' was empty for crd {crd}.")
     else:
         cmap = None
-    if vmin != None:
+    if vmin is not None:
         vmin = np.percentile(column, vmin)
-    if vmax != None:
+    if vmax is not None:
         vmax = np.percentile(column, vmax)
 
     if img_layer_type:
@@ -537,10 +518,8 @@ def _plot(
             _channel = channel
             channel = se.c.data[0]
             log.warning(
-                (
-                    f"Provided channel '{_channel}' not in list of available channels '{se.c.data}' "
-                    f"for provided img_layer '{layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
-                )
+                f"Provided channel '{_channel}' not in list of available channels '{se.c.data}' "
+                f"for provided img_layer '{layer}'. Falling back to plotting first available channel '{channel}' for this img_layer."
             )
 
         channel_name = se.c.name
@@ -646,13 +625,13 @@ def _get_z_slice_polygons(polygons: GeoDataFrame, z_index: int) -> GeoDataFrame:
             return True
 
         if geometry.geom_type == "Polygon":
-            for x, y, z in geometry.exterior.coords:
+            for _x, _y, z in geometry.exterior.coords:
                 if z == z_value:
                     return True
 
         elif geometry.geom_type == "MultiPolygon":
             for polygon in geometry.geoms:
-                for x, y, z in polygon.exterior.coords:
+                for _x, _y, z in polygon.exterior.coords:
                     if z == z_value:
                         return True
 

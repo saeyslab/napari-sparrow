@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import numpy as np
 from numpy.typing import NDArray
 from spatialdata import SpatialData
@@ -18,11 +16,11 @@ def filter_labels_layer(
     labels_layer: str,
     min_size: int = 10,
     max_size: int = 100000,
-    depth: Tuple[int, int] | int = 100,
-    chunks: Optional[str | int | Tuple[int, int]] = "auto",
-    output_labels_layer: Optional[str] = None,
-    output_shapes_layer: Optional[str] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
+    output_labels_layer: str | None = None,
+    output_shapes_layer: str | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ):
     """
@@ -79,7 +77,6 @@ def filter_labels_layer(
             overwrite=True,
         )
     """
-
     sdata = apply_labels_layers(
         sdata,
         labels_layers=[labels_layer],
@@ -104,23 +101,19 @@ def _filter_labels_block(
     x_label: NDArray,
     min_size: int,
     max_size: int,
-    _depth: Tuple[int, ...] | int = 100,
+    _depth: tuple[int, ...] | int = 100,
 ) -> NDArray:
     # input and output is numpy array of shape (z,y,x)
     assert x_label.ndim == 3
     if isinstance(_depth, int):
         _depth = {0: 0, 1: _depth, 2: _depth}
     else:
-        assert (
-            len(_depth) == x_label.ndim - 1
-        ), "Please (only) provide depth for ( 'y', 'x')."
+        assert len(_depth) == x_label.ndim - 1, "Please (only) provide depth for ( 'y', 'x')."
         # set depth for every dimension
         depth2 = {0: 0, 1: _depth[0], 2: _depth[1]}
         _depth = depth2
     # get the labels that are (at least parially) inside the chunk
-    labels_inside_original_chunk = np.unique(
-        x_label[:, _depth[1] : -_depth[1], _depth[2] : -_depth[2]]
-    )
+    labels_inside_original_chunk = np.unique(x_label[:, _depth[1] : -_depth[1], _depth[2] : -_depth[2]])
     for label in labels_inside_original_chunk:
         if label == 0:
             continue
