@@ -1,4 +1,4 @@
-name: mesmer_sparrow
+name: mesmer_harpy
 channels:
   - tensorflow
   - conda-forge

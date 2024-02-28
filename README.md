@@ -1,4 +1,4 @@
-# sparrow
+# Harpy
 
 <!-- These badges won't work while the GitHub repo is private:
 [![License BSD-3](https://img.shields.io/pypi/l/napari-sparrow.svg?color=green)](https://github.com/saeyslab/napari-sparrow/raw/main/LICENSE)
@@ -9,11 +9,11 @@
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-sparrow)](https://napari-hub.org/plugins/napari-sparrow)
 -->
 
-Napari plugin for spatial transcriptomics data analysis
+Package for single-cell spatial proteomics data analysis.
 
 ---
 
-This [napari] plugin was generated with [Cookiecutter] using [napari]'s [cookiecutter-napari-plugin] template.
+<!-- This [napari] plugin was generated with [Cookiecutter] using [napari]'s [cookiecutter-napari-plugin] template. -->
 
 <!--
 Don't miss the full getting started guide to set up your new package:
@@ -30,7 +30,7 @@ There are two different installation methods:
 1. Using the Python package manager pip (TODO)
 
 ```
-pip install sparrow (TODO sparrow already in use as library name on PyPi)
+pip install harpy (TODO)
 ```
 
 2. Installation from source
@@ -38,8 +38,8 @@ pip install sparrow (TODO sparrow already in use as library name on PyPi)
 First clone this GitHub repo and set it as the current directory:
 
 ```bash
-git clone https://github.com/saeyslab/napari-sparrow.git
-cd napari-sparrow
+git clone https://github.com/saeyslab/harpy.git
+cd harpy
 ```
 
 Depending on your hardware, you may need to adapt the Conda `environment.yml` file as follows:
@@ -54,7 +54,7 @@ conda env create -f environment.yml
 # Or use Mamba as alternative
 mamba env update -f environment.yml --prune
 
-conda activate napari-sparrow
+conda activate harpy
 ```
 
 On Windows one must manually install `basicpy` and `jax` as follows:
@@ -67,18 +67,22 @@ pip install basicpy==1.0.0
 
 The manual installation of ml_dtypes used by jax is needed because of [this issue](https://developer.apple.com/forums/thread/737890).
 
-Finally, install `sparrow`
-
+Finally, install `harpy`
 ```
 pip install -e .
 ```
 
 ## Additional dependencies
 
+To install everything from source, run
+```bash
+pip install --upgrade-strategy only-if-needed -e '.[plugin,testing,cli,docs,clustering]'
+```
+
 To use the plugin, run
 
 ```bash
-pip install "sparrow[plugin]"
+pip install "harpy[plugin]"
 ```
 
 or when build from source:
@@ -87,10 +91,10 @@ or when build from source:
 pip install -e ".[plugin]"
 ```
 
-To run `sparrow` from the `cli`:
+To run `harpy` from the `cli`:
 
 ```bash
-pip install "sparrow[cli]"
+pip install "harpy[cli]"
 ```
 
 or when build from source:

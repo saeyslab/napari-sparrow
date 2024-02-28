@@ -1,4 +1,4 @@
-name: napari-sparrow
+name: harpy
 channels:
   - pytorch
   - conda-forge
