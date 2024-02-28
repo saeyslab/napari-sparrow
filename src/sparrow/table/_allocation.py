@@ -62,6 +62,11 @@ def allocate(
     if shapes_layer is not None:
         sdata[shapes_layer].index = sdata[shapes_layer].index.astype("str")
 
+    if labels_layer not in [*sdata.labels]:
+        raise ValueError(
+            f"Provided labels layer '{labels_layer}' not in 'sdata', please specify a labels layer from '{[*sdata.labels]}'"
+        )
+
     # need to do this transformation,
     # because the polygons have same offset coords.x0 and coords.y0 as in segmentation_mask
     Coords = namedtuple("Coords", ["x0", "y0"])
