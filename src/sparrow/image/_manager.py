@@ -10,7 +10,8 @@ import spatialdata
 from dask.array import Array
 from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
 from spatial_image import SpatialImage
-from spatialdata import SpatialData
+from spatialdata import SpatialData, read_zarr
+from spatialdata._io import write_image, write_labels
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import BaseTransformation, set_transformation
 
@@ -91,10 +92,9 @@ class LayerManager(ABC):
             log.info(
                 f"Removing intermediate output layer '{intermediate_output_layer}' from .zarr store at path {sdata.path}."
             )
-            if os.path.isdir(sdata.path) and sdata.path.endswith(".zarr"):
-                location = sdata._locate_spatial_element(sdata[intermediate_output_layer])
-
-                shutil.rmtree(os.path.join(sdata.path, location[1], location[0]))
+            if os.path.isdir(sdata.path) and sdata.path.suffix == ".zarr":
+                location = sdata.locate_element(sdata[intermediate_output_layer])[0]
+                shutil.rmtree(os.path.join(sdata.path, location))
                 sdata = self.remove_from_sdata(sdata, intermediate_output_layer)
 
         return sdata
@@ -188,7 +188,15 @@ class ImageLayerManager(LayerManager):
         spatial_element: SpatialImage | MultiscaleSpatialImage,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.add_image(name=output_layer, image=spatial_element, overwrite=overwrite)
+        sdata.images[output_layer] = spatial_element
+        if sdata.is_backed():
+            elem_group = sdata._init_add_element(name=output_layer, element_type="images", overwrite=overwrite)
+            write_image(
+                image=sdata.images[output_layer],
+                group=elem_group,
+                name=output_layer,
+            )
+            sdata = read_zarr(sdata.path)
         return sdata
 
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> Array:
@@ -242,7 +250,15 @@ class LabelLayerManager(LayerManager):
         spatial_element: SpatialImage | MultiscaleSpatialImage,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.add_labels(name=output_layer, labels=spatial_element, overwrite=overwrite)
+        sdata.labels[output_layer] = spatial_element
+        if sdata.is_backed():
+            elem_group = sdata._init_add_element(name=output_layer, element_type="labels", overwrite=overwrite)
+            write_labels(
+                labels=sdata.labels[output_layer],
+                group=elem_group,
+                name=output_layer,
+            )
+            sdata = read_zarr(sdata.path)
         return sdata
 
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> Array:

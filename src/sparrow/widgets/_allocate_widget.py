@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, Optional
 import napari
 import napari.layers
 import napari.types
-import spatialdata
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
@@ -14,6 +13,7 @@ from spatialdata import SpatialData, read_zarr
 
 import sparrow.utils as utils
 from sparrow.pipeline import SparrowPipeline
+from sparrow.shape._shape import _add_shapes_layer
 
 log = utils.get_pylogger(__name__)
 
@@ -88,11 +88,12 @@ def allocate_widget(
     # need to add original unfiltered shapes to sdata object at the beginning of the allocation step.
     # otherwise polygons that were filtered out would not be available any more if you do a rerun of the allocation step.
     for shapes_name in [*shapes]:
-        sdata.add_shapes(
-            name=shapes_name,
-            shapes=spatialdata.models.ShapesModel.parse(shapes[shapes_name]),
-            overwrite=True,
-        )
+        _add_shapes_layer(sdata, input=shapes[shapes_name], output_layer=shapes_name, overwrite=True)
+        # sdata.add_shapes(
+        #    name=shapes_name,
+        #    shapes=spatialdata.models.ShapesModel.parse(shapes[shapes_name]),
+        #    overwrite=True,
+        # )
 
     # napari widget does not support the type Optional[int], therefore only choose whether there is a header or not,
     # and do same for midcount column

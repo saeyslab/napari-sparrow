@@ -1,12 +1,12 @@
 import dask.dataframe as dd
 import pandas as pd
-import spatialdata
 from dask.dataframe import DataFrame
 from spatialdata import SpatialData
 
 from sparrow.image.segmentation._segmentation import segment, segment_points
 from sparrow.image.segmentation.segmentation_models._baysor import _dummy
 from sparrow.image.segmentation.segmentation_models._cellpose import _cellpose
+from sparrow.io._transcripts import _add_transcripts_to_sdata
 
 
 def test_segment(sdata_multi_c: SpatialData):
@@ -71,13 +71,14 @@ def test_segment_points(sdata_multi_c: SpatialData):
 
     coordinates = {"x": "x", "y": "y"}
 
-    sdata_multi_c.add_points(
-        name="transcripts",
-        points=spatialdata.models.PointsModel.parse(
-            ddf,
-            coordinates=coordinates,
-        ),
+    sdata_multi_c = _add_transcripts_to_sdata(
+        sdata_multi_c,
+        ddf=ddf,
+        points_layer="transcripts",
+        coordinates=coordinates,
+        overwrite=False,
     )
+
     assert type(sdata_multi_c.points["transcripts"]) == DataFrame
 
     sdata_multi_c = segment_points(

@@ -13,7 +13,8 @@ from dask.array import Array
 from geopandas import GeoDataFrame
 from numpy.typing import NDArray
 from shapely.affinity import translate
-from spatialdata import SpatialData
+from spatialdata import SpatialData, read_zarr
+from spatialdata._io import write_shapes
 from spatialdata.transformations import Identity, Translation
 
 from sparrow.image._image import _get_translation_values
@@ -132,6 +133,8 @@ class ShapesLayerManager:
             polygons = geopandas.GeoDataFrame(pd.concat(all_polygons, ignore_index=False))
             return polygons
         elif dimension == 2:
+            polygons = _mask_image_to_polygons(input)
+            print(polygons.shape)
             return _mask_image_to_polygons(input)
 
     @get_polygons_from_input.register(GeoDataFrame)
@@ -184,7 +187,16 @@ class ShapesLayerManager:
         spatial_element: GeoDataFrame,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.add_shapes(name=output_layer, shapes=spatial_element, overwrite=overwrite)
+        sdata.shapes[output_layer] = spatial_element
+        if sdata.is_backed():
+            elem_group = sdata._init_add_element(name=output_layer, element_type="shapes", overwrite=overwrite)
+            write_shapes(
+                shapes=sdata.shapes[output_layer],
+                group=elem_group,
+                name=output_layer,
+            )
+            sdata = read_zarr(sdata.path)
+
         return sdata
 
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> GeoDataFrame:

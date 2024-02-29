@@ -6,7 +6,6 @@ from typing import Any, Callable, Mapping
 
 import dask.array as da
 import numpy as np
-import spatialdata
 from dask.array import Array
 from nptyping import NDArray, Shape
 from spatial_image import SpatialImage
@@ -36,6 +35,7 @@ from sparrow.image.segmentation.segmentation_models._baysor import (
     _baysor as _model_points,
 )
 from sparrow.image.segmentation.segmentation_models._cellpose import _cellpose as _model
+from sparrow.io._transcripts import _add_transcripts_to_sdata
 from sparrow.shape._shape import _add_shapes_layer
 from sparrow.utils.pylogger import get_pylogger
 
@@ -660,12 +660,11 @@ class SegmentationModelPoints(SegmentationModel):
             # TODO should we do a persist here for the _ddf if sdata is not backed by .zarr store? Probably yes
             _crd_points_layer = f"{points_layer}_{'_'.join(str(item) for item in _crd_points)}"
 
-            sdata.add_points(
-                name=_crd_points_layer,
-                points=spatialdata.models.PointsModel.parse(
-                    _ddf,
-                    coordinates=coordinates,
-                ),
+            sdata = _add_transcripts_to_sdata(
+                sdata,
+                ddf=_ddf,
+                points_layer=_crd_points_layer,
+                coordinates=coordinates,
                 overwrite=True,
             )
 

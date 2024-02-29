@@ -10,7 +10,7 @@ import numpy as np
 import spatialdata
 from dask.array import from_zarr
 from dask_image import imread
-from spatialdata import SpatialData
+from spatialdata import SpatialData, read_zarr
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation
 
@@ -160,6 +160,10 @@ def create_sdata(
             c_coords=c_coords,
             overwrite=False,
         )
+
+        # TODO: unexpected behaviour from spatialdata, why do we need to read the zarr store again.
+        if sdata.is_backed():
+            sdata = read_zarr(output_path)
 
     return sdata
 

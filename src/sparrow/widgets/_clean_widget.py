@@ -55,15 +55,14 @@ def clean_widget(
     tiling_correction_step: bool = True,
     tile_size: int = 2144,
     min_max_filtering_step: bool = True,
-    size_min_max_filter: List[int] = None,
+    size_min_max_filter: List[int] = [85],  # noqa: B006 # magicgui does not accept None as default.
     contrast_enhancing_step: bool = True,
-    contrast_clip: List[float] = None,
+    contrast_clip: List[float] = [3.5],  # noqa: B006
 ):
     """Function represents the clean widget and is called by the wizard to create the widget."""
-    if contrast_clip is None:
-        contrast_clip = [3.5]
-    if size_min_max_filter is None:
-        size_min_max_filter = [85]
+    contrast_clip = contrast_clip.copy()
+    size_min_max_filter = size_min_max_filter.copy()
+
     if image is None:
         raise ValueError("Please select an image")
 

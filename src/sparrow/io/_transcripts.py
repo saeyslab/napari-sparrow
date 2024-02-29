@@ -6,7 +6,8 @@ import dask.dataframe as dd
 import numpy as np
 import spatialdata
 from dask.dataframe.core import DataFrame as DaskDataFrame
-from spatialdata import SpatialData
+from spatialdata import SpatialData, read_zarr
+from spatialdata._io import write_points
 
 from sparrow.utils.pylogger import get_pylogger
 
@@ -293,7 +294,7 @@ def read_transcripts(
 
     sdata = _add_transcripts_to_sdata(
         sdata,
-        transformed_ddf=transformed_ddf,
+        ddf=transformed_ddf,
         points_layer=points_layer,
         coordinates=coordinates,
         overwrite=overwrite,
@@ -304,17 +305,23 @@ def read_transcripts(
 
 def _add_transcripts_to_sdata(
     sdata: SpatialData,
-    transformed_ddf: DaskDataFrame,
+    ddf: DaskDataFrame,
     points_layer: str,
     coordinates: dict[str, str],
     overwrite: bool = False,
 ):
-    sdata.add_points(
-        name=points_layer,
-        points=spatialdata.models.PointsModel.parse(
-            transformed_ddf,
-            coordinates=coordinates,
-        ),
-        overwrite=overwrite,
+    points = spatialdata.models.PointsModel.parse(
+        ddf,
+        coordinates=coordinates,
     )
+    sdata.points[points_layer] = points
+    if sdata.is_backed():
+        elem_group = sdata._init_add_element(name=points_layer, element_type="points", overwrite=overwrite)
+        write_points(
+            points=sdata.points[points_layer],
+            group=elem_group,
+            name=points_layer,
+        )
+        sdata = read_zarr(sdata.path)
+
     return sdata
