@@ -120,6 +120,8 @@ def plot_shapes(
     shapes_title: bool = False,
     channel_title: bool = True,
     aspect: str = "equal",
+    subset_column: Optional[str] = None ,
+    subset_value:  Optional[str | Iterable[str]] = None,
     figsize: Optional[Tuple[int, int]] = None,
     output: Optional[str | Path] = None,
 ) -> None:
@@ -202,6 +204,11 @@ def plot_shapes(
         Ignored if img_layer is None and labels_layer is specified.
     aspect : str, default='equal'
         Aspect ratio for the plot.
+    subset_column:  Optional[str | Iterable[str]] 
+        The column in annadata.obs on which to take the subset 
+    subset_value:
+        The values in subset column that need to be selected, can be one value or a list of values. 
+        currently, only selection on str is supported, not selection based on numbers.         
     figsize : Tuple[int, int], optional
         Size of the figure for plotting. If not provided, a default size is used based on the number of columns and rows.
     output : str or Path, optional
@@ -331,6 +338,8 @@ def plot_shapes(
                 img_title=img_title,
                 shapes_title=shapes_title,
                 channel_title=channel_title,
+                subset_column=subset_column,
+                subset_value=subset_value,
                 aspect=aspect,
             )
             idx += 1
@@ -364,6 +373,8 @@ def _plot(
     img_title: bool = False,
     shapes_title: bool = False,
     channel_title: bool = True,
+    subset_column: Optional[str] = None ,
+    subset_value:  Optional[str | Iterable[str]] = None,
     aspect: str = "equal",
 ) -> plt.Axes:
     """
@@ -413,6 +424,10 @@ def _plot(
     channel_title: bool, default=True
         A flag indicating whether the channel's name should be added to the title of the plot.
         Ignored if img_layer is None and labels_layer is specified.
+    subset_column:  Optional[str | Iterable[str]] 
+        The column in annadata.obs on which to take the subset 
+    subset_value:
+        The values in subset column that need to be selected, can be one value or a list of values.     
     aspect : str, default='equal'
         Aspect ratio for the plot.
 
@@ -494,7 +509,16 @@ def _plot(
 
     polygons = None
     if shapes_layer is not None:
-        polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
+        if subset_value is not None:
+            if not subset_column:
+                raise ValueError(
+                    "Please define a column based on which you want to take a subset. "
+                )
+            if isinstance(subset_value,str):
+                subset_value=[subset_value]
+            polygons=sdata.shapes[shapes_layer][sdata.table.obs[subset_column].isin(subset_value)].cx[crd[0] : crd[1], crd[2] : crd[3]]    
+        else:    
+            polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
         if z_index is not None:
             polygons = _get_z_slice_polygons(polygons, z_index=z_index)
 
