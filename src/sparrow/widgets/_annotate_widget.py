@@ -45,12 +45,12 @@ def annotate_widget(
     viewer: napari.Viewer,
     markers_file: pathlib.Path = pathlib.Path(""),
     delimiter: str = ",",
-    del_celltypes: List[str] = None,
+    del_celltypes: List[str] = [],  # noqa: B006 # noqa: B006 # magicgui does not accept None
 ):
     """Function represents the annotation widget and is called by the wizard to create the widget."""
     # Check if a file was passed
-    if del_celltypes is None:
-        del_celltypes = []
+    del_celltypes = del_celltypes.copy()
+
     if str(markers_file) in ["", "."]:
         raise ValueError("Please select marker file (.csv)")
     log.info(f"Marker file is {str(markers_file)}")

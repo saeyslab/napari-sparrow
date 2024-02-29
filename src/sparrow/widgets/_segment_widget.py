@@ -59,14 +59,13 @@ def segment_widget(
     diameter: int = 50,
     cellprob_threshold: int = -2,
     model_type: ModelOption = ModelOption.nuclei,
-    channels: List[int] = None,
+    channels: List[int] = [1, 0],  # noqa: B006 # magicgui does not accept None
     voronoi_radius: int = 0,
     chunks: int = 2048,
     depth: int = 100,
 ):
     """Function represents the segment widget and is called by the wizard to create the widget."""
-    if channels is None:
-        channels = [1, 0]
+    channels = channels.copy()
     if image is None:
         raise ValueError("Please select an image")
 
