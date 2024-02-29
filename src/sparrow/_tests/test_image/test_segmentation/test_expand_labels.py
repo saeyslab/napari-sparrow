@@ -4,7 +4,6 @@ from sparrow.image.segmentation._expand_masks import expand_labels_layer
 
 
 def test_expand_labels_layer(sdata_multi_c: SpatialData):
-
     sdata_multi_c = expand_labels_layer(
         sdata_multi_c,
         labels_layer="masks_cellpose_3D",

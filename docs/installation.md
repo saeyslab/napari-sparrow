@@ -3,6 +3,7 @@
 There are two different installation methods:
 
 1. Using the Python package manager pip (TODO)
+
 ```
 pip install sparrow
 ```
@@ -10,15 +11,18 @@ pip install sparrow
 2. Installation from source
 
 First clone this GitHub repo and set it as the current directory:
+
 ```bash
 git clone https://github.com/saeyslab/napari-sparrow.git
 cd napari-sparrow
 ```
 
 Depending on your hardware, you may need to adapt the Conda `environment.yml` file as follows:
+
 - On Windows comment out the line `basicpy==1.0.0`. We will install `basicpy` manually, see below.
 
 Now create the conda environment
+
 ```bash
 # Use standard Conda environment creation
 conda env create -f environment.yml
@@ -29,12 +33,14 @@ conda activate napari-sparrow
 ```
 
 On Windows one must manually install `basicpy` and `jax` as follows:
+
 ```
 pip install "jax[cpu]===0.4.10" -f https://whls.blob.core.windows.net/unstable/index.html --use-deprecated legacy-resolver
 pip install basicpy==1.0.0
 ```
 
 Finally, install `sparrow`
+
 ```
 pip install -e .
 ```
@@ -64,4 +70,3 @@ or when build from source:
 ```bash
 pip install -e ".[cli]"
 ```
-

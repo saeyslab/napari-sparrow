@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+import uuid
+from typing import Iterable
 
+import anndata as ad
 import dask.array as da
 import numpy as np
 import pandas as pd
@@ -13,6 +15,7 @@ from numpy.typing import NDArray
 from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element, _get_translation
+from sparrow.table._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -20,17 +23,15 @@ log = get_pylogger(__name__)
 
 def allocate_intensity(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
-    labels_layer: Optional[str] = None,
-    channels: Optional[int | str | Iterable[int] | Iterable[str]] = None,
-    chunks: Optional[str | int | tuple[int, ...]] = 10000,
+    img_layer: str | None = None,
+    labels_layer: str | None = None,
+    channels: int | str | Iterable[int] | Iterable[str] | None = None,
+    chunks: str | int | tuple[int, ...] | None = 10000,
     append: bool = False,
-    append_labels_layer_name: bool = True,
+    remove_background_intensity: bool = True,
 ) -> SpatialData:
     """
-    Allocates intensity values from a specified image layer to corresponding cells in a SpatialData object and
-    returns an updated SpatialData object with an attached table attribute containing the AnnData object with intensity values
-    for each cell and each (specified) channel.
+    Allocates intensity values from a specified image layer to corresponding cells in a SpatialData object and returns an updated SpatialData object with an attached table attribute containing the AnnData object with intensity values for each cell and each (specified) channel.
 
     It requires that the image layer and the labels layer have the same shape and alignment.
 
@@ -52,19 +53,16 @@ def allocate_intensity(
     chunks : str | int | tuple[int, ...], optional
         The chunk size for processing the image data.
     append: bool, optional.
-        If set to True, the intensity values extracted during the current function call will be appended to any existing intensity data
+        If set to True, and the `labels_layer` does not yet exist as an `_INSTANCE_KEY` in `sdata.table.obs`,
+        the intensity values extracted during the current function call will be appended (along axis=0) to any existing intensity data
         within the SpatialData object's table attribute. If False, any existing data in `sdata.table` will be overwritten by the newly extracted intensity values.
-    append_labels_layer_name: bool, optional.
-        Determines whether the labels layer name is added as suffix to the channel names in the resulting AnnData object at `sdata.table`.
-        This is especially relevant when multiple label layers are used, helping keep the origin of the data clear.
-        When set to True, the channel names in the 'var' DataFrame of `sdata.table` will be in the format "{channel}_{labels_layer}".
-        For example, if dealing with a labels layer named "layer1", and channel "channelA", the resulting channel name in `sdata.table` would be "channelA_layer1".
-        If False, the original channel names are preserved without modification.
+    remove_background_intensity: bool, optional.
+        If set to True, the calculated intensity for the background (INSTANCE_KEY==0) will not be added to `sdata.table`.
 
     Returns
     -------
     SpatialData
-        An updated version of the input SpatialData object. The updated object includes a new 'table' attribute
+        An updated version of the input SpatialData object. The updated object includes a 'table' attribute
         containing an AnnData object with intensity values for each cell across the channels in the `img_layer`.
 
     Notes
@@ -76,8 +74,28 @@ def allocate_intensity(
     - Due to the memory-intensive nature of the operation, especially for large datasets, the function implements
       chunk-based processing, aided by Dask. The `chunks` parameter allows for customization of the chunk sizes used
       during processing.
-    """
 
+    Example
+    -------
+    >>> sdata = sp.im.align_labels_layers(
+    ...     sdata,
+    ...     labels_layer_1="masks_nuclear",
+    ...     labels_layer_2="masks_whole",
+    ...     output_labels_layer="masks_nuclear_aligned",
+    ...     output_shapes_layer=None,
+    ...     overwrite=True,
+    ...     chunks=256,
+    ...     depth=100,
+    ... )
+    >>>
+    >>> sdata = sp.tb.allocate_intensity(
+    ...     sdata, img_layer="raw_image", labels_layer="masks_whole", chunks=100
+    ... )
+    >>>
+    >>> sdata = sp.tb.allocate_intensity(
+    ...     sdata, img_layer="raw_image", labels_layer="masks_nuclear_aligned", chunks=100, append=True
+    ... )
+    """
     if img_layer is None:
         img_layer = [*sdata.images][-1]
         log.warning(
@@ -93,11 +111,7 @@ def allocate_intensity(
         )
 
     if channels is not None:
-        channels = (
-            list(channels)
-            if isinstance(channels, Iterable) and not isinstance(channels, str)
-            else [channels]
-        )
+        channels = list(channels) if isinstance(channels, Iterable) and not isinstance(channels, str) else [channels]
 
     # currently this function will only work if img_layer and labels_layer have the same shape.
     # And are in same position, i.e. if one is translated, other should be translated with same offset
@@ -124,61 +138,50 @@ def allocate_intensity(
     for channel in channels:
         channel_idx = list(se_image.c.data).index(channel)
         channel_intensities.append(
-            _calculate_intensity(
-                se_image.isel(c=channel_idx).data, se_labels.data, chunks=chunks
-            )
+            _calculate_intensity(se_image.isel(c=channel_idx).data, se_labels.data, chunks=chunks)
         )
 
     channel_intensities = np.concatenate(channel_intensities, axis=1)
 
-    cells = unique(se_labels.data).compute()
-    cells = pd.DataFrame(index=cells)
-    cells.index = cells.index.map(str)
-    cells.index.name = "cells"
-
     channels = list(map(str, channels))
-    if append_labels_layer_name:
-        channels = [f"{channel}_{labels_layer}" for channel in channels]
     var = pd.DataFrame(index=channels)
     var.index = var.index.map(str)
     var.index.name = "channels"
 
+    _cells_id = unique(se_labels.data).compute()
+    cells = pd.DataFrame(index=_cells_id)
+    _uuid_value = str(uuid.uuid4())[:8]
+    cells.index = cells.index.map(lambda x: f"{x}_{labels_layer}_{_uuid_value}")
+    cells.index.name = _CELL_INDEX
     adata = AnnData(X=channel_intensities, obs=cells, var=var)
-    adata.obs["region"] = 1
-    adata.obs["instance"] = 1
+
+    adata.obs[_INSTANCE_KEY] = _cells_id
+    adata.obs[_REGION_KEY] = pd.Categorical([labels_layer] * len(adata.obs))
+    if remove_background_intensity:
+        adata = adata[adata.obs[_INSTANCE_KEY] != 0]
 
     if sdata.table is None:
         sdata.table = spatialdata.models.TableModel.parse(
-            adata, region_key="region", region=1, instance_key="instance"
+            adata,
+            region_key=_REGION_KEY,
+            region=[labels_layer],
+            instance_key=_INSTANCE_KEY,
         )
-
         return sdata
 
-    def _sort_str_index(df):
-        df.index = df.index.astype(int)  # convert index to integer
-        df = df.sort_index()
-        df.index = df.index.astype(str)
-        return df
-
     if append:
-        df_joined = adata.to_df().join(
-            sdata.table.to_df(), how="outer"
-        )  # we do not want to throw away cells
-        df_joined = _sort_str_index(df_joined)
-        # we do not want to loose already computed obs
-        # remove column region and instance, because otherwise we can not do a join
-        # TODO handle this more carefully if multiple adata will be supported in spatialdata.
-        left = adata.obs.drop(columns=["region", "instance"])
-        right = sdata.table.obs.drop(columns=["region", "instance"])
-        obs_joined = left.join(right, how="outer")
-        obs_joined = _sort_str_index(obs_joined)
-        adata = AnnData(X=df_joined, obs=obs_joined)
-        adata.obs["region"] = 1
-        adata.obs["instance"] = 1
+        if labels_layer in sdata.table.obs[_REGION_KEY]:
+            raise ValueError(f"labels_layer '{labels_layer}' already exists as region in the `sdata` object.")
+        adata = ad.concat([sdata.table, adata], axis=0)
+        # get the regions already in sdata, and append the new one
+        region = sdata.table.obs[_REGION_KEY].cat.categories.to_list()
+        region.append(labels_layer)
+    else:
+        region = [labels_layer]
 
     del sdata.table
     sdata.table = spatialdata.models.TableModel.parse(
-        adata, region_key="region", region=1, instance_key="instance"
+        adata, region_key=_REGION_KEY, region=region, instance_key=_INSTANCE_KEY
     )
 
     return sdata
@@ -187,7 +190,7 @@ def allocate_intensity(
 def _calculate_intensity(
     float_dask_array: Array,
     mask_dask_array: Array,
-    chunks: Optional[str | int | tuple[int, ...]] = 10000,
+    chunks: str | int | tuple[int, ...] | None = 10000,
 ) -> NDArray:
     # lazy computation of pixel intensities on one channel for each label in mask_dask_array
     # result is an array of shape (len(unique(mask_dask_array).compute(), 1 ), so be aware that if
@@ -201,9 +204,7 @@ def _calculate_intensity(
 
     labels = unique(mask_dask_array).compute()
 
-    def _calculate_intensity_per_chunk(
-        mask_block: NDArray, float_block: NDArray
-    ) -> NDArray:
+    def _calculate_intensity_per_chunk(mask_block: NDArray, float_block: NDArray) -> NDArray:
         sums = np.bincount(mask_block.ravel(), weights=float_block.ravel())
 
         num_padding = (max(labels) + 1) - len(sums)

@@ -1,7 +1,7 @@
 # @package clean
 
 defaults:
-- default
+  - default
 
 #crop_param: [ 5000, 9000, 3000, 6000 ]
 size_min_max_filter: 45

@@ -1,6 +1,4 @@
-"""
-Allocation widget for creating and preprocesing the adata object, filtering the cells and performing clustering.
-"""
+"""Allocation widget for creating and preprocesing the adata object, filtering the cells and performing clustering."""
 import os
 import pathlib
 from typing import Any, Callable, Dict, Optional
@@ -25,7 +23,6 @@ def allocateImage(
     pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the allocation step, this calls all the needed functions to allocate the transcripts to the cells."""
-
     sdata = pipeline.allocate(sdata)
 
     return sdata
@@ -37,10 +34,7 @@ def _allocation_worker(
     method: Callable,
     fn_kwargs: Dict[str, Any],
 ) -> SpatialData:
-    """
-    allocate transcripts in a thread worker
-    """
-
+    """Allocate transcripts in a thread worker"""
     return method(sdata, **fn_kwargs)
 
 
@@ -70,8 +64,7 @@ def allocate_widget(
     neighbors: int = 35,
     cluster_resolution: float = 0.8,
 ):
-    """This function represents the allocate widget and is called by the wizard to create the widget."""
-
+    """Function represents the allocate widget and is called by the wizard to create the widget."""
     # Check if a file was passed
     if str(transcripts_file) in ["", "."]:
         raise ValueError("Please select transcripts file (.txt)")
@@ -80,16 +73,14 @@ def allocate_widget(
     # Load data from previous layers
     try:
         segment_layer = viewer.layers[utils.SEGMENT]
-    except:
-        raise RuntimeError(f"Layer with name '{utils.SEGMENT}' is not available")
+    except KeyError as err:
+        raise RuntimeError(f"Layer with name '{utils.SEGMENT}' is not available") from err
 
     try:
         pipeline = segment_layer.metadata["pipeline"]
         shapes = segment_layer.metadata["shapes"]
-    except KeyError:
-        raise RuntimeError(
-            f"Please run segmentation step before running allocation step."
-        )
+    except KeyError as err:
+        raise RuntimeError("Please run segmentation step before running allocation step.") from err
 
     # need to load it back from zarr store, because otherwise not able to overwrite it
     sdata = read_zarr(pipeline.cfg.paths.sdata)
@@ -143,9 +134,7 @@ def allocate_widget(
     worker = _allocation_worker(sdata, allocateImage, fn_kwargs=fn_kwargs)
 
     def add_metadata(sdata: SpatialData, pipeline: SparrowPipeline, layer_name: str):
-        """Update the polygons, add anndata object to the metadata, so it can be viewed via napari spatialdata plugin, and it
-        becomes visible in next steps."""
-
+        """Update the polygons, add anndata object to the metadata, so it can be viewed via napari spatialdata plugin, and it becomes visible in next steps."""
         try:
             # if the layer exists, update its data
             layer = viewer.layers[layer_name]
@@ -155,16 +144,12 @@ def allocate_widget(
         except KeyError:
             log.info(f"Layer '{layer_name}' does not exist.")
 
-        polygons = utils._get_polygons_in_napari_format(
-            df=sdata.shapes[pipeline.shapes_layer_name]
-        )
+        polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[pipeline.shapes_layer_name])
 
         # we add the polygons again in this step, because some of them are filtered out in the allocate step
         # (i.e. due to size of polygons etc). If we do not update the polygons here, napari complains because
         # number of polygons does not match any more with e.g. number of polygons with a leiden cluster assigned.
-        show_info(
-            "Adding updated segmentation shapes, this can be slow on large images..."
-        )
+        show_info("Adding updated segmentation shapes, this can be slow on large images...")
         viewer.add_shapes(
             polygons,
             name=layer_name,
@@ -176,17 +161,13 @@ def allocate_widget(
         )
 
         viewer.layers[layer_name].metadata["pipeline"] = pipeline
-        viewer.layers[layer_name].metadata[
-            "adata"
-        ] = sdata.table  # spatialdata plugin uses this
+        viewer.layers[layer_name].metadata["adata"] = sdata.table  # spatialdata plugin uses this
 
         log.info(f"Added '{utils.ALLOCATION}' layer")
 
         utils._export_config(
             pipeline.cfg.allocate,
-            os.path.join(
-                pipeline.cfg.paths.output_dir, "configs", "allocate", "plugin.yaml"
-            ),
+            os.path.join(pipeline.cfg.paths.output_dir, "configs", "allocate", "plugin.yaml"),
         )
 
         show_info("Allocation finished")
@@ -194,9 +175,7 @@ def allocate_widget(
         # Options for napari-spatialData plugin
         viewer.scale_bar.visible = True
 
-    worker.returned.connect(
-        lambda data: add_metadata(data, pipeline, f"{utils.ALLOCATION}")
-    )
+    worker.returned.connect(lambda data: add_metadata(data, pipeline, f"{utils.ALLOCATION}"))
     show_info("Allocation started")
     worker.start()
 

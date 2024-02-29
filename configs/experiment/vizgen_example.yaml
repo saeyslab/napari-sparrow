@@ -9,5 +9,4 @@ defaults:
   - override /paths: output
   - override /clean: vizgen_example
   - override /allocate: vizgen_example
-
 #subset: '0:2144,0:2144'

@@ -8,6 +8,7 @@ import pandas as pd
 import scanpy as sc
 from spatialdata import SpatialData
 
+from sparrow.table._keys import _ANNOTATION_KEY, _CLEANLINESS_KEY, _UNKNOWN_CELLTYPE_KEY
 from sparrow.table._table import _back_sdata_table_to_zarr
 from sparrow.utils.pylogger import get_pylogger
 
@@ -24,8 +25,8 @@ def score_genes(
     input_dict=False,
 ) -> Tuple[dict, pd.DataFrame]:
     """
-    The function loads marker genes from a CSV file and scores cells for each cell type using those markers
-    using scanpy's score_genes function.
+    The function loads marker genes from a CSV file and scores cells for each cell type using those markers using scanpy's score_genes function.
+
     Marker genes can be provided as a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column;
     or in dictionary format. The function further allows replacements of column names and deletions of specific marker genes.
 
@@ -64,15 +65,12 @@ def score_genes(
 
     Notes
     -----
-    The cell type 'unknown_celltype' is reserved for cells that could not be assigned a specific cell type.
+    The cell type `_UNKNOWN_CELLTYPE_KEY` is reserved for cells that could not be assigned a specific cell type.
 
     """
-
     # Load marker genes from csv
     if input_dict:
-        df_markers = pd.read_csv(
-            path_marker_genes, header=None, index_col=0, delimiter=delimiter
-        )
+        df_markers = pd.read_csv(path_marker_genes, header=None, index_col=0, delimiter=delimiter)
         df_markers = df_markers.T
         genes_dict = df_markers.to_dict("list")
         for i in genes_dict:
@@ -94,17 +92,15 @@ def score_genes(
             genes_dict[i] = genes
 
     assert (
-        "unknown_celltype" not in genes_dict.keys()
-    ), "Cell type 'unknown_celltype' is reserved for cells that could not be assigned a specific cell type"
+        _UNKNOWN_CELLTYPE_KEY not in genes_dict.keys()
+    ), f"Cell type {_UNKNOWN_CELLTYPE_KEY} is reserved for cells that could not be assigned a specific cell type"
 
     # Score all cells for all celltypes
     for key, value in genes_dict.items():
         try:
             sc.tl.score_genes(sdata.table, value, score_name=key)
         except ValueError:
-            log.warning(
-                f"Markergenes {value} not present in region, celltype {key} not found"
-            )
+            log.warning(f"Markergenes {value} not present in region, celltype {key} not found")
 
     # Delete genes from marker genes and genes dict
     if del_celltypes:
@@ -118,12 +114,12 @@ def score_genes(
         sdata=sdata,
         celltypes=df_markers.columns,
         row_norm=row_norm,
-        celltype_column="annotation",
+        celltype_column=_ANNOTATION_KEY,
     )
 
-    # add 'unknown_celltype' to the list of celltypes if it is detected.
-    if "unknown_celltype" in sdata.table.obs["annotation"].cat.categories:
-        genes_dict["unknown_celltype"] = []
+    # add _UNKNOWN_CELLTYPE_KEY to the list of celltypes if it is detected.
+    if _UNKNOWN_CELLTYPE_KEY in sdata.table.obs[_ANNOTATION_KEY].cat.categories:
+        genes_dict[_UNKNOWN_CELLTYPE_KEY] = []
 
     _back_sdata_table_to_zarr(sdata)
 
@@ -137,8 +133,8 @@ def cluster_cleanliness(
     colors: Optional[List[str]] = None,
 ) -> Tuple[SpatialData, Optional[dict]]:
     """
-    Re-calculates annotations, potentially following corrections to the list of celltypes,
-    or after a manual update of the assigned scores per cell type via e.g. `correct_marker_genes`.
+    Re-calculates annotations, potentially following corrections to the list of celltypes, or after a manual update of the assigned scores per cell type via e.g. `correct_marker_genes`.
+
     Celltypes can also be grouped together via the celltype_indexes parameter.
     Returns a `SpatialData` object alongside a dictionary mapping cell types to colors.
 
@@ -166,7 +162,6 @@ def cluster_cleanliness(
         Dictionary with cell types as keys and their corresponding colors as values.
 
     """
-
     celltypes = np.array(sorted(celltypes), dtype=str)
     color_dict = None
 
@@ -176,7 +171,7 @@ def cluster_cleanliness(
         sdata=sdata,
         celltypes=celltypes,
         row_norm=False,
-        celltype_column="annotation",
+        celltype_column=_ANNOTATION_KEY,
     )
 
     # Create custom colormap for clusters
@@ -187,36 +182,34 @@ def cluster_cleanliness(
                 plt.get_cmap("tab20b")(np.arange(20)),
             )
         )
-        colors = [
-            mpl.colors.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)
-        ]
+        colors = [mpl.colors.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)]
 
-    sdata.table.uns["annotation_colors"] = colors
+    sdata.table.uns[f"{_ANNOTATION_KEY}_colors"] = colors
 
     if celltype_indexes:
-        sdata.table.obs["annotationSave"] = sdata.table.obs.annotation
+        sdata.table.obs[f"{_ANNOTATION_KEY}Save"] = sdata.table.obs[_ANNOTATION_KEY]
         gene_celltypes = {}
 
         for key, value in celltype_indexes.items():
             gene_celltypes[key] = celltypes[value]
 
-        for gene, indexes in celltype_indexes.items():
+        for gene, _indexes in celltype_indexes.items():
             sdata = _annotate_maxscore(gene, gene_celltypes, sdata)
 
-        for gene, indexes in celltype_indexes.items():
+        for gene, _indexes in celltype_indexes.items():
             sdata = _remove_celltypes(gene, gene_celltypes, sdata)
 
         celltypes_f = np.delete(celltypes, list(chain(*celltype_indexes.values())))  # type: ignore
         celltypes_f = np.append(celltypes_f, list(celltype_indexes.keys()))
-        color_dict = dict(zip(celltypes_f, sdata.table.uns["annotation_colors"]))
+        color_dict = dict(zip(celltypes_f, sdata.table.uns[f"{_ANNOTATION_KEY}_colors"]))
 
     else:
-        color_dict = dict(zip(celltypes, sdata.table.uns["annotation_colors"]))
+        color_dict = dict(zip(celltypes, sdata.table.uns[f"{_ANNOTATION_KEY}_colors"]))
 
     for i, name in enumerate(color_dict.keys()):
         color_dict[name] = colors[i]
-    sdata.table.uns["annotation_colors"] = list(
-        map(color_dict.get, sdata.table.obs.annotation.cat.categories.values)
+    sdata.table.uns[f"{_ANNOTATION_KEY}_colors"] = list(
+        map(color_dict.get, sdata.table.obs[_ANNOTATION_KEY].cat.categories.values)
     )
 
     _back_sdata_table_to_zarr(sdata)
@@ -228,44 +221,38 @@ def _annotate_celltype(
     sdata: SpatialData,
     celltypes: List[str],
     row_norm: bool = False,
-    celltype_column: str = "annotation",
+    celltype_column: str = _ANNOTATION_KEY,
 ) -> Tuple[SpatialData, pd.DataFrame]:
-    scoresper_cluster = sdata.table.obs[
-        [col for col in sdata.table.obs if col in celltypes]
-    ]
+    scoresper_cluster = sdata.table.obs[[col for col in sdata.table.obs if col in celltypes]]
 
     # Row normalization for visualisation purposes
     if row_norm:
-        row_norm = scoresper_cluster.sub(
-            scoresper_cluster.mean(axis=1).values, axis="rows"
-        ).div(scoresper_cluster.std(axis=1).values, axis="rows")
+        row_norm = scoresper_cluster.sub(scoresper_cluster.mean(axis=1).values, axis="rows").div(
+            scoresper_cluster.std(axis=1).values, axis="rows"
+        )
         sdata.table.obs[scoresper_cluster.columns.values] = row_norm
         temp = pd.DataFrame(np.sort(row_norm)[:, -2:])
     else:
         temp = pd.DataFrame(np.sort(scoresper_cluster)[:, -2:])
 
     scores = (temp[1] - temp[0]) / ((temp[1] + temp[0]) / 2)
-    sdata.table.obs["Cleanliness"] = scores.values
+    sdata.table.obs[_CLEANLINESS_KEY] = scores.values
 
     def assign_cell_type(row):
         # Identify the cell type with the max score
         max_score_type = row.idxmax()
-        # If max score is <= 0, assign 'unknown_celltype'
+        # If max score is <= 0, assign _UNKNOWN_CELLTYPE_KEY
         if row[max_score_type] <= 0:
-            return "unknown_celltype"
+            return _UNKNOWN_CELLTYPE_KEY
         else:
             return max_score_type
 
-    # Assign 'unknown_celltype' cell_type if no cell type could be found that has larger expression than random sample
+    # Assign _UNKNOWN_CELLTYPE_KEY cell_type if no cell type could be found that has larger expression than random sample
     # as calculated by sc.tl.score_genes function of scanpy.
     sdata.table.obs[celltype_column] = scoresper_cluster.apply(assign_cell_type, axis=1)
-    sdata.table.obs[celltype_column] = sdata.table.obs[celltype_column].astype(
-        "category"
-    )
-    # Set the Cleanliness score for unknown_celltype equal to 0 (i.e. not clean)
-    sdata.table.obs.loc[
-        sdata.table.obs[celltype_column] == "unknown_celltype", "Cleanliness"
-    ] = 0
+    sdata.table.obs[celltype_column] = sdata.table.obs[celltype_column].astype("category")
+    # Set the Cleanliness score for UNKNOWN_CELLTYPE_KEY equal to 0 (i.e. not clean)
+    sdata.table.obs.loc[sdata.table.obs[celltype_column] == _UNKNOWN_CELLTYPE_KEY, _CLEANLINESS_KEY] = 0
 
     return sdata, scoresper_cluster
 
@@ -273,10 +260,8 @@ def _annotate_celltype(
 def _remove_celltypes(types: str, indexes: dict, sdata):
     """Returns the AnnData object."""
     for index in indexes[types]:
-        if index in sdata.table.obs.annotation.cat.categories:
-            sdata.table.obs.annotation = (
-                sdata.table.obs.annotation.cat.remove_categories(index)
-            )
+        if index in sdata.table.obs[_ANNOTATION_KEY].cat.categories:
+            sdata.table.obs[_ANNOTATION_KEY] = sdata.table.obs[_ANNOTATION_KEY].cat.remove_categories(index)
     return sdata
 
 
@@ -285,8 +270,8 @@ def _annotate_maxscore(types: str, indexes: dict, sdata):
 
     Adds types to the Anndata maxscore category.
     """
-    sdata.table.obs.annotation = sdata.table.obs.annotation.cat.add_categories([types])
-    for i, val in enumerate(sdata.table.obs.annotation):
+    sdata.table.obs[_ANNOTATION_KEY] = sdata.table.obs[_ANNOTATION_KEY].cat.add_categories([types])
+    for i, val in enumerate(sdata.table.obs[_ANNOTATION_KEY]):
         if val in indexes[types]:
-            sdata.table.obs.annotation[i] = types
+            sdata.table.obs[_ANNOTATION_KEY][i] = types
     return sdata

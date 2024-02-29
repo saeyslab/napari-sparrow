@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional, Union, Tuple
 
 import dask.dataframe as dd
 import numpy as np
@@ -132,24 +131,26 @@ def read_stereoseq_transcripts(
 
 def read_transcripts(
     sdata: SpatialData,
-    path_count_matrix: Union[str, Path],
-    path_transform_matrix: Optional[Union[str, Path]] = None,
+    path_count_matrix: str | Path,
+    path_transform_matrix: str | Path | None = None,
     points_layer: str = "transcripts",
     overwrite: bool = False,
     debug: bool = False,
     column_x: int = 0,
     column_y: int = 1,
-    column_z: Optional[int] = None,
+    column_z: int | None = None,
     column_gene: int = 3,
-    column_midcount: Optional[int] = None,
+    column_midcount: int | None = None,
     delimiter: str = ",",
-    header: Optional[int] = None,
-    comment: Optional[str] = None,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    filter_gene_names: Optional(str|list)=None 
+    header: int | None = None,
+    comment: str | None = None,
+    crd: tuple[int, int, int, int] | None = None,
+    filter_gene_names: str | list | None = None,
+    blocksize: str = "64MB",
 ) -> SpatialData:
     """
     Reads transcript information from a file with each row listing the x and y coordinates, along with the gene name.
+
     If a transform matrix is provided a linear transformation is applied to the coordinates of the transcripts.
     The SpatialData object is augmented with a points layer named 'transcripts' that contains the transcripts.
 
@@ -192,7 +193,11 @@ def read_transcripts(
         The coordinates (in pixels) for the region of interest in the format (xmin, xmax, ymin, ymax).
         If None, all transcripts are considered.
     filter_gene_names: list or list of strings, optional
-        Regular expression(s) of gene names that need to be filtered out, mostly control genes that were added, and which you don't want to use. If list of strings, all items in the list are seen as regular expressions.  
+        Regular expression(s) of gene names that need to be filtered out, mostly control genes that were added, and which you don't want to use.
+        If list of strings, all items in the list are seen as regular expressions.
+    blocksize: str, default="64MB"
+        Block size of the partions of the dask dataframe stored as `points_layer` in `sdata`.
+
     Returns
     -------
     SpatialData
@@ -204,27 +209,32 @@ def read_transcripts(
     It can also repeat rows based on the MIDCount value and can work in a debug mode that samples the data.
     """
     # Read the CSV file using Dask
-    ddf = dd.read_csv(path_count_matrix, delimiter=delimiter, header=header, comment=comment)
-    
-    def filter_names(ddf,column_gene,filter_name):
+    ddf = dd.read_csv(
+        path_count_matrix,
+        delimiter=delimiter,
+        header=header,
+        comment=comment,
+        blocksize=blocksize,
+    )
+
+    def filter_names(ddf, column_gene, filter_name):
         # filter out control genes that you don't want ending up in the dataset
-        
-        ddf=ddf[ddf.iloc[:,column_gene].str.contains(filter_name)==False]
+
+        ddf = ddf[ddf.iloc[:, column_gene].str.contains(filter_name) is False]
         return ddf
-    
+
     if filter_gene_names:
-        
-        if type(filter_gene_names) is list:
-            
+        if isinstance(filter_gene_names, list):
             for i in filter_gene_names:
-                ddf=filter_names(ddf,column_gene,i)
-                
-        elif isinstance(filter_gene_names,str):
-            
-            ddf=filter_names(ddf,column_gene,filter_gene_names)
-        else: 
-            log.info('instance to filter on isn\'t a string nor a list. No genes are filtered out based on the gene name. ')
-            
+                ddf = filter_names(ddf, column_gene, i)
+
+        elif isinstance(filter_gene_names, str):
+            ddf = filter_names(ddf, column_gene, filter_gene_names)
+        else:
+            log.info(
+                "instance to filter on isn't a string nor a list. No genes are filtered out based on the gene name. "
+            )
+
     # Read the transformation matrix
     if path_transform_matrix is None:
         log.info("No transform matrix given, will use identity matrix.")
@@ -233,7 +243,7 @@ def read_transcripts(
         transform_matrix = np.loadtxt(path_transform_matrix)
 
     log.info(f"Transform matrix used:\n {transform_matrix}")
-    
+
     if debug:
         n = 100000
         fraction = n / len(ddf)
@@ -241,9 +251,7 @@ def read_transcripts(
 
     # Function to repeat rows based on MIDCount value
     def repeat_rows(df):
-        repeat_df = df.reindex(
-            df.index.repeat(df.iloc[:, column_midcount])
-        ).reset_index(drop=True)
+        repeat_df = df.reindex(df.index.repeat(df.iloc[:, column_midcount])).reset_index(drop=True)
         return repeat_df
 
     # Apply the row repeat function if column_midcount is not None (e.g. for Stereoseq)
@@ -252,9 +260,7 @@ def read_transcripts(
 
     def transform_coordinates(df):
         micron_coordinates = df.iloc[:, [column_x, column_y]].values
-        micron_coordinates = np.column_stack(
-            (micron_coordinates, np.ones(len(micron_coordinates)))
-        )
+        micron_coordinates = np.column_stack((micron_coordinates, np.ones(len(micron_coordinates))))
         pixel_coordinates = np.dot(micron_coordinates, transform_matrix.T)[:, :2]
         result_df = df.iloc[:, [column_gene]].copy()
         result_df["pixel_x"] = pixel_coordinates[:, 0]
@@ -279,9 +285,11 @@ def read_transcripts(
     transformed_ddf = transformed_ddf[columns]
 
     if crd is not None:
-        transformed_ddf = transformed_ddf.query(
-            f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}"
-        )
+        transformed_ddf = transformed_ddf.query(f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}")
+
+    if sdata.points:
+        for points_layer in [*sdata.points]:
+            del sdata.points[points_layer]
 
     sdata = _add_transcripts_to_sdata(
         sdata,
@@ -298,13 +306,9 @@ def _add_transcripts_to_sdata(
     sdata: SpatialData,
     transformed_ddf: DaskDataFrame,
     points_layer: str,
-    coordinates: Dict[str, str],
+    coordinates: dict[str, str],
     overwrite: bool = False,
 ):
-    if sdata.points:
-        for points_layer in [*sdata.points]:
-            del sdata.points[points_layer]
-
     sdata.add_points(
         name=points_layer,
         points=spatialdata.models.PointsModel.parse(

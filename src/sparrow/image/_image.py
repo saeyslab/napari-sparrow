@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Tuple, Union
+from typing import Tuple
 
 import dask.array as da
 import numpy as np
@@ -26,9 +26,9 @@ log = get_pylogger(__name__)
 
 
 def _substract_translation_crd(
-    spatial_image: Union[SpatialImage, DataArray],
+    spatial_image: SpatialImage | DataArray,
     crd=Tuple[int, int, int, int],
-) -> Tuple[int, int, int, int] | None:
+) -> tuple[int, int, int, int] | None:
     tx, ty = _get_translation(spatial_image)
 
     _crd = crd
@@ -50,18 +50,14 @@ def _substract_translation_crd(
     return crd
 
 
-def _get_boundary(
-    spatial_image: Union[SpatialImage, DataArray]
-) -> Tuple[int, int, int, int]:
+def _get_boundary(spatial_image: SpatialImage | DataArray) -> tuple[int, int, int, int]:
     tx, ty = _get_translation(spatial_image)
     width = spatial_image.sizes["x"]
     height = spatial_image.sizes["y"]
     return (int(tx), int(tx + width), int(ty), int(ty + height))
 
 
-def _get_translation(
-    spatial_image: Union[SpatialImage, MultiscaleSpatialImage, DataArray]
-) -> Tuple[float, float]:
+def _get_translation(spatial_image: SpatialImage | MultiscaleSpatialImage | DataArray) -> tuple[float, float]:
     translation = _get_transformation(spatial_image)
 
     if not isinstance(translation, (Translation, Identity)):
@@ -73,10 +69,8 @@ def _get_translation(
     return _get_translation_values(translation)
 
 
-def _get_translation_values(translation: Union[Translation, Identity]):
-    transform_matrix = translation.to_affine_matrix(
-        input_axes=("x", "y"), output_axes=("x", "y")
-    )
+def _get_translation_values(translation: Translation | Identity):
+    transform_matrix = translation.to_affine_matrix(input_axes=("x", "y"), output_axes=("x", "y"))
 
     if (
         transform_matrix[0, 0] == 1.0
@@ -89,17 +83,14 @@ def _get_translation_values(translation: Union[Translation, Identity]):
     ):
         return transform_matrix[0, 2], transform_matrix[1, 2]
     else:
-        raise ValueError(
-            f"The provided transform matrix {transform_matrix} represents more than just a translation."
-        )
+        raise ValueError(f"The provided transform matrix {transform_matrix} represents more than just a translation.")
 
 
-def _apply_transform(
-    se: Union[SpatialImage, DataArray]
-) -> Tuple[Union[SpatialImage, DataArray], np.ndarray, np.ndarray]:
+def _apply_transform(se: SpatialImage | DataArray) -> tuple[SpatialImage | DataArray, np.ndarray, np.ndarray]:
     """
-    Apply the translation (if any) of the given SpatialImage to its x- and y-coordinates
-    array. The new SpatialImage is returned, as well as the original coordinates array.
+    Apply the translation (if any) of the given SpatialImage to its x- and y-coordinates array.
+
+    The new SpatialImage is returned, as well as the original coordinates array.
     This function is used because some plotting functions ignore the SpatialImage transformation
     matrix, but do use the coordinates arrays for absolute positioning of the image in the plot.
     After plotting the coordinates can be restored with _unapply_transform().
@@ -120,18 +111,14 @@ def _apply_transform(
 
 
 def _unapply_transform(
-    se: Union[SpatialImage, DataArray], x_coords: np.ndarray, y_coords: np.ndarray
-) -> Union[SpatialImage, DataArray]:
-    """
-    Restore the coordinates which were temporarily modified via _apply_transform().
-    """
+    se: SpatialImage | DataArray, x_coords: np.ndarray, y_coords: np.ndarray
+) -> SpatialImage | DataArray:
+    """Restore the coordinates which were temporarily modified via _apply_transform()."""
     se = se.assign_coords({"y": y_coords, "x": x_coords})
     return se
 
 
-def _get_spatial_element(
-    sdata: SpatialData, layer: str
-) -> Union[SpatialImage, DataArray]:
+def _get_spatial_element(sdata: SpatialData, layer: str) -> SpatialImage | DataArray:
     if layer in sdata.images:
         si = sdata.images[layer]
     elif layer in sdata.labels:
@@ -151,12 +138,10 @@ def _get_spatial_element(
 
 
 def _get_transformation(
-    element: Union[
-        SpatialImage, MultiscaleSpatialImage, GeoDataFrame, DaskDataFrame, DataArray
-    ],
-    to_coordinate_system: Optional[str] = None,
+    element: SpatialImage | MultiscaleSpatialImage | GeoDataFrame | DaskDataFrame | DataArray,
+    to_coordinate_system: str | None = None,
     get_all: bool = False,
-) -> Union[BaseTransformation, dict[str, BaseTransformation]]:
+) -> BaseTransformation | dict[str, BaseTransformation]:
     """
     Get the transformation/s of an element.
 
@@ -183,9 +168,7 @@ def _get_transformation(
     """
     from spatialdata.models._utils import DEFAULT_COORDINATE_SYSTEM
 
-    if isinstance(
-        element, (SpatialImage, MultiscaleSpatialImage, GeoDataFrame, DaskDataFrame)
-    ):
+    if isinstance(element, (SpatialImage, MultiscaleSpatialImage, GeoDataFrame, DaskDataFrame)):
         transformations = _get_transformations(element)
     elif isinstance(element, DataArray):
         transformations = _get_transformations_xarray(element)
@@ -196,9 +179,7 @@ def _get_transformation(
             to_coordinate_system = DEFAULT_COORDINATE_SYSTEM
         # get a specific transformation
         if to_coordinate_system not in transformations:
-            raise ValueError(
-                f"Transformation to {to_coordinate_system} not found in element {element}."
-            )
+            raise ValueError(f"Transformation to {to_coordinate_system} not found in element {element}.")
         return transformations[to_coordinate_system]
     else:
         assert to_coordinate_system is None
@@ -208,9 +189,13 @@ def _get_transformation(
 
 def _fix_dimensions(
     array: np.ndarray | da.Array,
-    dims: List[str] = ["c", "z", "y", "x"],
-    target_dims: List[str] = ["c", "z", "y", "x"],
+    dims: list[str] = None,
+    target_dims: list[str] = None,
 ) -> np.ndarray | da.Array:
+    if target_dims is None:
+        target_dims = ["c", "z", "y", "x"]
+    if dims is None:
+        dims = ["c", "z", "y", "x"]
     dims = list(dims)
     target_dims = list(target_dims)
 
@@ -223,19 +208,13 @@ def _fix_dimensions(
     extra_dims = dims_set - target_dims_set
 
     if extra_dims:
-        raise ValueError(
-            f"The dimension(s) {extra_dims} are not present in the target dimensions."
-        )
+        raise ValueError(f"The dimension(s) {extra_dims} are not present in the target dimensions.")
 
     # check if the array already has the correct number of dimensions, if not add missing dimensions
     if len(array.shape) != len(dims):
-        raise ValueError(
-            f"Dimension of array {array.shape} is not equal to dimension of provided dims { dims}"
-        )
+        raise ValueError(f"Dimension of array {array.shape} is not equal to dimension of provided dims { dims}")
     if len(array.shape) > 4:
-        raise ValueError(
-            f"Arrays with dimension larger than 4 are not supported, shape of array is {array.shape}"
-        )
+        raise ValueError(f"Arrays with dimension larger than 4 are not supported, shape of array is {array.shape}")
 
     for dim in target_dims:
         if dim not in dims:
@@ -256,11 +235,11 @@ def _add_image_layer(
     sdata: SpatialData,
     arr: Array,
     output_layer: str,
-    dims: Optional[Tuple[str, ...]] = None,
-    chunks: Optional[str | tuple[int, int, int] | int] = None,
-    transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
-    c_coords: Optional[List[str]] = None,
+    dims: tuple[str, ...] | None = None,
+    chunks: str | tuple[int, int, int] | int | None = None,
+    transformation: BaseTransformation | dict[str, BaseTransformation] = None,
+    scale_factors: ScaleFactors_t | None = None,
+    c_coords: list[str] | None = None,
     overwrite: bool = False,
 ):
     manager = ImageLayerManager()
@@ -283,10 +262,10 @@ def _add_label_layer(
     sdata: SpatialData,
     arr: Array,
     output_layer: str,
-    dims: Optional[Tuple[str, ...]] = None,
-    chunks: Optional[str | tuple[int, int] | int] = None,
-    transformation: Union[BaseTransformation, dict[str, BaseTransformation]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    dims: tuple[str, ...] | None = None,
+    chunks: str | tuple[int, int] | int | None = None,
+    transformation: BaseTransformation | dict[str, BaseTransformation] = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ):
     manager = LabelLayerManager()

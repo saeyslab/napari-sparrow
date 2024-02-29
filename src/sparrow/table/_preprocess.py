@@ -9,6 +9,7 @@ from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element
 from sparrow.shape._shape import _filter_shapes_layer
+from sparrow.table._keys import _CELL_INDEX
 from sparrow.table._table import _back_sdata_table_to_zarr
 from sparrow.utils.pylogger import get_pylogger
 
@@ -26,6 +27,7 @@ def preprocess_anndata(
 ) -> SpatialData:
     """
     Preprocess the table (AnnData) attribute of a SpatialData object.
+
     Calculates nucleus/cell size from either shapes_layer or labels_layer, and adds it
     to sdata.table.obs as column "shapeSize".
     Filters cells and genes, normalizes based on nucleus/cell size, calculates QC metrics and principal components.
@@ -72,7 +74,6 @@ def preprocess_anndata(
     - If the dimensionality of the table attribute is smaller than the desired number of principal components,
       `n_comps` is set to the minimum dimensionality and a message is printed.
     """
-
     # Calculate QC Metrics
 
     sc.pp.calculate_qc_metrics(sdata.table, inplace=True, percent_top=[2, 5])
@@ -82,7 +83,7 @@ def preprocess_anndata(
     sc.pp.filter_genes(sdata.table, min_cells=min_cells)
 
     if shapes_layer is not None and labels_layer is not None:
-        raise ValueError( "Either specify shapes_layer or labels_layer, not both." )
+        raise ValueError("Either specify shapes_layer or labels_layer, not both.")
 
     if shapes_layer is not None:
         has_z = sdata.shapes[shapes_layer]["geometry"].apply(lambda geom: geom.has_z)
@@ -119,9 +120,7 @@ def preprocess_anndata(
     if min(sdata.table.shape) < n_comps:
         n_comps = min(sdata.table.shape)
         log.warning(
-            (
-                f"amount of pc's was set to {min( sdata.table.shape)} because of the dimensionality of the AnnData object."
-            )
+            f"amount of pc's was set to {min( sdata.table.shape)} because of the dimensionality of the AnnData object."
         )
     sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
 
@@ -140,9 +139,7 @@ def preprocess_anndata(
 
 
 def _get_mask_area(mask: Array) -> pd.Series:
-    """
-    Calculate area of each label in mask. Return as pd.Series.
-    """
+    """Calculate area of each label in mask. Return as pd.Series."""
 
     @dask.delayed
     def calculate_area(mask_chunk: np.ndarray) -> tuple:
@@ -163,6 +160,6 @@ def _get_mask_area(mask: Array) -> pd.Series:
                 combined_counts[str(label)] += count
 
     combined_counts = pd.Series(combined_counts)
-    combined_counts.index.name = "cells"
+    combined_counts.index.name = _CELL_INDEX
 
     return combined_counts

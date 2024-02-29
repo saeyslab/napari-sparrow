@@ -56,7 +56,7 @@ extensions = [
     "sphinx.ext.mathjax",
     "IPython.sphinxext.ipython_console_highlighting",
     "sphinx_design",
-    #*[p.stem for p in (HERE / "extensions").glob("*.py")],
+    # *[p.stem for p in (HERE / "extensions").glob("*.py")],
 ]
 
 autosummary_generate = True
@@ -89,27 +89,20 @@ source_suffix = {
     ".myst": "myst-nb",
 }
 
-#intersphinx_mapping = {
+# intersphinx_mapping = {
 #    "anndata": ("https://anndata.readthedocs.io/en/stable/", None),
 #    "numpy": ("https://numpy.org/doc/stable/", None),
 #    "geopandas": ("https://geopandas.org/en/stable/", None),
 #    "xarray": ("https://docs.xarray.dev/en/stable/", None),
 #    "datatree": ("https://datatree.readthedocs.io/en/latest/", None),
 #    "dask": ("https://docs.dask.org/en/latest/", None),
-#}
+# }
 
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = [
-    "_build",
-    "Thumbs.db",
-    "**.ipynb_checkpoints",
-    "../notebooks/*",
-    "../experiments/*",
-    "../configs/*"
-]
+exclude_patterns = ["_build", "Thumbs.db", "**.ipynb_checkpoints", "../notebooks/*", "../experiments/*", "../configs/*"]
 # Ignore warnings.
 nitpicky = False  # TODO: solve upstream.
 # nitpick_ignore = [
@@ -141,4 +134,3 @@ nitpick_ignore = [
     # you can add an exception to this list.
     ("py:class", "igraph.Graph"),
 ]
-

@@ -9,15 +9,16 @@ Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.
 Check the notebooks in `experiments`.
 
 ### napari
+
 You can run the plugin by first starting napari, and starting the plugin from napari's menu bar: `napari > Plugins > napari-sparrow`.
 
-Use the plugin to tune the parameters of sparrow for the different steps of the pipeline. Tuning can be done on small crops of the image. After every step, a corresponding configuration *.yaml* file will be saved in the output directory chosen by the user. We refer to the [hpc](hpc.md) documentation for information on how to use these generated configuration files via the CLI.
+Use the plugin to tune the parameters of sparrow for the different steps of the pipeline. Tuning can be done on small crops of the image. After every step, a corresponding configuration _.yaml_ file will be saved in the output directory chosen by the user. We refer to the [hpc](hpc.md) documentation for information on how to use these generated configuration files via the CLI.
 
 ### (Hydra) CLI
 
 Run experiments from the CLI using [Hydra](https://hydra.cc). Experiments can be run locally, or on a SLURM cluster.
 
-First copy the `configs` folder (in the root of this repository) locally, and set the paths to the input data and log directory via the *.yaml* provided at `configs/default.example.yaml`. I.e., first rename `configs/default.example.yaml` to `configs/default.yaml` and update following fields:
+First copy the `configs` folder (in the root of this repository) locally, and set the paths to the input data and log directory via the _.yaml_ provided at `configs/default.example.yaml`. I.e., first rename `configs/default.example.yaml` to `configs/default.yaml` and update following fields:
 
 ```yaml
 paths:
@@ -39,7 +40,7 @@ defaults:
   - override /hydra/launcher: submitit_slurm
 ```
 
-Next, update `configs/dataset/resolve_liver.yaml`, with the correct path to the input data, relative to *$paths.data_dir* set earlier, e.g. the fields:
+Next, update `configs/dataset/resolve_liver.yaml`, with the correct path to the input data, relative to _$paths.data_dir_ set earlier, e.g. the fields:
 
 ```yaml
 data_dir: ${paths.data_dir}/resolve/resolve_liver
@@ -47,6 +48,7 @@ image: ${dataset.data_dir}/20272_slide1_A1-1_DAPI.tiff
 coords: ${dataset.data_dir}/20272_slide1_A1-1_results.txt
 markers: ${dataset.data_dir}/markerGeneListMartinNoLow.csv
 ```
+
 assuming the RESOLVE mouse liver data is used.
 
 The RESOLVE mouse liver experiment is preconfigured in `configs/experiment/resolve_liver.yaml`, and can now be run from the CLI:
@@ -55,7 +57,7 @@ The RESOLVE mouse liver experiment is preconfigured in `configs/experiment/resol
 sparrow +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow
 ```
 
-Please update the *hydra.searchpath* with the path to the `configs` folder downloaded locally.
+Please update the _hydra.searchpath_ with the path to the `configs` folder downloaded locally.
 
 All parameters can also be overwritten from the CLI, e.g. for the size of the min max filter:
 

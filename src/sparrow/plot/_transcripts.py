@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,11 +20,11 @@ log = get_pylogger(__name__)
 def analyse_genes_left_out(
     sdata: SpatialData,
     points_layer: str = "transcripts",
-    labels_layer: Optional[str] = "segmentation_mask",
+    labels_layer: str | None = "segmentation_mask",
     name_x: str = "x",
     name_y: str = "y",
     name_gene_column: str = "gene",
-    output: Optional[str | Path] = None,
+    output: str | Path | None = None,
 ) -> DataFrame:
     """
     Analyse and visualize the proportion of genes that could not be assigned to a cell during allocation step.
@@ -86,11 +85,9 @@ def analyse_genes_left_out(
 
     if sdata.table.raw is not None:
         log.warning(
-            (
-                f"It seems that analysis is being run on AnnData object (sdata.table) containing normalized counts, "
-                f"please consider running this analysis before the counts in the AnnData object "
-                f"are normalized (i.e. on the raw counts)."
-            )
+            "It seems that analysis is being run on AnnData object (sdata.table) containing normalized counts, "
+            "please consider running this analysis before the counts in the AnnData object "
+            "are normalized (i.e. on the raw counts)."
         )
     if labels_layer is None:
         labels_layer = [*sdata.labels][-1]
@@ -99,9 +96,7 @@ def analyse_genes_left_out(
 
     ddf = sdata.points[points_layer]
 
-    ddf = ddf.query(
-        f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}"
-    )
+    ddf = ddf.query(f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}")
 
     raw_counts = ddf.groupby(name_gene_column).size().compute()[sdata.table.var.index]
 
@@ -129,7 +124,7 @@ def analyse_genes_left_out(
     r, p = pearsonr(filtered["log_raw_counts"], filtered["proportion_kept"])
     sns.regplot(x="log_raw_counts", y="proportion_kept", data=filtered)
     ax = plt.gca()
-    ax.text(0.7, 0.9, "r={:.2f}, p={:.2g}".format(r, p), transform=ax.transAxes)
+    ax.text(0.7, 0.9, f"r={r:.2f}, p={p:.2g}", transform=ax.transAxes)
 
     plt.axvline(filtered["log_raw_counts"].median(), color="green", linestyle="dashed")
     plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
@@ -151,11 +146,11 @@ def analyse_genes_left_out(
 
 def transcript_density(
     sdata: SpatialData,
-    img_layer: Tuple[str, str] = ["raw_image", "transcript_density"],
+    img_layer: tuple[str, str] = ["raw_image", "transcript_density"],
     channel: int = 0,
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    figsize: Optional[Tuple[int, int]] = None,
-    output: Optional[str | Path] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    figsize: tuple[int, int] | None = None,
+    output: str | Path | None = None,
 ) -> None:
     """
     Visualize the transcript density layer.

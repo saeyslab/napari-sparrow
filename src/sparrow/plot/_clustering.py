@@ -1,13 +1,13 @@
 from typing import Optional
-import scanpy as sc
+
 import matplotlib.pyplot as plt
+import scanpy as sc
 from spatialdata import SpatialData
 
 
 def cluster(sdata: SpatialData, output: Optional[str] = None) -> None:
     """
-    Plot the Leiden clusters on a UMAP, and show the most differentially
-    expressed genes for each cluster on a second plot.
+    Plot the Leiden clusters on a UMAP, and show the most differentially expressed genes for each cluster on a second plot.
 
     Parameters
     ----------
@@ -23,7 +23,6 @@ def cluster(sdata: SpatialData, output: Optional[str] = None) -> None:
     -------
     None
     """
-
     # Plot Leiden clusters on a UMAP
     sc.pl.umap(sdata.table, color=["leiden"], show=not output)
     if output:

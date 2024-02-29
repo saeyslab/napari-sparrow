@@ -9,7 +9,6 @@ Import sparrow as::
 .. module:: sparrow
 ```
 
-
 ## IO
 
 I/O.

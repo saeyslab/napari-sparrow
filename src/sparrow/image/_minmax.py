@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable
 
 import dask.array as da
+import numpy as np
 from dask.array import Array
 from dask_image.ndfilters import maximum_filter, minimum_filter
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
-from sparrow.image._apply import apply, _get_spatial_element
-
-import numpy as np
-
+from sparrow.image._apply import _get_spatial_element, apply
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -19,15 +17,16 @@ log = get_pylogger(__name__)
 
 def min_max_filtering(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
-    size_min_max_filter: int | List[int] = 85,
+    img_layer: str | None = None,
+    size_min_max_filter: int | list[int] = 85,
     output_layer="min_max_filtered",
-    crd: Optional[Tuple[int, int, int, int]] = None,
-    scale_factors: Optional[ScaleFactors_t] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
     Apply min max filtering to an image in a SpatialData object using dask.
+
     The size of the filter can be provided
     either as an integer or a list of integers corresponding to each channel.
     Compatibility with image layers that have either two or three spatial dimensions.
@@ -72,39 +71,36 @@ def min_max_filtering(
     """
 
     def _apply_min_max_filtering(image: Array, size_min_max_filter: int = 85) -> Array:
-
-        def _to_odd( size_min_max_filter ):
-            if not isinstance( size_min_max_filter, int ):
-                log.warning("Non-integer value received for size_min_max_filter; it will be rounded to the nearest integer.")
-                size_min_max_filter=int(np.round( size_min_max_filter ))
-            if size_min_max_filter %2 == 0:
-                log.warning( f"Provided value for min max filter size is even ('{size_min_max_filter}'). "
-                         f"To prevent unexpected output, we set min max filter to '{size_min_max_filter +1}'." )
+        def _to_odd(size_min_max_filter):
+            if not isinstance(size_min_max_filter, int):
+                log.warning(
+                    "Non-integer value received for size_min_max_filter; it will be rounded to the nearest integer."
+                )
+                size_min_max_filter = int(np.round(size_min_max_filter))
+            if size_min_max_filter % 2 == 0:
+                log.warning(
+                    f"Provided value for min max filter size is even ('{size_min_max_filter}'). "
+                    f"To prevent unexpected output, we set min max filter to '{size_min_max_filter +1}'."
+                )
                 return size_min_max_filter + 1
             else:
                 return size_min_max_filter
-            
-        size_min_max_filter=_to_odd( size_min_max_filter )
+
+        size_min_max_filter = _to_odd(size_min_max_filter)
 
         image_dim = image.ndim
         if image_dim == 3:
             if image.shape[0] == 1:
                 image = da.squeeze(image, axis=0)
             else:
-                raise ValueError(
-                    "_apply_min_max_filtering only accepts c dimension equal to 1."
-                )
+                raise ValueError("_apply_min_max_filtering only accepts c dimension equal to 1.")
         elif image_dim == 4:
             if image.shape[0] == 1 and image.shape[1] == 1:
                 image = da.squeeze(image, axis=(0, 1))
             else:
-                raise ValueError(
-                    "_apply_min_max_filtering only accepts c and z dimension equal to 1."
-                )
+                raise ValueError("_apply_min_max_filtering only accepts c and z dimension equal to 1.")
         else:
-            raise ValueError(
-                "Please provide numpy array containing c,(z),y and x dimension."
-            )
+            raise ValueError("Please provide numpy array containing c,(z),y and x dimension.")
 
         # Apply the minimum filter
         minimum_t = minimum_filter(image, size_min_max_filter)
@@ -121,16 +117,20 @@ def min_max_filtering(
 
         return image
 
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
+        log.warning(
+            f"No image layer specified. "
+            f"Applying image processing on the last image layer '{img_layer}' of the provided SpatialData object."
+        )
+
     se = _get_spatial_element(sdata, img_layer)
 
     if isinstance(size_min_max_filter, Iterable):
-        assert len(size_min_max_filter) == len(
-            se.c.data
+        assert (
+            len(size_min_max_filter) == len(se.c.data)
         ), f"If 'size_min_max_filter' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
-        fn_kwargs = {
-            key: {"size_min_max_filter": value}
-            for (key, value) in zip(se.c.data, size_min_max_filter)
-        }
+        fn_kwargs = {key: {"size_min_max_filter": value} for (key, value) in zip(se.c.data, size_min_max_filter)}
     else:
         fn_kwargs = {"size_min_max_filter": size_min_max_filter}
 

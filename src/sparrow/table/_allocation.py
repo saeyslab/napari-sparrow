@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import itertools
 from collections import namedtuple
-from typing import Optional, Tuple
 
 import dask
 import dask.array as da
@@ -17,6 +16,7 @@ from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element, _get_translation
 from sparrow.shape._shape import _filter_shapes_layer
+from sparrow.table._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -25,14 +25,13 @@ log = get_pylogger(__name__)
 def allocate(
     sdata: SpatialData,
     labels_layer: str = "segmentation_mask",
-    shapes_layer: Optional[str] = "segmentation_mask_boundaries",
+    shapes_layer: str | None = "segmentation_mask_boundaries",
     points_layer: str = "transcripts",
     allocate_from_shapes_layer: bool = True,
-    chunks: Optional[str | Tuple[int, ...] | int] = 10000,
+    chunks: str | tuple[int, ...] | int | None = 10000,
 ) -> SpatialData:
     """
-    Allocates transcripts to cells via provided shapes_layer and points_layer and returns updated SpatialData
-    augmented with a table attribute holding the AnnData object with cell counts.
+    Allocates transcripts to cells via provided shapes_layer and points_layer and returns updated SpatialData augmented with a table attribute holding the AnnData object with cell counts.
 
     Parameters
     ----------
@@ -62,6 +61,11 @@ def allocate(
     """
     if shapes_layer is not None:
         sdata[shapes_layer].index = sdata[shapes_layer].index.astype("str")
+
+    if labels_layer not in [*sdata.labels]:
+        raise ValueError(
+            f"Provided labels layer '{labels_layer}' not in 'sdata', please specify a labels layer from '{[*sdata.labels]}'"
+        )
 
     # need to do this transformation,
     # because the polygons have same offset coords.x0 and coords.y0 as in segmentation_mask
@@ -147,14 +151,10 @@ def allocate(
         else:
             z_coords = 0
 
-        y_coords = filtered_partition["y"].values.astype(int) - (
-            int(coords.y0) + y_start
-        )
-        x_coords = filtered_partition["x"].values.astype(int) - (
-            int(coords.x0) + x_start
-        )
+        y_coords = filtered_partition["y"].values.astype(int) - (int(coords.y0) + y_start)
+        x_coords = filtered_partition["x"].values.astype(int) - (int(coords.x0) + x_start)
 
-        filtered_partition.loc[:, "cells"] = chunk[
+        filtered_partition.loc[:, _CELL_INDEX] = chunk[
             z_coords,
             y_coords,
             x_coords,
@@ -165,11 +165,7 @@ def allocate(
     # Get the number of partitions in the Dask DataFrame
     num_partitions = ddf.npartitions
 
-    chunk_coords = list(
-        itertools.product(
-            *[range(0, s, cs) for s, cs in zip(masks.shape, masks.chunksize)]
-        )
-    )
+    chunk_coords = list(itertools.product(*[range(0, s, cs) for s, cs in zip(masks.shape, masks.chunksize)]))
 
     chunks = masks.to_delayed().flatten()
 
@@ -178,23 +174,20 @@ def allocate(
 
     for _chunk, _chunk_coord in zip(chunks, chunk_coords):
         processed_partitions = processed_partitions + [
-            dask.delayed(process_partition)(i, _chunk, _chunk_coord)
-            for i in range(num_partitions)
+            dask.delayed(process_partition)(i, _chunk, _chunk_coord) for i in range(num_partitions)
         ]
 
     # Combine the processed partitions into a single DataFrame
     combined_partitions = dd.from_delayed(processed_partitions)
 
     if "z" in combined_partitions:
-        coordinates = combined_partitions.groupby("cells")["x", "y", "z"].mean()
+        coordinates = combined_partitions.groupby(_CELL_INDEX)["x", "y", "z"].mean()
     else:
-        coordinates = combined_partitions.groupby("cells")["x", "y"].mean()
+        coordinates = combined_partitions.groupby(_CELL_INDEX)["x", "y"].mean()
 
-    cell_counts = combined_partitions.groupby(["cells", "gene"]).size()
+    cell_counts = combined_partitions.groupby([_CELL_INDEX, "gene"]).size()
 
-    coordinates, cell_counts = dask.compute(
-        coordinates, cell_counts, scheduler="threads"
-    )
+    coordinates, cell_counts = dask.compute(coordinates, cell_counts, scheduler="threads")
 
     cell_counts = cell_counts.unstack(fill_value=0)
     # convert dtype of columns to "object", otherwise error writing to zarr.
@@ -214,15 +207,16 @@ def allocate(
     adata = AnnData(cell_counts[cell_counts.index != "0"])
     coordinates.index = coordinates.index.map(str)
     adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
+    adata.obs[_INSTANCE_KEY] = adata.obs.index.astype(int)
 
-    adata.obs["region"] = pd.Categorical([1] * len(adata.obs))
-    adata.obs["instance"] = 1
+    # currently only support adding only one field of view
+    adata.obs[_REGION_KEY] = pd.Categorical([labels_layer] * len(adata.obs))
 
     if sdata.table:
         del sdata.table
 
     sdata.table = spatialdata.models.TableModel.parse(
-        adata, region_key="region", region=1, instance_key="instance"
+        adata, region_key=_REGION_KEY, region=[labels_layer], instance_key=_INSTANCE_KEY
     )
 
     indexes_to_keep = sdata.table.obs.index.values.astype(int)

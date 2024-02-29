@@ -9,7 +9,7 @@ from omegaconf import DictConfig
 from spatialdata import read_zarr
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def cfg_pipeline_global() -> DictConfig:
     # Expecting pytest to be run from the root dir. config_path should be relative to this file
     # The data_dir needs to be overwritten to point to the test data
@@ -52,11 +52,11 @@ def cfg_pipeline(cfg_pipeline_global, tmp_path) -> DictConfig:
 
 
 @pytest.fixture
-def sdata_multi_c( tmpdir ):
+def sdata_multi_c(tmpdir):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
     path = f"{root}/src/sparrow/_tests/test_data/multi_channel_zarr"
     sdata_path = os.path.join(path, "sdata.zarr")
     sdata = read_zarr(sdata_path)
     # backing store for specific unit test
-    sdata.write( os.path.join( tmpdir, "sdata.zarr" ) )
-    yield sdata 
+    sdata.write(os.path.join(tmpdir, "sdata.zarr"))
+    yield sdata

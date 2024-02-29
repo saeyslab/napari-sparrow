@@ -1,9 +1,9 @@
 import logging
 import os
 
+
 def get_pylogger(name=__name__) -> logging.Logger:
     """Initializes multi-GPU-friendly python command line logger."""
-
     logger = logging.getLogger(name)
     LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
     logger.setLevel(LOGLEVEL)
@@ -11,7 +11,7 @@ def get_pylogger(name=__name__) -> logging.Logger:
     # Create a stream handler to output to console
     ch = logging.StreamHandler()
     ch.setLevel(LOGLEVEL)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     ch.setFormatter(formatter)
 
     # Add the stream handler to the logger

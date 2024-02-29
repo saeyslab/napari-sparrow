@@ -14,9 +14,7 @@ if DEEPCELL_AVAILABLE:
     # download model weights from https://deepcell-data.s3-us-west-1.amazonaws.com/saved-models/MultiplexSegmentation-9.tar.gz
     app = Mesmer()
 else:
-    raise RuntimeError(
-        "The deepcell module is not available. Please install it to use this function."
-    )
+    raise RuntimeError("The deepcell module is not available. Please install it to use this function.")
 
 
 def _mesmer(

@@ -31,7 +31,8 @@ def tiling_correction(
     overwrite: bool = False,
 ) -> Tuple[SpatialData, List[np.ndarray]]:
     """
-    This function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
+    Function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
+
     The illumination within the tiles is adjusted, afterwards the tiles are connected as a whole image by inpainting the lines between the tiles.
 
     Parameters
@@ -68,9 +69,12 @@ def tiling_correction(
     to stitch tiles together. It manages the pre- and post-processing of data, translation of coordinates,
     and addition of corrected image results back to the `sdata` object.
     """
-
     if img_layer is None:
         img_layer = [*sdata.images][-1]
+        log.warning(
+            f"No image layer specified. "
+            f"Applying image processing on the last image layer '{img_layer}' of the provided SpatialData object."
+        )
 
     se = _get_spatial_element(sdata, layer=img_layer)
 
@@ -131,10 +135,7 @@ def tiling_correction(
             tiles_corrected = basic.transform(tiles)
 
         tiles_corrected = np.array(
-            [
-                tiles[number] if black[number] == 1 else tile
-                for number, tile in enumerate(tiles_corrected)
-            ]
+            [tiles[number] if black[number] == 1 else tile for number, tile in enumerate(tiles_corrected)]
         )
 
         # Stitch the tiles back together
