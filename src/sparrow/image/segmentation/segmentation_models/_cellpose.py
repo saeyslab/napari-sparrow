@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 from pathlib import Path
-from typing import List, Optional
 
 from numpy.typing import NDArray
 
@@ -28,9 +29,9 @@ def _cellpose(
     cellprob_threshold: int = 0,
     flow_threshold: float = 0.6,
     diameter: int = 55,
-    model_type: Optional[str] = "nuclei",
-    pretrained_model: Optional[str | Path] = None,
-    channels: List[int] = None,
+    model_type: str = "nuclei",
+    pretrained_model: str | Path | None = None,
+    channels: list[int] | None = None,
     device: str = "cpu",
     z_axis: int = 0,
     channel_axis: int = 3,
