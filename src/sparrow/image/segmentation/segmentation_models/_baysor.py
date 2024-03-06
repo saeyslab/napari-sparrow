@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import math
 import os
@@ -5,7 +7,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 import geopandas as gpd
 import numpy as np
@@ -34,7 +35,7 @@ def _baysor(
     output_dir: str | Path,
     threads: int,
     diameter: int = 40,  # this is scale in baysor, should be approx equal to the expected cell ,
-    min_size: Optional[int] = None,
+    min_size: int | None = None,
     use_prior_segmentation: bool = True,
     prior_confidence: int = 0.2,  # expected quality of the prior (i.e. masks). 0.0 will make algorithm ignore the prior, while 1.0 restricts the algorithm from contradicting the prior.
 ) -> NDArray:
