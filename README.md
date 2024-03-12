@@ -76,7 +76,7 @@ pip install -e .
 
 To install everything from source, run
 ```bash
-pip install --upgrade-strategy only-if-needed -e '.[plugin,testing,cli,docs,clustering]'
+pip install -e '.[plugin,testing,cli,docs,clustering]'
 ```
 
 To use the plugin, run
