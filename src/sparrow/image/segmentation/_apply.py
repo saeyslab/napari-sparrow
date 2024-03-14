@@ -284,13 +284,28 @@ def _combine_dask_arrays(
         **kwargs,  # additional kwargs passed to map_overlap
     )
 
+    # x_labels = x_labels.rechunk(x_labels.chunksize)
+    # return x_labels.squeeze(0)
+
     if not trim:
-        x_labels = da.map_blocks(
+        # TODO: we did not implement squidpy's way of handling chunks yet.
+        depth_1 = depth
+        depth_2 = {
+            0: 0,
+            1: depth_1[1] * 2,
+            2: depth_1[2] * 2,
+        }  # you need to look into prediction of neighbouring chunk, to get full mask
+        boundary = 0
+        x_labels = da.map_overlap(
             _clean_up_masks,
             x_labels,
             dtype=_SEG_DTYPE,
-            depth=depth,
-            **kwargs,
+            trim=False,  # we trim ourselves inside _clean_up_masks
+            allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
+            depth=depth_2,
+            boundary=boundary,
+            _depth_1=depth_1,
+            _depth_2=depth_2,
         )
 
         output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
@@ -303,9 +318,9 @@ def _combine_dask_arrays(
             trim=False,
             allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
             chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
-            depth=depth,
+            depth=depth_1,
             boundary=boundary,
-            _depth=depth,
+            _depth=depth_1,
         )
 
     x_labels = x_labels.rechunk(x_labels.chunksize)
