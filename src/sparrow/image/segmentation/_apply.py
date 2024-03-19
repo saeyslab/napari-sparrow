@@ -20,7 +20,7 @@ from sparrow.image.segmentation._utils import (
     _SEG_DTYPE,
     _add_depth_to_chunks_size,
     _check_boundary,
-    _clean_up_masks,
+    _clean_up_masks_exact,
     _merge_masks,
     _rechunk_overlap,
     _substract_depth_from_chunks_size,
@@ -294,13 +294,13 @@ def _combine_dask_arrays(
             0: 0,
             1: depth_1[1] * 2,
             2: depth_1[2] * 2,
-        }  # you need to look into prediction of neighbouring chunk, to get full mask
+        }  # we will search in prediction of neighbouring chunks to resolve conflicts on borders
         boundary = 0
         x_labels = da.map_overlap(
-            _clean_up_masks,
+            _clean_up_masks_exact,
             x_labels,
             dtype=_SEG_DTYPE,
-            trim=False,  # we trim ourselves inside _clean_up_masks
+            trim=False,  # we trim depth_2 inside _clean_up_masks
             allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
             depth=depth_2,
             boundary=boundary,
@@ -310,6 +310,7 @@ def _combine_dask_arrays(
 
         output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
 
+        # now clean up depth_1
         x_labels = da.map_overlap(
             _merge_masks,
             x_labels,

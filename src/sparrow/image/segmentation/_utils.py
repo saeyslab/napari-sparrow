@@ -45,7 +45,7 @@ def _rechunk_overlap(
     return x
 
 
-def _clean_up_masks(
+def _clean_up_masks_exact(
     block: NDArray,
     _depth_1: dict[int, int],
     _depth_2: dict[int, int],
@@ -62,7 +62,6 @@ def _clean_up_masks(
         block_id[0] == 0
     ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
 
-    # 1380, 1,0 # upper
     crossing_masks = set()
     crossing_masks_horizontal_low = set()  # low in the block, i.e. low y indices
     crossing_masks_horizontal_high = set()  # high in the block, i.e. high y indices
@@ -70,9 +69,9 @@ def _clean_up_masks(
     crossing_masks_vertical_right = set()  # right in the block, i.e. high x indices
 
     """
-    We assume following position of chunks (y,x).
-    (0, 0)  (0, 1)
-    (1, 0)  (1, 1)
+    We assume following position of chunks (z,y,x).
+    (0, 0, 0)  (0, 0, 1)
+    (0, 1, 0)  (0, 1, 1)
     """
     # remove part that was added to the block due to the 'reflect' in segmentation. In this way calculated center will always be center.
     if block_id[1] == 0:
@@ -84,23 +83,19 @@ def _clean_up_masks(
     if block_id[2] + 1 == total_blocks[2]:
         block[:, :, -(_depth_1[2] + _depth_2[2]) :] = 0
 
-    # print(  "TOTAL BLOCKS",  total_blocks )
-    # need to do general checks on block id, and depending on that, calculate crossing_masks.
-    # By doing if crossing_masks_horizontal_low ... we then can decide on which chunks to consider as adjecent chunks
-    if block_id[1] > 0:  # if block_id ==(0,1,0):
+    if block_id[1] > 0:
         crossing_masks_horizontal_low.update(
             np.unique(block[:, _depth_1[1] + _depth_2[1], _depth_1[2] + _depth_2[2] : -(_depth_1[2] + _depth_2[2])])
         )
-    if block_id[1] + 1 < total_blocks[1]:  # if block_id[1] +1 < total_blocks[1]: if block_id == (0, 0,0 )
-        # crossing_masks_horizontal_high.update(np.unique(block[:, block.shape[1]-(_depth_1[1] + _depth_2[1]) , : ])) # horizontal slicing
+    if block_id[1] + 1 < total_blocks[1]:
         crossing_masks_horizontal_high.update(
             np.unique(block[:, -(_depth_1[1] + _depth_2[1]), _depth_1[2] + _depth_2[2] : -(_depth_1[2] + _depth_2[2])])
         )
-    if block_id[2] > 0:  # if block_id[2] > 0: # block can not be on border. if block_id == (0, 0, 1):
+    if block_id[2] > 0:
         crossing_masks_vertical_left.update(
             np.unique(block[:, _depth_1[1] + _depth_2[1] : -(_depth_1[1] + _depth_2[1]), _depth_1[2] + _depth_2[2]])
         )
-    if block_id[2] + 1 < total_blocks[2]:  # if block_id[2] +1 < total_blocks[2]: if block_id == (0, 0, 0):
+    if block_id[2] + 1 < total_blocks[2]:
         crossing_masks_vertical_right.update(
             np.unique(block[:, _depth_1[1] + _depth_2[1] : -(_depth_1[1] + _depth_2[1]), -(_depth_1[2] + _depth_2[2])])
         )
@@ -111,22 +106,6 @@ def _clean_up_masks(
         | crossing_masks_vertical_left
         | crossing_masks_vertical_right
     )
-
-    set_1 = crossing_masks_horizontal_high & crossing_masks_vertical_left
-    if set_1:
-        print(set_1)
-
-    set_2 = crossing_masks_horizontal_high & crossing_masks_vertical_right
-    if set_2:
-        print(set_2)
-
-    set_3 = crossing_masks_horizontal_low & crossing_masks_vertical_left
-    if set_3:
-        print(set_3)
-
-    set_4 = crossing_masks_horizontal_low & crossing_masks_vertical_right
-    if set_4:
-        print(set_4)
 
     mask_to_reset = []  # these are masks that should be set to 0
     for mask_label in crossing_masks:
@@ -144,113 +123,34 @@ def _clean_up_masks(
 
         total_area = len(mask_position[0])
 
+        if not total_area:
+            mask_to_reset.append(mask_label)
+            continue
+
         center = (np.mean(mask_position[0]), np.mean(mask_position[1]), np.mean(mask_position[2]))
         # check if center is in the block
         claims_original = _center_in_block(block=block, center=center, _depth_1=_depth_1, _depth_2=_depth_2)
 
-        # for original chunk check if center is in chunk
-        # center = (center[0] -_depth_1[0] , center[1]-_depth_1[1], center[2]- depth_1[2] ) # center in original chunk
-        if mask_label == 1382:
-            print(block_id, mask_label, center)
-            # print( condition )
-            print(block_id, mask_label, "TOTAL REGION", total_area)
-            # print( block_id, mask_label, "TOTAL REGION OLD", total_size_old )
-        if mask_label == 1380:
-            print(block_id, mask_label, center)
-            print(block_id, mask_label, "TOTAL REGION", total_area)
-            # print( block_id, mask_label, "TOTAL REGION OLD", total_size_old )
         # get mask position of adjacent chunks
         claims_list = []
         total_area_adjacent_list = []
-        # if mask_label == 1380 or mask_label == 1382:
-        # if mask_label == 345:  # 345
-        if mask_label == 3377:
-            # if mask_label == 1694:
-            # we could put this back into a function
-            if mask_label in crossing_masks_horizontal_high:
-                translation_direction = (0, 1, 0)
-                result = _check_claims_adjacent_block(
-                    block=block,
-                    mask_position=mask_position,
-                    _depth_1=_depth_1,
-                    _depth_2=_depth_2,
-                    translation_direction=translation_direction,
-                )
-                if result is not None:
-                    claims, total_area_adjacent = result
-                    claims_list.append(claims)
-                    total_area_adjacent_list.append(total_area_adjacent)
-                if mask_label in crossing_masks_vertical_left:
-                    translation_direction = (0, 1, -1)
-                    result = _check_claims_adjacent_block(
-                        block=block,
-                        mask_position=mask_position,
-                        _depth_1=_depth_1,
-                        _depth_2=_depth_2,
-                        translation_direction=translation_direction,
-                    )
-                    if result is not None:
-                        claims, total_area_adjacent = result
-                        claims_list.append(claims)
-                        total_area_adjacent_list.append(total_area_adjacent)
-                elif mask_label in crossing_masks_vertical_right:
-                    translation_direction = (0, 1, 1)
-                    result = _check_claims_adjacent_block(
-                        block=block,
-                        mask_position=mask_position,
-                        _depth_1=_depth_1,
-                        _depth_2=_depth_2,
-                        translation_direction=translation_direction,
-                    )
-                    if result is not None:
-                        claims, total_area_adjacent = result
-                        claims_list.append(claims)
-                        total_area_adjacent_list.append(total_area_adjacent)
 
-                # if mask_label in crossing_masks_vertical_left ...
-                # TODO can also be a combination. be carefull
-            elif mask_label in crossing_masks_horizontal_low:
-                translation_direction = (0, -1, 0)
-                result = _check_claims_adjacent_block(
-                    block=block,
-                    mask_position=mask_position,
-                    _depth_1=_depth_1,
-                    _depth_2=_depth_2,
-                    translation_direction=translation_direction,
-                )
-                if result is not None:
-                    claims, total_area_adjacent = result
-                    claims_list.append(claims)
-                    total_area_adjacent_list.append(total_area_adjacent)
-                if mask_label in crossing_masks_vertical_left:
-                    translation_direction = (0, -1, -1)
-                    result = _check_claims_adjacent_block(
-                        block=block,
-                        mask_position=mask_position,
-                        _depth_1=_depth_1,
-                        _depth_2=_depth_2,
-                        translation_direction=translation_direction,
-                    )
-                    if result is not None:
-                        claims, total_area_adjacent = result
-                        claims_list.append(claims)
-                        total_area_adjacent_list.append(total_area_adjacent)
-                elif mask_label in crossing_masks_vertical_right:
-                    translation_direction = (0, -1, 1)
-                    result = _check_claims_adjacent_block(
-                        block=block,
-                        mask_position=mask_position,
-                        _depth_1=_depth_1,
-                        _depth_2=_depth_2,
-                        translation_direction=translation_direction,
-                    )
-                    if result is not None:
-                        claims, total_area_adjacent = result
-                        claims_list.append(claims)
-                        total_area_adjacent_list.append(total_area_adjacent)
-
+        # we could put this back into a function
+        if mask_label in crossing_masks_horizontal_high:
+            translation_direction = (0, 1, 0)
+            result = _check_claims_adjacent_block(
+                block=block,
+                mask_position=mask_position,
+                _depth_1=_depth_1,
+                _depth_2=_depth_2,
+                translation_direction=translation_direction,
+            )
+            if result is not None:
+                claims, total_area_adjacent = result
+                claims_list.append(claims)
+                total_area_adjacent_list.append(total_area_adjacent)
             if mask_label in crossing_masks_vertical_left:
-                translation_direction = (0, 0, -1)
+                translation_direction = (0, 1, -1)
                 result = _check_claims_adjacent_block(
                     block=block,
                     mask_position=mask_position,
@@ -263,7 +163,7 @@ def _clean_up_masks(
                     claims_list.append(claims)
                     total_area_adjacent_list.append(total_area_adjacent)
             elif mask_label in crossing_masks_vertical_right:
-                translation_direction = (0, 0, 1)
+                translation_direction = (0, 1, 1)
                 result = _check_claims_adjacent_block(
                     block=block,
                     mask_position=mask_position,
@@ -275,34 +175,101 @@ def _clean_up_masks(
                     claims, total_area_adjacent = result
                     claims_list.append(claims)
                     total_area_adjacent_list.append(total_area_adjacent)
+        elif mask_label in crossing_masks_horizontal_low:
+            translation_direction = (0, -1, 0)
+            result = _check_claims_adjacent_block(
+                block=block,
+                mask_position=mask_position,
+                _depth_1=_depth_1,
+                _depth_2=_depth_2,
+                translation_direction=translation_direction,
+            )
+            if result is not None:
+                claims, total_area_adjacent = result
+                claims_list.append(claims)
+                total_area_adjacent_list.append(total_area_adjacent)
+            if mask_label in crossing_masks_vertical_left:
+                translation_direction = (0, -1, -1)
+                result = _check_claims_adjacent_block(
+                    block=block,
+                    mask_position=mask_position,
+                    _depth_1=_depth_1,
+                    _depth_2=_depth_2,
+                    translation_direction=translation_direction,
+                )
+                if result is not None:
+                    claims, total_area_adjacent = result
+                    claims_list.append(claims)
+                    total_area_adjacent_list.append(total_area_adjacent)
+            elif mask_label in crossing_masks_vertical_right:
+                translation_direction = (0, -1, 1)
+                result = _check_claims_adjacent_block(
+                    block=block,
+                    mask_position=mask_position,
+                    _depth_1=_depth_1,
+                    _depth_2=_depth_2,
+                    translation_direction=translation_direction,
+                )
+                if result is not None:
+                    claims, total_area_adjacent = result
+                    claims_list.append(claims)
+                    total_area_adjacent_list.append(total_area_adjacent)
+        if mask_label in crossing_masks_vertical_left:
+            translation_direction = (0, 0, -1)
+            result = _check_claims_adjacent_block(
+                block=block,
+                mask_position=mask_position,
+                _depth_1=_depth_1,
+                _depth_2=_depth_2,
+                translation_direction=translation_direction,
+            )
+            if result is not None:
+                claims, total_area_adjacent = result
+                claims_list.append(claims)
+                total_area_adjacent_list.append(total_area_adjacent)
+        elif mask_label in crossing_masks_vertical_right:
+            translation_direction = (0, 0, 1)
+            result = _check_claims_adjacent_block(
+                block=block,
+                mask_position=mask_position,
+                _depth_1=_depth_1,
+                _depth_2=_depth_2,
+                translation_direction=translation_direction,
+            )
+            if result is not None:
+                claims, total_area_adjacent = result
+                claims_list.append(claims)
+                total_area_adjacent_list.append(total_area_adjacent)
 
-            # now do it for other translation directions...
-
-            # for empty list claims_list, np.sum( claims_list ) will return False
-            # now decide which masks to set to 0.
-            claims_list = np.array(claims_list)
-            total_area_adjacent_list = np.array(total_area_adjacent_list)
-            # now decide on which masks to reset
-            if claims_original:
-                # case where adjacent chunk also claim mask, we should only retain it if it is the largest.
-                if np.sum(claims_list):
-                    total_area_adjacent_max = np.max(total_area_adjacent_list[claims_list])
+        # for empty list claims_list, np.sum( claims_list ) will return False
+        # now decide which masks to set to 0.
+        claims_list = np.array(claims_list)
+        total_area_adjacent_list = np.array(total_area_adjacent_list)
+        # now decide on which masks to reset
+        if claims_original:
+            # case where adjacent chunk also claim mask, we should only retain it if it is the largest.
+            if np.sum(claims_list):
+                total_area_adjacent_max = np.max(total_area_adjacent_list[claims_list])
+                if total_area < total_area_adjacent_max:
+                    mask_to_reset.append(mask_label)
+        else:
+            if np.sum(claims_list):
+                mask_to_reset.append(mask_label)
+            # others also do not claim it, only keep if it is the largest
+            else:
+                if len(total_area_adjacent_list) > 0:
+                    total_area_adjacent_max = np.max(total_area_adjacent_list)
                     if total_area < total_area_adjacent_max:
                         mask_to_reset.append(mask_label)
-            else:
-                if np.sum(claims_list):
-                    mask_to_reset.append(mask_label)
-                # others also do not claim it, only keep if it is the largest
                 else:
-                    if len(total_area_adjacent_list) > 0:
-                        total_area_adjacent_max = np.max(total_area_adjacent_list)
-                        if total_area < total_area_adjacent_max:
-                            mask_to_reset.append(mask_label)
-                    else:
-                        # case where there is no matching cell found in any of the adjacent chunks,
-                        # then we do not reset, although this typically indicates disagreement between chunks, so for algorithm to give good results, this better not happen offen.
-                        # maybe print warning here, also for debugging
-                        pass
+                    pass
+                    # log.warning(
+                    #    f"For cell with mask label {mask_label} in chunk with block id {block_id} there where no matches found in other chunks. "
+                    #    "This indicates disagreement between chunks. Consider increasing depth or chunk size."
+                    # )
+                    # case where there is no matching cell found in any of the adjacent chunks,
+                    # then we do not reset, although this typically indicates disagreement between chunks, so for algorithm to give good results, this better not happen offen.
+                    # maybe print warning here, also for debugging
 
     mask = np.isin(block, mask_to_reset)
     block[mask] = 0
@@ -320,8 +287,8 @@ def _clean_up_masks(
     mask = ~np.isin(block, unique_masks)
     block[mask] = 0
 
-    # trim the _depth_2
-    return block[:, _depth_2[1] : -_depth_2[1], _depth_2[2] : -_depth_2[1]]
+    # trim _depth_2 from block
+    return block[:, _depth_2[1] : -_depth_2[1], _depth_2[2] : -_depth_2[2]]
 
 
 def _subset_mask_position(
@@ -366,33 +333,38 @@ def _check_claims_adjacent_block(
     )
 
     # get the center of the conflicting cell in other chunk, plus the total area of that cell
-    result = _helper_function_center_area(
+    result = _get_center_and_area(
         block=block,
         mask_position=mask_position,
         translation=translation,
-        coordinates_adjacent_block_with_depth=coordinates_adjacent_block_with_depth,
+        coordinates_adjacent_block_with_depth=coordinates_adjacent_block_with_depth,  # these coordinates are used for subsetting mask_positions
     )
-    # if result is None, this means that in adjacent chunk (via translation), no match is found
-    # TODO, this is actually a sign of conflicting segmentation results, maybe we should log a warning in that case.
+    # If result is None, this means that in adjacent chunk (via translation), no match is found.
+    # This is actually a sign of conflicting segmentation results, maybe we should log a warning in that case.
     if result is None:
         return None
-    # center_adjacent_chunk is in coordinates of original chunk
-    # TODO: could we update this? Maybe we should refactor. coordinates_adjacent_block is actually not the coordinates of the adjacent block, but the region outside current block,
-    # that is in the adjacent block under investigation.
-    # these are the coordinates of the adjacent block, but without _depth_1. Thus if center is inside these coordinates, it will be assigned to the adjacent block.
-    coordinates_adjacent_block = _get_coordinates(
+    # coordinates_claims_by_adjacent_block are not the coordinates of the adjacent block, but a region outside current block. If center_adjacent_chunk lies in it,
+    # the mask is claimed by the adjacent block.
+    coordinates_claims_by_adjacent_block = _get_coordinates(
         block=block,
         _depth_1=_depth_1,
-        # _depth_2={0: 0, 1: _depth_2[1] / 2, 2: _depth_2[2] / 2},
         _depth_2=_depth_2,
         translation_direction=translation_direction,
     )
 
-    center_adjacent_chunk, total_area_adjacent = result
-    claims = _center_in_adjacent_block(
-        center=center_adjacent_chunk,
-        coordinates_adjacent_block=coordinates_adjacent_block,
-    )
+    center_adjacent_block, total_area_adjacent = result
+
+    y_min, y_max, x_min, x_max = coordinates_claims_by_adjacent_block
+    if (
+        center_adjacent_block[1] >= y_min
+        and center_adjacent_block[1] < y_max
+        and center_adjacent_block[2] >= x_min
+        and center_adjacent_block[2] < x_max
+    ):
+        claims = True
+    else:
+        claims = False
+
     return claims, total_area_adjacent
 
 
@@ -406,11 +378,13 @@ def _center_in_block(block: NDArray, center: tuple[float, float, float], _depth_
     return False
 
 
-def _helper_function_center_area(
+def _get_center_and_area(
     block: NDArray,
     mask_position: tuple[NDArray, NDArray, NDArray],
     translation: tuple[int, int, int],
-    coordinates_adjacent_block_with_depth: tuple[int, int, int, int],
+    coordinates_adjacent_block_with_depth: tuple[
+        int, int, int, int
+    ],  # these coordinates are necessary for subsetting mask_positions.
 ) -> tuple[tuple[float, float, float], int] | None:
     """Helper function for _clean_up_masks"""
     total_area = len(mask_position[0])
@@ -428,9 +402,9 @@ def _helper_function_center_area(
     center_adjacent_list = []
     intersection_area_list = []
     for mask_label_adjacent in mask_labels_adjacent_chunk:
+        if mask_label_adjacent == 0:
+            continue
         # get the label with maximum overlap
-        # TODO: should set condition on _mask_position_adjacent_chunk, only retain the ones that are in adjacent chunk
-        # do we have to transform back? -> yes, because of the calculation of the intersection
         _mask_position_adjacent_chunk = np.where(block == mask_label_adjacent)
         _mask_position_adjacent_chunk = _subset_mask_position(
             _mask_position_adjacent_chunk,
@@ -440,6 +414,9 @@ def _helper_function_center_area(
             x_max=x_max,
         )
         total_area_adjacent = len(_mask_position_adjacent_chunk[0])
+        if not total_area_adjacent:
+            continue
+        # we translate back, because we need to calculate overlap with adjacent.
         _mask_position_adjacent_chunk = [
             _mask_position_adjacent_chunk[0] - translation[0],
             _mask_position_adjacent_chunk[1] - translation[1],
@@ -450,10 +427,10 @@ def _helper_function_center_area(
             np.mean(_mask_position_adjacent_chunk[1]),
             np.mean(_mask_position_adjacent_chunk[2]),
         )
-        # if on border
         # need to check overlap. Check if overlap more than half with other
         intersection_area = _size_interection_mask_position(_mask_position_adjacent_chunk, mask_position)
-        # should be at least half in each other to be considered segmentation result from same cell, this way there is agreement across all chunks
+        # should be at least half in each other to be considered segmentation result from same cell, this way there will be relative good agreement across all chunks
+        # about who claims the mask
         if intersection_area / total_area < 0.5 or intersection_area / total_area_adjacent < 0.5:
             continue
         intersection_area_list.append(intersection_area)
@@ -501,16 +478,6 @@ def _get_coordinates(
     return y_min, y_max, x_min, x_max
 
 
-def _center_in_adjacent_block(
-    center: tuple[float, float, float], coordinates_adjacent_block: tuple[float, float, float, float]
-) -> bool:
-    y_min, y_max, x_min, x_max = coordinates_adjacent_block
-    if center[1] >= y_min and center[1] < y_max and center[2] >= x_min and center[2] < x_max:
-        return True
-
-    return False
-
-
 def _size_interection_mask_position(
     mask_position1: tuple[NDArray, NDArray, NDArray], mask_position2: tuple[NDArray, NDArray, NDArray]
 ) -> int:
@@ -525,7 +492,7 @@ def _size_interection_mask_position(
     return overlap_size
 
 
-def _clean_up_masks_old(
+def _clean_up_masks(
     block: NDArray,
     block_id: tuple[int, int, int],
     block_info,
