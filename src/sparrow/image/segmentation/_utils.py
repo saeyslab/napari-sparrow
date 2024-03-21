@@ -431,6 +431,7 @@ def _get_center_and_area(
         intersection_area = _size_interection_mask_position(_mask_position_adjacent_chunk, mask_position)
         # should be at least half in each other to be considered segmentation result from same cell, this way there will be relative good agreement across all chunks
         # about who claims the mask
+        # TODO to match conflicting cells, here some improvement is still possible.
         if intersection_area / total_area < 0.5 or intersection_area / total_area_adjacent < 0.5:
             continue
         intersection_area_list.append(intersection_area)

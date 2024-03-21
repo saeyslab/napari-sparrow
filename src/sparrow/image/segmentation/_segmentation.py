@@ -440,7 +440,10 @@ class SegmentationModel(ABC):
             x_labels = x_labels.rechunk(x_labels.chunksize)
 
         else:
-            exact = True
+            # TODO. Although _clean_up_masks_exact is preventing some chunking artifacts,
+            # it is somewhat slower (1u17 vs 1u for segmentation of full DAPI 90k*95k pixels using 4 threads on GPU).
+            # should be updated so it fixes more artefacts. Probably _utils._get_center_and_area could be improved, i.e. the matching of conflicting cells from different chunks
+            exact = False
             if exact:
                 depth_1 = depth
                 depth_2 = {
