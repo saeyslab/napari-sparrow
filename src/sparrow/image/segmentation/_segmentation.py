@@ -27,6 +27,7 @@ from sparrow.image.segmentation._utils import (
     _add_depth_to_chunks_size,
     _check_boundary,
     _clean_up_masks,
+    _clean_up_masks_exact,
     _get_block_position,
     _merge_masks,
     _rechunk_overlap,
@@ -422,6 +423,8 @@ class SegmentationModel(ABC):
         # For now, only support processing of x_labels with 1 channel dim
         x_labels = x_labels.squeeze(-1)
 
+        # return x_labels.rechunk(x_labels.chunksize)
+
         # if trim==True --> use squidpy's way of handling neighbouring blocks
         if trim:
             from dask_image.ndmeasure._utils._label import (
@@ -437,13 +440,37 @@ class SegmentationModel(ABC):
             x_labels = x_labels.rechunk(x_labels.chunksize)
 
         else:
-            x_labels = da.map_blocks(
-                _clean_up_masks,
-                x_labels,
-                dtype=_SEG_DTYPE,
-                depth=depth,
-                **kwargs,
-            )
+            # TODO. Although _clean_up_masks_exact is preventing some chunking artifacts,
+            # it is somewhat slower (1u17 vs 1u for segmentation of full DAPI 90k*95k pixels using 4 threads on GPU).
+            # should be updated so it fixes more artefacts. Probably _utils._get_center_and_area could be improved, i.e. the matching of conflicting cells from different chunks
+            exact = False
+            if exact:
+                depth_1 = depth
+                depth_2 = {
+                    0: 0,
+                    1: depth_1[1] * 2,
+                    2: depth_1[2] * 2,
+                }  # we will search in prediction of neighbouring chunks to resolve conflicts on borders
+                boundary = 0
+                x_labels = da.map_overlap(
+                    _clean_up_masks_exact,
+                    x_labels,
+                    dtype=_SEG_DTYPE,
+                    trim=False,  # we trim depth_2 inside _clean_up_masks
+                    allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
+                    depth=depth_2,
+                    boundary=boundary,
+                    _depth_1=depth_1,
+                    _depth_2=depth_2,
+                )
+            else:
+                x_labels = da.map_blocks(
+                    _clean_up_masks,
+                    x_labels,
+                    dtype=_SEG_DTYPE,
+                    depth=depth,
+                    **kwargs,
+                )
 
             output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
 
