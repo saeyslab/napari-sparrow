@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import torch
 from numpy.typing import NDArray
 
 from sparrow.utils.pylogger import get_pylogger
 
-try:
-    import torch
+# try:
+#    import torch
 
-    TORCH_AVAILABLE = True
-except ImportError:
-    TORCH_AVAILABLE = False
+#    TORCH_AVAILABLE = True
+# except ImportError:
+#   TORCH_AVAILABLE = False
 
 try:
     from cellpose import models
@@ -40,9 +41,6 @@ def _cellpose(
 ) -> NDArray:
     if channels is None:
         channels = [0, 0]
-    if not TORCH_AVAILABLE:
-        raise RuntimeError("The torch module is not available. Please install it to use this function.")
-
     if not CELLPOSE_AVAILABLE:
         raise RuntimeError("The cellpose module is not available. Please install it to use this function.")
     gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
