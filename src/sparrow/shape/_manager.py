@@ -6,18 +6,19 @@ import dask
 import geopandas
 import numpy as np
 import pandas as pd
-import rasterio
 import shapely
 import spatialdata
 from dask.array import Array
 from geopandas import GeoDataFrame
 from numpy.typing import NDArray
+from rasterio import Affine
+from rasterio.features import shapes
 from shapely.affinity import translate
 from spatialdata import SpatialData, read_zarr
-from spatialdata._io import write_shapes
 from spatialdata.transformations import Identity, Translation
 
 from sparrow.image._image import _get_translation_values
+from sparrow.utils._io import _incremental_io_on_disk
 from sparrow.utils._keys import _INSTANCE_KEY
 from sparrow.utils.pylogger import get_pylogger
 
@@ -135,7 +136,6 @@ class ShapesLayerManager:
             return polygons
         elif dimension == 2:
             polygons = _mask_image_to_polygons(input)
-            print(polygons.shape)
             return _mask_image_to_polygons(input)
 
     @get_polygons_from_input.register(GeoDataFrame)
@@ -188,15 +188,22 @@ class ShapesLayerManager:
         spatial_element: GeoDataFrame,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.shapes[output_layer] = spatial_element
-        if sdata.is_backed():
-            elem_group = sdata._init_add_element(name=output_layer, element_type="shapes", overwrite=overwrite)
-            write_shapes(
-                shapes=sdata.shapes[output_layer],
-                group=elem_group,
-                name=output_layer,
-            )
-            sdata = read_zarr(sdata.path)
+        # given a spatial_element
+        if output_layer in [*sdata.shapes]:
+            if sdata.is_backed():
+                if overwrite:
+                    sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=spatial_element)
+                else:
+                    raise ValueError(
+                        f"Attempting to overwrite sdata.shapes[{output_layer}], but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
+                    )
+            else:
+                sdata[output_layer] = spatial_element
+        else:
+            sdata[output_layer] = spatial_element
+            if sdata.is_backed():
+                sdata.write_element(output_layer)
+                sdata = read_zarr(sdata.path)
 
         return sdata
 
@@ -204,7 +211,8 @@ class ShapesLayerManager:
         return sdata.shapes[name]
 
     def remove_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
-        del sdata.shapes[name]
+        element_type = sdata._element_type_from_element_name(name)
+        del getattr(sdata, element_type)[name]
         return sdata
 
 
@@ -267,10 +275,10 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
         # Get chunk's top-left corner coordinates
         x_offset, y_offset = chunk_coords
 
-        for shape, value in rasterio.features.shapes(
+        for shape, value in shapes(
             mask_chunk.astype(np.int32),
             mask=bool_mask,
-            transform=rasterio.Affine(1.0, 0, y_offset, 0, 1.0, x_offset),
+            transform=Affine(1.0, 0, y_offset, 0, 1.0, x_offset),
         ):
             if z_slice is not None:
                 coordinates = shape["coordinates"]
@@ -304,6 +312,7 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
     # Create a GeoDataFrame from the extracted polygons and values
     gdf = geopandas.GeoDataFrame({"geometry": all_polygons, _INSTANCE_KEY: all_values})
 
+    # TODO. If extra column supported in a shapes layer of a SpatialData object, we could think about adding _INSTANCE_KEY as a column to the shapes.
     # Combine polygons that are actually pieces of the same cell back together.
     # (These pieces of same cell got written to different chunks by dask, needed for parallel processing.)
     gdf = gdf.dissolve(by=_INSTANCE_KEY)

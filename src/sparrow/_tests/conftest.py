@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pyrootutils
 import pytest
@@ -59,4 +60,24 @@ def sdata_multi_c(tmpdir):
     sdata = read_zarr(sdata_path)
     # backing store for specific unit test
     sdata.write(os.path.join(tmpdir, "sdata.zarr"))
+    sdata = read_zarr(os.path.join(tmpdir, "sdata.zarr"))
     yield sdata
+
+
+@pytest.fixture
+def sdata_transcripts(tmpdir):
+    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
+    path = f"{root}/src/sparrow/_tests/test_data/transcriptomics_zarr"
+    sdata_path = os.path.join(path, "sdata_transcriptomics.zarr")
+    sdata = read_zarr(sdata_path)
+    # backing store for specific unit test
+    sdata.write(os.path.join(tmpdir, "sdata_transcriptomics.zarr"))
+    sdata = read_zarr(os.path.join(tmpdir, "sdata_transcriptomics.zarr"))
+    yield sdata
+
+
+@pytest.fixture
+def path_dataset_markers(tmpdir):
+    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
+    path = f"{root}/src/sparrow/_tests/test_data/dummy_markers.csv"
+    return Path(path)

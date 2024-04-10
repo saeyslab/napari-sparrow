@@ -12,6 +12,7 @@ from spatialdata import SpatialData
 
 from sparrow.image._image import _get_boundary, _get_spatial_element
 from sparrow.plot import plot_shapes
+from sparrow.utils._keys import _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -19,8 +20,9 @@ log = get_pylogger(__name__)
 
 def analyse_genes_left_out(
     sdata: SpatialData,
+    labels_layer: str,
+    table_layer: str,
     points_layer: str = "transcripts",
-    labels_layer: str | None = "segmentation_mask",
     name_x: str = "x",
     name_y: str = "y",
     name_gene_column: str = "gene",
@@ -33,14 +35,16 @@ def analyse_genes_left_out(
     ----------
     sdata : SpatialData
         Data containing spatial information for plotting.
-    points_layer : str, optional
-        The layer in `sdata` containing transcript information, by default "transcripts".
-    labels_layer : str, optional
+    labels_layer : str
         The layer in `sdata` that contains the segmentation masks, by default "segmentation_mask".
-        If None, the last layer in the `labels` attribute of `sdata` will be used.
         This layer is used to calculate the crd (region of interest) that was used in the segmentation step,
         otherwise transcript counts in `points_layer` of `sdata` (containing all transcripts)
-        and the counts obtained via sdata.table are not comparable.
+        and the counts obtained via `sdata.tables[ table_layer ]` are not comparable.
+        It is also used to select the cells in `sdata.tables[table_layer]` that are linked to this `labels_layer` via the _REGION_KEY.
+    table_layer: str
+        The table layer in `sdata` on which to perform analysis.
+    points_layer : str, optional
+        The layer in `sdata` containing transcript information, by default "transcripts".
     name_x : str, optional
         The column name representing the x-coordinate in `points_layer`, by default "x".
     name_y : str, optional
@@ -72,7 +76,7 @@ def analyse_genes_left_out(
     """
     # we need the segmentation_mask to calculate crd used during allocation step,
     # otherwise transcript counts in points layer of sdata (containing all transcripts)
-    # and the counts obtained via sdata.table are not comparable.
+    # and the counts obtained via sdata.tables[ table_layer ] are not comparable.
     if not hasattr(sdata, "labels"):
         raise AttributeError(
             "Provided SpatialData object does not have the attribute 'labels', please run segmentation step before using this function."
@@ -83,24 +87,30 @@ def analyse_genes_left_out(
             "Provided SpatialData object does not have the attribute 'points', please run allocation step before using this function."
         )
 
-    if sdata.table.raw is not None:
+    if sdata.tables[table_layer].raw is not None:
         log.warning(
-            "It seems that analysis is being run on AnnData object (sdata.table) containing normalized counts, "
+            "It seems that analysis is being run on AnnData object (sdata.tables[ table_layer ]) containing normalized counts, "
             "please consider running this analysis before the counts in the AnnData object "
             "are normalized (i.e. on the raw counts)."
         )
     if labels_layer is None:
         labels_layer = [*sdata.labels][-1]
+
+    if labels_layer not in [*sdata.labels]:
+        raise ValueError(f"labels_layer '{labels_layer}' is not a labels layer in `sdata`.")
+
     se = _get_spatial_element(sdata, layer=labels_layer)
     crd = _get_boundary(se)
+
+    adata = sdata.tables[table_layer][sdata.tables[table_layer].obs[_REGION_KEY] == labels_layer]
 
     ddf = sdata.points[points_layer]
 
     ddf = ddf.query(f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}")
 
-    raw_counts = ddf.groupby(name_gene_column).size().compute()[sdata.table.var.index]
+    raw_counts = ddf.groupby(name_gene_column).size().compute()[adata.var.index]
 
-    filtered = pd.DataFrame(sdata.table.X.sum(axis=0) / raw_counts)
+    filtered = pd.DataFrame(adata.X.sum(axis=0) / raw_counts)
 
     filtered = filtered.rename(columns={0: "proportion_kept"})
     filtered["raw_counts"] = raw_counts

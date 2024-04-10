@@ -17,6 +17,7 @@ from sparrow.image._image import (
     _unapply_transform,
 )
 from sparrow.shape import intersect_rectangles
+from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -105,7 +106,9 @@ def plot_shapes(
     img_layer: str | Iterable[str] | None = None,
     labels_layer: str | Iterable[str] | None = None,
     shapes_layer: str | Iterable[str] | None = None,
+    table_layer: str | None = None,
     column: str | None = None,
+    region: str | None = None,
     cmap: str | None = "magma",
     channel: int | str | Iterable[int] | Iterable[str] | None = None,
     z_slice: float | None = None,
@@ -170,10 +173,14 @@ def plot_shapes(
     shapes_layer : str or Iterable[str], optional
         Specifies which shapes to plot. If set to None, no shapes_layer is plotted.
         Displayed as columns in the plot, if multiple are provided.
+    table_layer : str, optional
+        Table layer(s) to be plotted (i.e. to base cell colors on) if `column` is specified.
     column : str or None, optional
-        Column in `sdata.table.obs` or name in `sdata.table.var.index` to base cell colors on. If none provided, default color is used.
+        Column in `sdata.tables[table_layer].obs` or name in `sdata.tables[table_layer].var.index` to base cell colors on. If none provided, default color is used.
+    region : str, optional
+        If `table_layer` and `column` is specified, this specifies the region in `sdata.tables[table_layer]` to be plotted (via `sdata.tables[table_layer].obs[_REGION_KEY]`).
     cmap : str, default='magma'
-        Colormap for column. Ignored if column is None, or if column + "_colors" is in `sdata.table.uns`.
+        Colormap for column. Ignored if column is None, or if column + "_colors" is in `sdata.tables[table_layer].uns`.
     channel : int or str or Iterable[int] or Iterable[str], optional
         Channel(s) to be displayed from the image. Displayed as rows in the plot.
         If channel is None, get the number of channels from the first img_layer given as input.
@@ -216,7 +223,10 @@ def plot_shapes(
     ValueError
         - If both `img_layer` and `labels_layer` are specified.
         - If z_slice is specified, and it is not a z_slice in specified `img_layer` or `labels_layer`.
-
+        - If a `column` is specified, but no `table_layer`.
+        - If `table_layer` is specified, but `table_layer` is not a table in `sdata.tables`.
+        - If `sdata.tables[table_layer].obs[_REGION_KEY].cat.categories` contains more than on element, but `region` is not specified.
+        - If both `table_layer`, `column` and `region` are specified, but `region` is not in `sdata.tables[table_layer].obs[_REGION_KEY].cat.categories`.
 
     Notes
     -----
@@ -227,6 +237,9 @@ def plot_shapes(
         raise ValueError(
             "Both img_layer and labels_layer is not None. " "Please specify either img_layer or labels_layer, not both."
         )
+
+    if column is not None and table_layer is None:
+        raise ValueError("Please specify a 'table_layer' if a 'column' is specified.")
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
     if img_layer is not None:
@@ -242,6 +255,10 @@ def plot_shapes(
             f"No image layer or labels layer specified. "
             f"Plotting last image layer '{layer}' of the provided SpatialData object."
         )
+
+    if table_layer is not None:
+        if table_layer not in [*sdata.tables]:
+            raise ValueError(f"table layer '{table_layer}' not found in 'sdata.tables'")
 
     # Make code also work if user would provide another iterable than List
     layer = list(layer) if isinstance(layer, Iterable) and not isinstance(layer, str) else [layer]
@@ -302,7 +319,9 @@ def plot_shapes(
                 img_layer=_layer if img_layer_type else None,
                 labels_layer=_layer if not img_layer_type else None,
                 shapes_layer=_shapes_layer,
+                table_layer=table_layer,
                 column=column,
+                region=region,
                 cmap=cmap,
                 channel=_channel,
                 z_slice=z_slice,
@@ -335,7 +354,9 @@ def _plot(
     img_layer: str | None = None,
     labels_layer: str | None = None,
     shapes_layer: str | None = "segmentation_mask_boundaries",
+    table_layer: str | None = None,
     column: str | None = None,
+    region: str | None = None,
     cmap: str | None = "magma",
     channel: int | str | None = None,
     z_slice: float | None = None,
@@ -366,10 +387,14 @@ def _plot(
         Labels layer to be plotted.
     shapes_layer : str or None, optional
         Specifies which shapes to plot. Default is 'segmentation_mask_boundaries'. If set to None, no shapes_layer is plot.
+    table_layer : str, optional
+        Table layer(s) to be plotted (i.e. to base cell colors on) if `column` is specified.
     column : str or None, optional
-        Column in `sdata.table.obs` or name in `sdata.table.var.index` to base cell colors on. If none provided, default color is used.
+        Column in `sdata.tables[table_layer].obs` or name in `sdata.tables[table_layer].var.index` to base cell colors on. If none provided, default color is used for plotting shapes.
+    region : str, optional
+        If `table_layer` and `column` is specified, this specifies the region in `sdata.tables[table_layer]` to be plotted (via `sdata.tables[table_layer].obs[_REGION_KEY]`).
     cmap : str, default='magma'
-        Colormap for column. Ignored if column is None, or if column + "_colors" is in `sdata.table.uns`.
+        Colormap for column. Ignored if column is None, or if column + "_colors" is in `sdata.tables[table_layer].uns`.
     channel : int or str or None, optional
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
         Ignored if img_layer is None and labels_layer is specified.
@@ -411,6 +436,10 @@ def _plot(
     ValueError
         - If both `img_layer` and `labels_layer` are specified.
         - If z_slice is specified, and it is not a z_slice in specified `img_layer` or `labels_layer`.
+        - If a `column` is specified, but no `table_layer`.
+        - If `table_layer` is specified, but `table_layer` is not a table in `sdata.tables`.
+        - If `sdata.tables[table_layer].obs[_REGION_KEY].cat.categories` contains more than on element, but `region` is not specified.
+        - If both `table_layer`, `column` and `region` are specified, but `region` is not in `sdata.tables[table_layer].obs[_REGION_KEY].cat.categories`.
 
     Notes
     -----
@@ -420,6 +449,9 @@ def _plot(
         raise ValueError(
             "Both img_layer and labels_layer is not None. " "Please specify either img_layer or labels_layer, not both."
         )
+
+    if column is not None and table_layer is None:
+        raise ValueError("Please specify a 'table_layer' if a 'column' is specified.")
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
     if img_layer is not None:
@@ -435,6 +467,10 @@ def _plot(
             f"No image layer or labels layer specified. "
             f"Plotting last image layer '{layer}' of the provided SpatialData object."
         )
+
+    if table_layer is not None:
+        if table_layer not in [*sdata.tables]:
+            raise ValueError(f"table layer '{table_layer}' not found in 'sdata.tables'")
 
     if shapes_layer_filtered is not None:
         shapes_layer_filtered = (
@@ -483,23 +519,69 @@ def _plot(
 
     if polygons is not None and column is not None:
         if not polygons.empty:
-            if column + "_colors" in sdata.table.uns:
+            mask = sdata.tables[table_layer].obs[_INSTANCE_KEY].isin(set(polygons.index.astype(int)))
+            adata_view = sdata.tables[table_layer][mask]
+            # sort both adata and polygons on _INSTANCE_KEY
+            sorted_index = adata_view.obs[_INSTANCE_KEY].sort_values().index
+            adata_view = adata_view[sorted_index]
+
+            # now do some checks on adata_view regarding the region.
+            regions_in_table = adata_view.obs[_REGION_KEY].cat.categories.to_list()
+            if len(regions_in_table) > 1:
+                if region is None:
+                    raise ValueError(
+                        f"'sdata.tables[{table_layer}]' contains more than one region in 'sdata.tables[{table_layer}].obs[ {_REGION_KEY} ]', please specify 'region'. Choose from the list '{regions_in_table}'."
+                    )
+            if region is not None:
+                if region not in regions_in_table:
+                    raise ValueError(
+                        f"Provided 'region' ({region}) is not one of the regions in 'sdata.tables[{table_layer}].obs[ {_REGION_KEY} ]'. Please choose a region from the list '({regions_in_table})'."
+                    )
+                else:
+                    adata_view = adata_view[adata_view.obs[_REGION_KEY] == region]
+
+            # sort polygons (their index corresponds to the _INSTANCE_KEY):
+            polygons.index = polygons.index.astype(int)
+            polygons = polygons.sort_index()
+
+            # could be that polygons contains more elements than adata_view. So we also filter in that direction, but with raising a warning
+            mask_polygons = polygons.index.isin(adata_view.obs[_INSTANCE_KEY])
+            if (~mask_polygons).any():
+                log.warning(
+                    f"There are '{sum( ~mask_polygons )}' cells in provided shapes_layer '{shapes_layer}' not found in 'sdata.tables[{table_layer}]' (linked through '{_INSTANCE_KEY}'), these cells will not be plotted."
+                )
+                polygons = polygons[mask_polygons]
+
+            if column + "_colors" in adata_view.uns:
                 cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
                     "new_map",
-                    sdata.table.uns[column + "_colors"],
-                    N=len(sdata.table.uns[column + "_colors"]),
+                    adata_view.uns[column + "_colors"],
+                    N=len(adata_view.uns[column + "_colors"]),
                 )
-            if column in sdata.table.obs.columns:
-                column = sdata.table[polygons.index, :].obs[column]
-            elif column in sdata.table.var.index:
-                column = sdata.table[polygons.index, :].X[:, np.where(sdata.table.var.index == column)[0][0]]
+            if column in adata_view.obs.columns:
+                column = adata_view.obs[[column]].values.flatten()
+            elif column in adata_view.var.index:
+                column = adata_view.X[:, np.where(adata_view.var.index == column)[0][0]]
             else:
                 log.info(
-                    f"The column '{column}' is not a column in the dataframe sdata.table.obs, "
-                    "nor is it a gene name (sdata.table.var.index). The plot is made without taking into account this value."
+                    f"The column '{column}' is not a column in the dataframe 'sdata.tables[{table_layer}].obs', "
+                    f"nor is it a gene/channel name (sdata.tables[{table_layer}].var.index). The plot is made without taking into account this value."
                 )
                 column = None
                 cmap = None
+
+            if column is not None or cmap is not None:
+                # sanity checks
+                assert adata_view.shape[0] == polygons.shape[0], (
+                    f"The number of observations in 'sdata.table[{table_layer}]' (for which 'sdata.tables[{table_layer}].obs[ {_REGION_KEY} ] == {region}') "
+                    f"is different than number of observation in 'sdata.shapes[{shapes_layer}]'."
+                )
+
+                assert np.array_equal(adata_view.obs[_INSTANCE_KEY].values, polygons.index.values), (
+                    f"'{_INSTANCE_KEY}'s of shapes layer 'sdata.shapes[{shapes_layer}]' are not the same as "
+                    f"the '{_INSTANCE_KEY}'s in 'sdata.table[{table_layer}].obs' (for which 'sdata.tables[{table_layer}].obs[ {_REGION_KEY} ] == {region}')."
+                )
+
         else:
             log.warning(f"Shapes layer '{shapes_layer}' was empty for crd {crd}.")
     else:

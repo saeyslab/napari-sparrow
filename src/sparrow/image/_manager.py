@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import shutil
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any
@@ -11,10 +9,10 @@ from dask.array import Array
 from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
 from spatial_image import SpatialImage
 from spatialdata import SpatialData, read_zarr
-from spatialdata._io import write_image, write_labels
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import BaseTransformation, set_transformation
 
+from sparrow.utils._io import _incremental_io_on_disk
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -92,10 +90,9 @@ class LayerManager(ABC):
             log.info(
                 f"Removing intermediate output layer '{intermediate_output_layer}' from .zarr store at path {sdata.path}."
             )
-            if os.path.isdir(sdata.path) and sdata.path.suffix == ".zarr":
-                location = sdata.locate_element(sdata[intermediate_output_layer])[0]
-                shutil.rmtree(os.path.join(sdata.path, location))
-                sdata = self.remove_from_sdata(sdata, intermediate_output_layer)
+            del sdata[intermediate_output_layer]
+            if sdata.is_backed():
+                sdata.delete_element_from_disk(intermediate_output_layer)
 
         return sdata
 
@@ -126,19 +123,6 @@ class LayerManager(ABC):
 
     @abstractmethod
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
-        pass
-
-    def remove_intermediate_layer(self, sdata: SpatialData, intermediate_output_layer: str) -> SpatialData:
-        log.info(
-            f"Removing intermediate output layer '{intermediate_output_layer}' from .zarr store at path {sdata.path}."
-        )
-        if os.path.isdir(sdata.path) and sdata.path.endswith(".zarr"):
-            shutil.rmtree(os.path.join(sdata.path, "images", intermediate_output_layer))
-            sdata = self.remove_from_sdata(sdata, intermediate_output_layer)
-        return sdata
-
-    @abstractmethod
-    def remove_from_sdata(self, sdata, name):
         pass
 
 
@@ -188,23 +172,28 @@ class ImageLayerManager(LayerManager):
         spatial_element: SpatialImage | MultiscaleSpatialImage,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.images[output_layer] = spatial_element
-        if sdata.is_backed():
-            elem_group = sdata._init_add_element(name=output_layer, element_type="images", overwrite=overwrite)
-            write_image(
-                image=sdata.images[output_layer],
-                group=elem_group,
-                name=output_layer,
-            )
-            sdata = read_zarr(sdata.path)
+        # given a spatial_element with some graph defined on it.
+        if output_layer in [*sdata.images]:
+            if sdata.is_backed():
+                if overwrite:
+                    sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=spatial_element)
+                else:
+                    raise ValueError(
+                        f"Attempting to overwrite sdata.images[{output_layer}], but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
+                    )
+            else:
+                sdata[output_layer] = spatial_element
+
+        else:
+            sdata[output_layer] = spatial_element
+            if sdata.is_backed():
+                sdata.write_element(output_layer)
+                sdata = read_zarr(sdata.path)
+
         return sdata
 
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> Array:
         return sdata.images[name].data
-
-    def remove_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
-        del sdata.images[name]
-        return sdata
 
 
 class LabelLayerManager(LayerManager):
@@ -250,20 +239,24 @@ class LabelLayerManager(LayerManager):
         spatial_element: SpatialImage | MultiscaleSpatialImage,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.labels[output_layer] = spatial_element
-        if sdata.is_backed():
-            elem_group = sdata._init_add_element(name=output_layer, element_type="labels", overwrite=overwrite)
-            write_labels(
-                labels=sdata.labels[output_layer],
-                group=elem_group,
-                name=output_layer,
-            )
-            sdata = read_zarr(sdata.path)
+        # given a spatial_element with some graph defined on it.
+        if output_layer in [*sdata.labels]:
+            if sdata.is_backed():
+                if overwrite:
+                    sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=spatial_element)
+                else:
+                    raise ValueError(
+                        f"Attempting to overwrite sdata.labels[{output_layer}], but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
+                    )
+            else:
+                sdata[output_layer] = spatial_element
+        else:
+            sdata[output_layer] = spatial_element
+            if sdata.is_backed():
+                sdata.write_element(output_layer)
+                sdata = read_zarr(sdata.path)
+
         return sdata
 
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> Array:
         return sdata.labels[name].data
-
-    def remove_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
-        del sdata.labels[name]
-        return sdata

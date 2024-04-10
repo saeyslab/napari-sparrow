@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 import itertools
+import uuid
 from collections import namedtuple
 
+import anndata as ad
 import dask
-import dask.array as da
 import dask.dataframe as dd
 import pandas as pd
-import rasterio
-import rasterio.features
-import spatialdata
-from affine import Affine
 from anndata import AnnData
 from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element, _get_translation
 from sparrow.shape._shape import _filter_shapes_layer
+from sparrow.table._table import _add_table_layer
 from sparrow.utils._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
@@ -24,90 +22,52 @@ log = get_pylogger(__name__)
 
 def allocate(
     sdata: SpatialData,
-    labels_layer: str = "segmentation_mask",
-    shapes_layer: str | None = "segmentation_mask_boundaries",
+    labels_layer: str,
     points_layer: str = "transcripts",
-    allocate_from_shapes_layer: bool = True,
+    output_layer: str = "table_transcriptomics",
     chunks: str | tuple[int, ...] | int | None = 10000,
+    append: bool = False,
+    overwrite: bool = False,
 ) -> SpatialData:
     """
-    Allocates transcripts to cells via provided shapes_layer and points_layer and returns updated SpatialData augmented with a table attribute holding the AnnData object with cell counts.
+    Allocates transcripts to cells via provided `labels_layer` and `points_layer` and returns updated SpatialData augmented with a table layer (`sdata.tables[output_layer]`) holding the AnnData object with cell counts.
 
     Parameters
     ----------
     sdata : SpatialData
         The SpatialData object.
     labels_layer : str, optional
-        The layer in `sdata` that contains the masks corresponding to the shapes layer
-        (possibly before performing operation on the shapes layer, such as calculating voronoi expansion).
-        Only used for determining offset if `allocate_from_shapes_layer` is True.
-    shapes_layer : str, optional
-        The layer in `sdata` that contains the boundaries of the segmentation mask, by default "segmentation_mask_boundaries".
-        Required if `allocate_from_shapes_layer` is True.
+        The labels layer (i.e. segmentation mask) in `sdata` to be used to allocate the transcripts to cells.
     points_layer: str, optional
-        The layer in `sdata` that contains the transcripts.
-    allocate_from_shapes_layer: bool, optional
-        Whether to allocate transcripts using `shapes_layer` or `labels_layer`.
-        Only supported if `shapes_layer` contains 2D polygons.
+        The points layer in `sdata` that contains the transcripts.
+    output_layer: str, optional
+        The table layer in `sdata` in which to save the AnnData object with the transcripts counts per cell.
     chunks : Optional[str | int | tuple[int, ...]], default=10000
         Chunk sizes for processing. Can be a string, integer or tuple of integers.
         Consider setting the chunks to a relatively high value to speed up processing
         (>10000, or only chunk in z-dimension if data is 3D, and one z-slice fits in memory),
         taking into account the available memory of your system.
+    append: bool, optional.
+        If set to True, and the `labels_layer` does not yet exist as a `_REGION_KEY` in `sdata.tables[output_layer].obs`,
+        the transcripts counts obtained during the current function call will be appended (along axis=0) to any existing transcript count values.
+        within the SpatialData object's table attribute. If False, and overwrite is set to True any existing data in `sdata.tables[output_layer]` will be overwritten by the newly extracted transcripts counts.
+    overwrite : bool, default=False
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
 
     Returns
     -------
-        An updated SpatialData object with the added table attribute (AnnData object).
+        An updated SpatialData object with an AnnData table added to `sdata.tables` at slot `output_layer`.
     """
-    if shapes_layer is not None:
-        sdata[shapes_layer].index = sdata[shapes_layer].index.astype("str")
-
     if labels_layer not in [*sdata.labels]:
         raise ValueError(
             f"Provided labels layer '{labels_layer}' not in 'sdata', please specify a labels layer from '{[*sdata.labels]}'"
         )
 
-    # need to do this transformation,
-    # because the polygons have same offset coords.x0 and coords.y0 as in segmentation_mask
     Coords = namedtuple("Coords", ["x0", "y0"])
     s_mask = _get_spatial_element(sdata, layer=labels_layer)
     coords = Coords(*_get_translation(s_mask))
 
-    if allocate_from_shapes_layer:
-        has_z = sdata.shapes[shapes_layer]["geometry"].apply(lambda geom: geom.has_z)
-        if any(has_z):
-            raise ValueError(
-                "Allocating transcripts from a shapes layer is not supported "
-                "for shapes layers containing 3D polygons. "
-                "Please consider setting 'allocate_from_shapes_layer' to False, "
-                "and passing the labels_layer corresponding to the shapes_layer."
-            )
-
-        if s_mask.ndim != 2:
-            raise ValueError(
-                "Allocating transcripts from a shapes layer is not supported "
-                f"if corresponding labels_layer {labels_layer} is not 2D."
-            )
-
-        transform = Affine.translation(coords.x0, coords.y0)
-
-        log.info("Creating masks from polygons.")
-        masks = rasterio.features.rasterize(
-            zip(
-                sdata[shapes_layer].geometry,
-                sdata[shapes_layer].index.values.astype(float),
-            ),
-            out_shape=[s_mask.shape[0], s_mask.shape[1]],
-            dtype="uint32",
-            fill=0,
-            transform=transform,
-        )
-        log.info(f"Created masks with shape {masks.shape}.")
-
-        masks = da.from_array(masks)
-
-    else:
-        masks = s_mask.data
+    masks = s_mask.data
 
     if chunks is not None:
         masks = masks.rechunk(chunks)
@@ -117,7 +77,7 @@ def allocate(
     if masks.ndim == 2:
         masks = masks[None, ...]
 
-    ddf = sdata[points_layer]
+    ddf = sdata.points[points_layer]
 
     log.info("Calculating cell counts.")
 
@@ -203,23 +163,44 @@ def allocate(
     log.info("Creating AnnData object.")
 
     # Create the anndata object
-    cell_counts.index = cell_counts.index.map(str)
-    adata = AnnData(cell_counts[cell_counts.index != "0"])
-    coordinates.index = coordinates.index.map(str)
-    adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
-    adata.obs[_INSTANCE_KEY] = adata.obs.index.astype(int)
+    _cells_id = cell_counts.index.astype(int)  # index of cell_counts should already be an int
+    _uuid_value = str(uuid.uuid4())[:8]
+    cell_counts.index = cell_counts.index.map(lambda x: f"{x}_{labels_layer}_{_uuid_value}")
+    cell_counts.index.name = _CELL_INDEX
 
-    # currently only support adding only one field of view
+    adata = AnnData(cell_counts)
+    adata.obs[_INSTANCE_KEY] = _cells_id
     adata.obs[_REGION_KEY] = pd.Categorical([labels_layer] * len(adata.obs))
+    adata = adata[adata.obs[_INSTANCE_KEY] != 0]
 
-    if sdata.table:
-        del sdata.table
+    adata.obsm["spatial"] = coordinates[coordinates.index != 0].values
 
-    sdata.table = spatialdata.models.TableModel.parse(
-        adata, region_key=_REGION_KEY, region=[labels_layer], instance_key=_INSTANCE_KEY
+    if append:
+        region = []
+        if output_layer in [*sdata.tables]:
+            if labels_layer in sdata.tables[output_layer].obs[_REGION_KEY].cat.categories:
+                raise ValueError(
+                    f"'{labels_layer}' already exists as a region in the 'sdata.tables[{output_layer}]' object. Please choose a different labels layer, choose a different 'output_layer' or set append to False and overwrite to True to overwrite the existing table."
+                )
+            adata = ad.concat([sdata.tables[output_layer], adata], axis=0)
+            # get the regions already in sdata, and append the new one
+            region = sdata.tables[output_layer].obs[_REGION_KEY].cat.categories.to_list()
+        region.append(labels_layer)
+
+    else:
+        region = [labels_layer]
+
+    sdata = _add_table_layer(
+        sdata,
+        adata=adata,
+        output_layer=output_layer,
+        region=region,
+        overwrite=overwrite,
     )
 
-    indexes_to_keep = sdata.table.obs[_INSTANCE_KEY].values.astype(int)
+    mask = sdata.tables[output_layer].obs[_REGION_KEY].isin(region)
+    indexes_to_keep = sdata.tables[output_layer].obs[mask][_INSTANCE_KEY].values.astype(int)
+
     sdata = _filter_shapes_layer(
         sdata,
         indexes_to_keep=indexes_to_keep,
