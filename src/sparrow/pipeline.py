@@ -280,6 +280,7 @@ class SparrowPipeline:
                 sdata,
                 radius=self.cfg.segmentation.voronoi_radius,
                 shapes_layer=self.cfg.segmentation.output_shapes_layer,
+                output_layer="expanded_cells" + str(self.cfg.segmentation.voronoi_radius),
             )
             sp.pl.segment(
                 sdata=sdata,
