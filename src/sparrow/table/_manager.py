@@ -15,26 +15,35 @@ class TableLayerManager:
         sdata: SpatialData,
         adata: AnnData,
         output_layer: str,
-        region: list[str],  # list of labels_layers , TODO, check what to do with shapes layers
+        region: list[str] | None,  # list of labels_layers , TODO, check what to do with shapes layers
         overwrite: bool = False,
     ) -> SpatialData:
-        assert (
-            _REGION_KEY in adata.obs.columns
-        ), f"Provided 'AnnData' object should contain a column '{_REGION_KEY}' in 'adata.obs'. Linking the observations to a labels layer in 'sdata'."
-        assert (
-            _INSTANCE_KEY in adata.obs.columns
-        ), f"Provided 'AnnData' object should contain a column '{_INSTANCE_KEY}' in 'adata.obs'. Linking the observations to a labels layer in 'sdata'."
+        if region is not None:
+            assert (
+                _REGION_KEY in adata.obs.columns
+            ), f"Provided 'AnnData' object should contain a column '{_REGION_KEY}' in 'adata.obs'. Linking the observations to a labels layer in 'sdata'."
+            assert (
+                _INSTANCE_KEY in adata.obs.columns
+            ), f"Provided 'AnnData' object should contain a column '{_INSTANCE_KEY}' in 'adata.obs'. Linking the observations to a labels layer in 'sdata'."
 
-        # need to remove spatialdata_attrs, otherwise parsing gives error (TableModel.parse will add spatialdata_attrs back)
-        if "spatialdata_attrs" in adata.uns.keys():
-            adata.uns.pop("spatialdata_attrs")
+            # need to remove spatialdata_attrs, otherwise parsing gives error (TableModel.parse will add spatialdata_attrs back)
+            if "spatialdata_attrs" in adata.uns.keys():
+                adata.uns.pop("spatialdata_attrs")
 
-        adata = spatialdata.models.TableModel.parse(
-            adata,
-            region_key=_REGION_KEY,
-            region=region,
-            instance_key=_INSTANCE_KEY,
-        )
+            adata = spatialdata.models.TableModel.parse(
+                adata,
+                region_key=_REGION_KEY,
+                region=region,
+                instance_key=_INSTANCE_KEY,
+            )
+        else:
+            if "spatialdata_attrs" in adata.uns.keys():
+                adata.uns.pop("spatialdata_attrs")
+
+            adata = spatialdata.models.TableModel.parse(
+                adata,
+            )
+
         # given an adata.
         if output_layer in [*sdata.tables]:
             if sdata.is_backed():
