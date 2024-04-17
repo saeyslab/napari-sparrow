@@ -4,11 +4,12 @@ from dask.array import Array
 from numpy.typing import NDArray
 
 
-def _nonzeropercentile(array: Array, q: int) -> Array:
+def _nonzero_nonnan_percentile(array: Array, q: int) -> Array:
     """Computes the percentile of a dask array excluding all zeros."""
     array = array.flatten()
-    non_zero_mask = array != 0
-    array = da.compress(non_zero_mask, array)
+    non_zero_non_nan_mask = (array != 0) & (~da.isnan(array))
+
+    array = da.compress(non_zero_non_nan_mask, array)
 
     return da.percentile(array, q=q)[0]
 
