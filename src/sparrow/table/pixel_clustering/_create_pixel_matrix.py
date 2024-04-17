@@ -108,9 +108,9 @@ def create_pixel_matrix(
     if q_sum is not None:
         results_norm_sum_percentile = []
         for _arr_sum in _arr_sum_list:
-            # using da.percentile reproduces exactly results of ark, but nonzero_nonnan feels like a better choice (case where there is a lot of zero in image)
-            norm_sum_percentile = da.percentile(_arr_sum.flatten(), q=q_sum)
-            # norm_sum_percentile = _nonzero_nonnan_percentile(_arr_sum, q=q_sum)
+            # using da.percentile reproduces exactly results of ark, but nonzero_nonnan feels like a better choice (i.e. case where there is a lot of zero in image)
+            # norm_sum_percentile = da.percentile(_arr_sum.flatten(), q=q_sum)
+            norm_sum_percentile = _nonzero_nonnan_percentile(_arr_sum, q=q_sum)
             results_norm_sum_percentile.append(norm_sum_percentile)
         # pixel_thresh_val in ark analysis, if multiple images, we take average over all norm_sum_percentile for all images, and we use that value later on.
         norm_sum_percentile = da.stack(results_norm_sum_percentile, axis=0)
