@@ -12,11 +12,15 @@ from spatialdata import SpatialData
 from sparrow.image._image import _get_spatial_element
 from sparrow.table._table import _add_table_layer
 from sparrow.table.pixel_clustering._utils import _get_non_nan_pixel_values_and_location, _nonzero_nonnan_percentile
+from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
 
 
 def create_pixel_matrix(
     sdata: SpatialData,
-    img_layer: str,  # should allow to specify a list of img_layers here to create the pixel matrix (case where you have multiple fov's).
+    img_layer: str
+    | Iterable[
+        str
+    ],  # should allow to specify a list of img_layers here to create the pixel matrix (case where you have multiple fov's).
     output_layer: str,
     channels: int | str | Iterable[int] | Iterable[str] | None = None,
     q: float | None = 99,  # if specified, this will be used for normalization
@@ -34,7 +38,8 @@ def create_pixel_matrix(
 ) -> SpatialData:
     # setting q_sum =None, and norm_sum=False -> then there will be no data leakage.
     assert 0 < fraction <= 1, "Value must be between 0 and 1"
-    se_image = _get_spatial_element(sdata, layer=img_layer)
+    img_layer = list(img_layer) if isinstance(img_layer, Iterable) and not isinstance(img_layer, str) else [img_layer]
+    se_image = _get_spatial_element(sdata, layer=img_layer[0])
 
     if channels is not None:
         channels = list(channels) if isinstance(channels, Iterable) and not isinstance(channels, str) else [channels]
@@ -42,48 +47,74 @@ def create_pixel_matrix(
         if channels is None:
             channels = se_image.c.data
 
-    arr = se_image.sel(c=channels).data
+    _arr_list = []
+    for i, _img_layer in enumerate(img_layer):
+        se_image = _get_spatial_element(sdata, layer=_img_layer)
+        arr = se_image.sel(c=channels).data
+        if i == 0:
+            _array_dim = arr.ndim
+        else:
+            assert (
+                _array_dim == arr.ndim
+            ), "Image layers specified via parameter `img_layer` should all have same number of dimensions."
 
-    to_squeeze = False
-    if arr.ndim == 3:
-        # add trivial z dimension for 2D case
-        arr = arr[:, None, ...]
-        to_squeeze = True
+        to_squeeze = False
+        if arr.ndim == 3:
+            # add trivial z dimension for 2D case
+            arr = arr[:, None, ...]
+            to_squeeze = True
+        _arr_list.append(arr)
 
-    # fix chunk parameter
-    if chunks is not None:
-        if not isinstance(chunks, (int, str)):
-            assert len(chunks) == arr.ndim - 2, "Please (only) provide chunks for ( 'y', 'x')."
-            chunks = (arr.shape[0], arr.shape[1], chunks[0], chunks[1])
-        elif isinstance(chunks, int):
-            chunks = (arr.shape[0], arr.shape[1], chunks, chunks)
+    for i in range(len(_arr_list)):
+        # fix chunk parameter
+        if chunks is not None:
+            if not isinstance(chunks, (int, str)):
+                assert len(chunks) == _arr_list[i].ndim - 2, "Please (only) provide chunks for ( 'y', 'x')."
+                _chunks = (_arr_list[i].shape[0], _arr_list[i].shape[1], chunks[0], chunks[1])
+            elif isinstance(chunks, int):
+                _chunks = (_arr_list[i].shape[0], _arr_list[i].shape[1], chunks, chunks)
+            elif isinstance(chunks, str):
+                _chunks = chunks
 
-    if chunks is not None:
-        arr = arr.rechunk(chunks)
+        if chunks is not None:
+            _arr_list[i] = _arr_list[i].rechunk(_chunks)
 
-    assert (
-        arr.numblocks[0] == 1 and arr.numblocks[1] == 1
-    ), "The number of blocks in 'c' and 'z' dimension should be equal to 1. Please specify the chunk parameter, to allow rechunking, e.g. `chunks=(1024,1024)`."
+        assert (
+            _arr_list[i].numblocks[1] == 1 and _arr_list[i].numblocks[2] == 1
+        ), "The number of blocks in 'c' and 'z' dimension should be equal to 1. Please specify the chunk parameter, to allow rechunking, e.g. `chunks=(1024,1024)`."
 
-    # 1) calculate percentiles (excluding nan and 0 from calculation)
     if q is not None:
-        arr_percentile = _nonzero_nonnan_percentile_axis_0(arr, q=q)
-    # for multiple img_layer, in ark one uses np.mean( arr_percentile ) as the percentile to normalize
+        results_arr_percentile = []
+        for _arr in _arr_list:
+            # 1) calculate percentiles (excluding nan and 0 from calculation)
+            arr_percentile = _nonzero_nonnan_percentile_axis_0(_arr, q=q)
+            results_arr_percentile.append(arr_percentile)
+        arr_percentile = da.stack(results_arr_percentile, axis=0)
+        arr_percentile_mean = da.mean(arr_percentile, axis=0)  # mean over all images
+        # for multiple img_layer, in ark one uses np.mean( arr_percentile ) as the percentile to normalize
 
     # 2) calculate norm sum percentile for img_layer
     # now normalize by percentile (percentile for each channel separate)
     if q is not None:
-        arr = arr / da.asarray(arr_percentile[..., None, None, None])
+        for i in range(len(_arr_list)):
+            _arr_list[i] = _arr_list[i] / da.asarray(arr_percentile_mean[..., None, None, None])
 
-    # sum over all channels
-    arr_sum = da.sum(arr, axis=0)
+    # sum over all channels for each image
+    _arr_sum_list = []
+    for _arr in _arr_list:
+        _arr_sum_list.append(da.sum(_arr, axis=0))
     # norm_sum_percentile = da.percentile(arr_norm_sum.flatten(), q=q_norm_sum)
     # in ark_analysis, np.quantile is used, which uses 0's for quantile computation, so equivalent would be da.percentile, not sure if we should also use it instead of _nonzeropercentile
     if q_sum is not None:
-        norm_sum_percentile = _nonzero_nonnan_percentile(
-            arr_sum, q=q_sum
-        )  # pixel_thresh_val in ark analysis, if multiple images, we take average over all norm_sum_percentile for all images, and we use that value later on.
-        # TODO also works without compute here, but then in adata, the uncomputed result is saved as a dask task graph, so maybe we should not save this value in adata as a workaround.
+        results_norm_sum_percentile = []
+        for _arr_sum in _arr_sum_list:
+            # using da.percentile reproduces exactly results of ark, but nonzero_nonnan feels like a better choice (case where there is a lot of zero in image)
+            norm_sum_percentile = da.percentile(_arr_sum.flatten(), q=q_sum)
+            # norm_sum_percentile = _nonzero_nonnan_percentile(_arr_sum, q=q_sum)
+            results_norm_sum_percentile.append(norm_sum_percentile)
+        # pixel_thresh_val in ark analysis, if multiple images, we take average over all norm_sum_percentile for all images, and we use that value later on.
+        norm_sum_percentile = da.stack(results_norm_sum_percentile, axis=0)
+        norm_sum_percentile = da.mean(norm_sum_percentile, axis=0)
 
     # 3) gaussian blur
     if sigma is not None:
@@ -91,48 +122,70 @@ def create_pixel_matrix(
         assert (
             len(sigma) == len(channels)
         ), f"If 'sigma' is provided as a list, it should match the number of channels in '{se_image}', or the number of channels provided via the 'channels' parameter '{channels}'."
-        arr = _gaussian_blur(arr, sigma=sigma)
-        # recompute the sum
-        arr_sum = da.sum(arr, axis=0)
+        # gaussian blur for each image separately
+        for i in range(len(_arr_list)):
+            _arr_list[i] = _gaussian_blur(_arr_list[i], sigma=sigma)
+        # recompute the sum over all channels
+        _arr_sum_list = []
+        for _arr in _arr_list:
+            _arr_sum_list.append(da.sum(_arr, axis=0))
 
-    # sanity update to make sure that if pixel at certain location in a channel is nan, all pixels at that location for all channels are set to nan.
-    # use fact that sum is nan if one of the values is nan along that axis
-    arr = da.where(~da.isnan(arr_sum), arr, np.nan)
+    # sanity check
+    assert len(_arr_sum_list) == len(_arr_list) == len(img_layer)
+    results_arr_sampled = []
+    results_arr_percentile_post_norm = []
+    _region_keys = []
+    for i in range(len(_arr_list)):
+        # sanity update to make sure that if pixel at certain location in a channel is nan, all pixels at that location for all channels are set to nan.
+        # use fact that sum is nan if one of the values is nan along that axis
+        _arr_list[i] = da.where(~da.isnan(_arr_sum_list[i]), _arr_list[i], np.nan)
 
-    # 4) normalize
-    # set pixel values for which sum over all channels are below norm_sum_percentile to NaN
-    if q_sum is not None:
-        arr = da.where(arr_sum > norm_sum_percentile, arr, np.nan)
-    if norm_sum:
-        # recompute the sum (previous step puts all pixel positions below threshold to nan), discard the nans for the sum
-        arr_sum = da.nansum(arr, axis=0)
-        # for each pixel position, divide by its sum over all channels, if sum is 0 (i.e. if all channels give zero at this pixel position, set it to nan)
-        arr = da.where(arr_sum > 0, arr / arr_sum, np.nan)
+        # 4) normalize
+        # set pixel values for which sum over all channels are below norm_sum_percentile to NaN
+        if q_sum is not None:
+            _arr_list[i] = da.where(_arr_sum_list[i] > norm_sum_percentile, _arr_list[i], np.nan)
+        if norm_sum:
+            # recompute the sum (previous step puts all pixel positions below threshold to nan), discard the nans for the sum
+            _arr_sum = da.nansum(_arr_list[i], axis=0)
+            # for each pixel position, divide by its sum over all channels, if sum is 0 (i.e. if all channels give zero at this pixel position, set it to nan)
+            _arr_list[i] = da.where(_arr_sum > 0, _arr_list[i] / _arr_sum, np.nan)
 
-    arr_percentile_post_norm = _nonzero_nonnan_percentile_axis_0(arr, q=q_post)
+        arr_percentile_post_norm = _nonzero_nonnan_percentile_axis_0(_arr_list[i], q=q_post)
+        results_arr_percentile_post_norm.append(arr_percentile_post_norm)
 
-    # Now sample from the normalized pixel matrix.
-    arr = da.map_blocks(
-        _sampling_function,
-        arr,
-        seed=seed,
-        fraction=fraction,
-    )
+        # Now sample from the normalized pixel matrix.
+        _arr_list[i] = da.map_blocks(
+            _sampling_function,
+            _arr_list[i],
+            seed=seed,
+            fraction=fraction,
+        )
 
-    arr_sampled = _get_non_nan_pixel_values_and_location(arr)
+        _arr_sampled = _get_non_nan_pixel_values_and_location(_arr_list[i])
+        results_arr_sampled.append(_arr_sampled)
+        _region_keys.extend(_arr_sampled.shape[0] * [img_layer[i]])
+    arr_sampled = np.row_stack(results_arr_sampled)
+    arr_percentile_post_norm = da.stack(results_arr_percentile_post_norm, axis=0)
 
     # create anndata object
     var = pd.DataFrame(index=channels)
-    var.index.name = "channels"  # maybe add key
+    var.index.name = "channels"
     var.index = var.index.map(str)
 
     adata = AnnData(X=arr_sampled[:, :-3], var=var)
-    # adata.uns[f"{img_layer}_percentile_{q_norm_sum}_norm_sum"] = norm_sum_percentile
-    if q is not None:
-        adata.var[f"{img_layer}_percentile_{q}"] = arr_percentile
-    adata.var[f"{img_layer}_post_norm_percentile_{q_post}"] = arr_percentile_post_norm
 
-    # for multile images, also save np.mean over adata.var[f"{img_layer}_post_norm_percentile_{q_post_norm}"] -> use it to normalize
+    if q is not None:
+        for _img_layer, _arr_percentile in zip(img_layer, arr_percentile):
+            adata.var[f"{_img_layer}_percentile_{q}"] = _arr_percentile
+        adata.var[f"mean_percentile_{q}"] = arr_percentile_mean
+    for _img_layer, _arr_percentile_post_norm in zip(img_layer, arr_percentile_post_norm):
+        adata.var[f"{_img_layer}_post_norm_percentile_{q_post}"] = _arr_percentile_post_norm
+    # use this one to normalize before pixel clustering
+    adata.var[f"mean_post_norm_percentile_{q}"] = da.mean(arr_percentile_post_norm, axis=0)
+
+    adata.obs[_INSTANCE_KEY] = np.arange(arr_sampled.shape[0])
+    adata.obs[_REGION_KEY] = pd.Categorical(_region_keys)  # should it also be possible to link a labels layer?
+
     # add coordinates to anndata
     if to_squeeze:
         # 2D case, only save y,x position
@@ -141,9 +194,9 @@ def create_pixel_matrix(
         # 3D case, save z,y,x position
         adata.obsm["spatial"] = arr_sampled[:, -3:]
 
-    if to_squeeze:
-        # arr_normalized is the sampled array
-        arr = arr.squeeze(1)
+    # if to_squeeze:
+    # arr_normalized is the sampled array
+    #    arr = arr.squeeze(1)
 
     # sdata = _add_image_layer(
     #    sdata,
@@ -157,7 +210,7 @@ def create_pixel_matrix(
         sdata,
         adata=adata,
         output_layer=output_layer,
-        region=None,
+        region=img_layer,
         overwrite=overwrite,
     )
 
