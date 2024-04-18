@@ -8,8 +8,9 @@ from dask.array import Array
 from dask_image.ndfilters import gaussian_filter
 from numpy.typing import NDArray
 from spatialdata import SpatialData
+from spatialdata.models.models import ScaleFactors_t
 
-from sparrow.image._image import _get_spatial_element
+from sparrow.image._image import _add_image_layer, _get_spatial_element, _get_transformation
 from sparrow.table._table import _add_table_layer
 from sparrow.table.pixel_clustering._utils import _get_non_nan_pixel_values_and_location, _nonzero_nonnan_percentile
 from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
@@ -17,28 +18,82 @@ from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
 
 def create_pixel_matrix(
     sdata: SpatialData,
-    img_layer: str
-    | Iterable[
-        str
-    ],  # should allow to specify a list of img_layers here to create the pixel matrix (case where you have multiple fov's).
-    output_layer: str,
+    img_layer: str | Iterable[str],
+    output_table_layer: str,
+    output_img_layer: str | Iterable[str] | None = None,
     channels: int | str | Iterable[int] | Iterable[str] | None = None,
-    q: float | None = 99,  # if specified, this will be used for normalization
-    q_sum: float
-    | None = 5,  # if sum of channels is below this quantile, set pixel values at this position for all channels equal to 0.
-    q_post: float = 99.9,  # this will only be used for calculating percentiles of postprocessed channel matrix (e.g. after normalization, gaussian blur,...), will not affect pixel matrix
-    sigma: float
-    | Iterable[float]
-    | None = 2,  # set to 0 for specific channel to omit gaussian blur for specific channel. Set to None to omit gaussian blur altogether
-    norm_sum: bool = True,  # normalize by dividing each channel by the sum over all channels
+    q: float | None = 99,
+    q_sum: float | None = 5,
+    q_post: float = 99.9,
+    sigma: float | Iterable[float] | None = 2,
+    norm_sum: bool = True,
     fraction: float = 0.2,
-    chunks: str | int | tuple[int, int] | None = None,  # chunks in y and x dimension if a tuple, for rechunking.
+    chunks: str | int | tuple[int, int] | None = None,
     seed: int = 10,
+    scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
-    # setting q_sum =None, and norm_sum=False -> then there will be no data leakage.
+    """
+    Processes image layers specified in `img_layer` to create a pixel matrix and optionally normalizes and filters this matrix based on various quantile and gaussian blur parameters. The results are added to `sdata` as specified in `output_table_layer` and optionally in `output_img_layer`.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object containing the image data.
+    img_layer : str | Iterable[str]
+        The image layer(s) from `sdata` to process. This can be a single layer or a list of layers, e.g., when multiple fields of view are available.
+    output_table_layer : str
+        The name of the layer in `sdata.tables` where the resultant pixel matrix will be stored.
+    output_img_layer : str | Iterable[str] | None, optional
+        If specified, the preprocessed images are saved under this layer in `sdata`.
+    channels : int | str | Iterable[int] | Iterable[str] | None, optional
+        Specifies the channels to be included in the processing.
+    q : float | None, optional
+        Quantile used for normalization. If specified, pixel values are normalized by this quantile across the specified channels.
+        Each channel is normalized by its own calculated quantile.
+    q_sum : float | None, optional
+        If the sum of the channel values at a pixel is below this quantile, the pixel values across all channels are set to NaN.
+    q_post : float, optional
+        Quantile used for percentile calculations on the postprocessed channel matrix. Does not affect the resulting pixel matrix.
+    sigma : float | Iterable[float] | None, optional
+        Gaussian blur parameter for each channel. Use `0` to omit blurring for specific channels or `None` to skip blurring altogether.
+    norm_sum : bool, optional
+        If `True`, each channel is normalized by the sum of all channels at each pixel.
+    fraction : float, optional
+        Fraction of the data to sample for creation of the pixel matrix, useful for very large datasets.
+    chunks : str | int | tuple[int, int] | None, optional
+        Chunk sizes for processing. If provided as a tuple, these are the chunk sizes that will be used for rechunking in the y and x dimensions.
+    seed : int, optional
+        Seed for random operations, ensuring reproducibility when sampling data.
+    scale_factors
+        Scale factors to apply for multiscale. Ignored if `output_img_layer` is set to None.
+    overwrite : bool, optional
+        If `True`, overwrites existing data in the specified `output_table_layer` and `output_img_layer`.
+
+    Notes
+    -----
+    To avoid data leakage:
+     - in the single fov case, to prevent data leakage between channels, one should set `q_sum`==None and `norm_sum`==False, the only normalization that will be performed will then be a division by the `q` quantile value per channel.
+     - in the multiple fov case, both `q_sum`, `norm_sum` and `q` should be set to None to prevent data leakage both between channels and between images. In the multiple fov case one could opt for creating the pixel matrix for each fov individually, and then merge the resulting tables.
+
+    Returns
+    -------
+    SpatialData
+        An updated SpatialData object with the newly created pixel matrix and optionally preprocessed image data stored in specified layers.
+    """
+    # setting q_sum =None, and norm_sum=False -> then there will be no data leakage in single fov case.
     assert 0 < fraction <= 1, "Value must be between 0 and 1"
     img_layer = list(img_layer) if isinstance(img_layer, Iterable) and not isinstance(img_layer, str) else [img_layer]
+    if output_img_layer is not None:
+        output_img_layer = (
+            list(output_img_layer)
+            if isinstance(output_img_layer, Iterable) and not isinstance(output_img_layer, str)
+            else [output_img_layer]
+        )
+        assert len(output_img_layer) == len(
+            img_layer
+        ), "The number of `output_img_layer` specified should be the equal to the the number of `img_layer` specified."
+
     se_image = _get_spatial_element(sdata, layer=img_layer[0])
 
     if channels is not None:
@@ -48,8 +103,10 @@ def create_pixel_matrix(
             channels = se_image.c.data
 
     _arr_list = []
+    _transformations = []
     for i, _img_layer in enumerate(img_layer):
         se_image = _get_spatial_element(sdata, layer=_img_layer)
+        _transformations.append(_get_transformation(se_image))
         arr = se_image.sel(c=channels).data
         if i == 0:
             _array_dim = arr.ndim
@@ -89,7 +146,9 @@ def create_pixel_matrix(
             # 1) calculate percentiles (excluding nan and 0 from calculation)
             arr_percentile = _nonzero_nonnan_percentile_axis_0(_arr, q=q)
             results_arr_percentile.append(arr_percentile)
-        arr_percentile = da.stack(results_arr_percentile, axis=0)
+        arr_percentile = da.stack(
+            results_arr_percentile, axis=0
+        )  # TODO: probably a persist of arr_percentile would be usefull
         arr_percentile_mean = da.mean(arr_percentile, axis=0)  # mean over all images
         # for multiple img_layer, in ark one uses np.mean( arr_percentile ) as the percentile to normalize
 
@@ -153,6 +212,25 @@ def create_pixel_matrix(
         arr_percentile_post_norm = _nonzero_nonnan_percentile_axis_0(_arr_list[i], q=q_post)
         results_arr_percentile_post_norm.append(arr_percentile_post_norm)
 
+        # save the preprocessed images, in this way we get the preprocessed images from which we sample
+        if output_img_layer is not None:
+            sdata = _add_image_layer(
+                sdata,
+                arr=_arr_list[i].squeeze(1) if to_squeeze else _arr_list[i],
+                output_layer=output_img_layer[i],
+                transformation=_transformations[i],
+                scale_factors=scale_factors,
+                c_coords=channels,
+                overwrite=overwrite,
+            )
+
+            se_output_image = _get_spatial_element(sdata, layer=output_img_layer[i])
+            _arr_list[i] = (
+                se_output_image.sel(c=channels).data[:, None, ...]
+                if to_squeeze
+                else se_output_image.sel(c=channels).data
+            )
+
         # Now sample from the normalized pixel matrix.
         _arr_list[i] = da.map_blocks(
             _sampling_function,
@@ -209,7 +287,7 @@ def create_pixel_matrix(
     sdata = _add_table_layer(
         sdata,
         adata=adata,
-        output_layer=output_layer,
+        output_layer=output_table_layer,
         region=img_layer,
         overwrite=overwrite,
     )
