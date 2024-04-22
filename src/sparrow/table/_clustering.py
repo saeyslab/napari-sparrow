@@ -112,6 +112,102 @@ def kmeans(
 
     return sdata
 
+def flowsom(
+    sdata: SpatialData,
+    labels_layer: list[str],
+    table_layer: str,
+    output_layer: str,
+    calculate_umap: bool = True,
+    rank_genes: bool = True,  # TODO move this to other function
+    n_neighbors: int = 35,  # ignored if calculate_umap=False
+    n_pcs: int = 17,  # ignored if calculate_umap=False
+    n_clusters: int = 5,
+    index_names_var: Iterable[str] | None = None,
+    index_positions_var: Iterable[int] | None = None,
+    random_state: int = 100,
+    overwrite: bool = False,
+    **kwargs,  # keyword arguments for _kmeans
+):
+    """
+    Applies KMeans clustering on the SpatialData object with optional UMAP calculation and gene ranking.
+
+    This function executes the KMeans clustering algorithm (via `sklearn.cluster.KMeans`) on spatial data encapsulated by a SpatialData object.
+    It optionally computes a UMAP (Uniform Manifold Approximation and Projection) for dimensionality reduction
+    and ranks genes based on their contributions to the clustering. The clustering results, along with optional
+    UMAP and gene ranking, are added to the `sdata.table` for downstream analysis.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The input SpatialData object.
+    labels_layer : str or Iterable[str]
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        Note that if `output_layer` is equal to `table_layer` and overwrite is True,
+        cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
+        If a list of labels layers is provided, they will therefore be clustered together (e.g. multiple samples).
+    table_layer: str, optional
+        The table layer in `sdata` on which to perform clustering on.
+    output_layer: str, optional
+        The output table layer in `sdata` to which table layer with results of clustering will be written.
+    calculate_umap : bool, default=True
+        If True, calculates a UMAP via `scanpy.tl.umap` for visualization of computed clusters.
+    rank_genes : bool, default=True
+        If True, ranks genes based on their contributions to the clusters via `scanpy.tl.rank_genes_groups`. TODO: To be moved to a separate function.
+    n_neighbors : int, default=35
+        The number of neighbors to consider when calculating neighbors via `scanpy.pp.neighbors`. Ignored if `calculate_umap` is False.
+    n_pcs : int, default=17
+        The number of principal components to use when calculating neighbors via `scanpy.pp.neighbors`. Ignored if `calculate_umap` is False.
+    n_clusters : int, default=5
+        The number of clusters to form.
+    key_added : str, default="kmeans"
+        The key under which the clustering results are added to the SpatialData object (in `sdata.tables[table_layer].obs`).
+    index_names_var:
+        List of index names to subset in `sdata.tables[table_layer].var`. If None, `index_positions_var` will be used if not None.
+    index_positions_var:
+        List of integer positions to subset in `sdata.tables[table_layer].var`. Used if `index_names_var` is None.
+    random_state : int, default=100
+        A random state for reproducibility of the clustering.
+    overwrite : bool, default=False
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
+    **kwargs
+        Additional keyword arguments passed to the KMeans algorithm.
+
+    Returns
+    -------
+    SpatialData
+        The input `sdata` with the clustering results added.
+
+    Notes
+    -----
+    - The function adds a table layer, adding clustering labels, and optionally UMAP coordinates
+      and gene rankings, facilitating downstream analyses and visualization.
+    - Gene ranking based on cluster contributions is intended for identifying marker genes that characterize each cluster.
+
+    Warnings
+    --------
+    - The function is intended for use with spatial omics data. Input data should be appropriately preprocessed
+      (e.g. via `sp.tb.preprocess_transcriptomics` or `sp.tb.preprocess_proteomics`) to ensure meaningful clustering results.
+    - The `rank_genes` functionality is marked for relocation to enhance modularity and clarity of the codebase.
+    """
+    cluster = Cluster(sdata, labels_layer=labels_layer, table_layer=table_layer)
+    cluster.cluster(
+        output_layer=output_layer,
+        cluster_callable=_flowsom,
+        index_names_var=index_names_var,
+        index_positions_var=index_positions_var,
+        calculate_umap=calculate_umap,
+        calculate_neighbors=False,
+        rank_genes=rank_genes,
+        neigbors_kwargs={"n_neighbors": n_neighbors, "n_pcs": n_pcs, "random_state": random_state},
+        umap_kwargs={"random_state": random_state},
+        n_clusters=n_clusters,
+        random_state=random_state,
+        overwrite=overwrite,
+        **kwargs,
+    )
+
+    return sdata
+
 
 def leiden(
     sdata: SpatialData,
@@ -223,6 +319,16 @@ def _kmeans(
     adata.obs[key_added] = pd.Categorical(kmeans.labels_)
     return adata
 
+def _flowsom(
+    adata: AnnData,
+    key_added: str = "flowsom",
+    **kwargs,
+) -> AnnData:
+    from flowsom.models import FlowSOMEstimator
+    model = FlowSOMEstimator(**kwargs).fit(adata.X)
+    adata.obs[key_added] = pd.Categorical(model.labels_)
+    return adata
+
 
 def _leiden(
     adata: AnnData,
@@ -278,15 +384,13 @@ class Cluster(ProcessTable):
         if key_added in adata.obs.columns:
             log.warning(f"The column '{key_added}' already exists in the Anndata object. Proceeding to overwrite it.")
 
-        assert (
-            "key_added" in inspect.signature(cluster_callable).parameters
-        ), f"Callable '{cluster_callable.__name__}' must include the parameter 'key_added'."
-        self._perform_clustering(adata, cluster_callable=cluster_callable, key_added=key_added, **kwargs)
-        assert key_added in adata.obs.columns
+        if "key_added" in inspect.signature(cluster_callable).parameters:
+            self._perform_clustering(adata, cluster_callable=cluster_callable, key_added=key_added, **kwargs)
+            assert key_added in adata.obs.columns
 
-        # TODO move this ranking of genes to somewhere else
-        if rank_genes:
-            sc.tl.rank_genes_groups(adata, groupby=key_added, method="wilcoxon")
+            # TODO move this ranking of genes to somewhere else
+            if rank_genes:
+                sc.tl.rank_genes_groups(adata, groupby=key_added, method="wilcoxon")
 
         self.sdata = _add_table_layer(
             self.sdata,
