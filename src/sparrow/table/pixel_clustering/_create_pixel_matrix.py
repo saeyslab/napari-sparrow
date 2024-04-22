@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Any, Iterable
 
 import dask.array as da
 import numpy as np
@@ -12,7 +12,7 @@ from spatialdata.models.models import ScaleFactors_t
 
 from sparrow.image._image import _add_image_layer, _get_spatial_element, _get_transformation
 from sparrow.table._table import _add_table_layer
-from sparrow.table.pixel_clustering._utils import _get_non_nan_pixel_values_and_location, _nonzero_nonnan_percentile
+from sparrow.table.pixel_clustering._utils import _nonzero_nonnan_percentile
 from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
 
 
@@ -34,7 +34,7 @@ def create_pixel_matrix(
     overwrite: bool = False,
 ) -> SpatialData:
     """
-    Processes image layers specified in `img_layer` to create a pixel matrix and optionally normalizes and filters this matrix based on various quantile and gaussian blur parameters. The results are added to `sdata` as specified in `output_table_layer` and optionally in `output_img_layer`.
+    Processes image layers specified in `img_layer` to create a pixel matrix and optionally normalizes and blurs the images based on various quantile and gaussian blur parameters. The results are added to `sdata` as specified in `output_table_layer` and optionally in `output_img_layer`.
 
     Parameters
     ----------
@@ -137,7 +137,7 @@ def create_pixel_matrix(
             _arr_list[i] = _arr_list[i].rechunk(_chunks)
 
         assert (
-            _arr_list[i].numblocks[1] == 1 and _arr_list[i].numblocks[2] == 1
+            _arr_list[i].numblocks[0] == 1 and _arr_list[i].numblocks[1] == 1
         ), "The number of blocks in 'c' and 'z' dimension should be equal to 1. Please specify the chunk parameter, to allow rechunking, e.g. `chunks=(1024,1024)`."
 
     if q is not None:
@@ -146,9 +146,7 @@ def create_pixel_matrix(
             # 1) calculate percentiles (excluding nan and 0 from calculation)
             arr_percentile = _nonzero_nonnan_percentile_axis_0(_arr, q=q)
             results_arr_percentile.append(arr_percentile)
-        arr_percentile = da.stack(
-            results_arr_percentile, axis=0
-        )  # TODO: probably a persist of arr_percentile would be usefull
+        arr_percentile = da.stack(results_arr_percentile, axis=0)
         arr_percentile_mean = da.mean(arr_percentile, axis=0)  # mean over all images
         # for multiple img_layer, in ark one uses np.mean( arr_percentile ) as the percentile to normalize
 
@@ -196,7 +194,7 @@ def create_pixel_matrix(
     _region_keys = []
     for i in range(len(_arr_list)):
         # sanity update to make sure that if pixel at certain location in a channel is nan, all pixels at that location for all channels are set to nan.
-        # use fact that sum is nan if one of the values is nan along that axis
+        # use fact that sum is nan if one of the values is nan along that axis -> this is necesarry for map_blocks of the _sampling function
         _arr_list[i] = da.where(~da.isnan(_arr_sum_list[i]), _arr_list[i], np.nan)
 
         # 4) normalize
@@ -232,16 +230,30 @@ def create_pixel_matrix(
             )
 
         # Now sample from the normalized pixel matrix.
+        chunksize = _arr_list[i].chunksize
+        # rechunk to avoid needing to sample for every channel seperately
+        _arr_list[i] = _arr_list[i].rechunk((_arr_list[i].shape[0], _arr_list[i].shape[1], chunksize[2], chunksize[3]))
+        chunksize = _arr_list[i].chunksize
+
+        # this creates a dask array of shape (1,1, int(fraction * np.prod(_arr_list[i].chunksize[1:]))*nr_of_chunks_y, (nr_of_channels +3)*nr_of_chunks_x )
+        output_chunksize = (1, 1, int(fraction * np.prod(chunksize[1:])), chunksize[0] + 3)
         _arr_list[i] = da.map_blocks(
             _sampling_function,
             _arr_list[i],
             seed=seed,
+            dtype=np.float32,
             fraction=fraction,
+            chunks=output_chunksize,
+            _chunksize=chunksize,
         )
 
-        _arr_sampled = _get_non_nan_pixel_values_and_location(_arr_list[i])
+        # compute the sampling
+        _arr_sampled = _arr_list[i].squeeze((0, 1)).compute()
+        # reshape back to array of shape num_samples * (num_channels + 3)
+        _arr_sampled = _reshape(_arr_sampled, output_chunksize[2:])
         results_arr_sampled.append(_arr_sampled)
         _region_keys.extend(_arr_sampled.shape[0] * [img_layer[i]])
+
     arr_sampled = np.row_stack(results_arr_sampled)
     arr_percentile_post_norm = da.stack(results_arr_percentile_post_norm, axis=0)
 
@@ -259,7 +271,7 @@ def create_pixel_matrix(
     for _img_layer, _arr_percentile_post_norm in zip(img_layer, arr_percentile_post_norm):
         adata.var[f"{_img_layer}_post_norm_percentile_{q_post}"] = _arr_percentile_post_norm
     # use this one to normalize before pixel clustering
-    adata.var[f"mean_post_norm_percentile_{q}"] = da.mean(arr_percentile_post_norm, axis=0)
+    adata.var[f"mean_post_norm_percentile_{q_post}"] = da.mean(arr_percentile_post_norm, axis=0)
 
     adata.obs[_INSTANCE_KEY] = np.arange(arr_sampled.shape[0])
     adata.obs[_REGION_KEY] = pd.Categorical(_region_keys)  # should it also be possible to link a labels layer?
@@ -272,18 +284,6 @@ def create_pixel_matrix(
         # 3D case, save z,y,x position
         adata.obsm["spatial"] = arr_sampled[:, -3:]
 
-    # if to_squeeze:
-    # arr_normalized is the sampled array
-    #    arr = arr.squeeze(1)
-
-    # sdata = _add_image_layer(
-    #    sdata,
-    #    arr=arr_normalized,
-    #    output_layer=f"{img_layer}_gaussian",
-    #    overwrite=True,
-    #    c_coords=channels,
-    # )
-
     sdata = _add_table_layer(
         sdata,
         adata=adata,
@@ -295,38 +295,83 @@ def create_pixel_matrix(
     return sdata
 
 
-def _sampling_function(block: NDArray, seed: int, fraction: float = 0.2) -> NDArray:
-    # sampling by setting all values to np.nan that are not sampled.
-    assert block.ndim == 4, "block should contain dimension (c, z, y, x)"
-    rng = np.random.default_rng(seed=seed)
+def _sampling_function(
+    block: NDArray, fraction: float, seed: int, _chunksize: tuple[int, int, int, int], block_info: dict[str:Any]
+) -> NDArray:
+    def _sample_values_and_z_y_x_indices(arr: NDArray, num_samples: int, seed: int = 20):
+        assert arr.ndim == 4
 
-    # Find indices where array is not NaN -> valid indices to sample from
-    valid_indices = np.argwhere(~np.isnan(block))
+        rng = np.random.default_rng(seed=seed)
 
-    valid_indices_channel_0 = valid_indices[valid_indices[:, 0] == 0][:, 1:]
-    c_indices = np.unique(valid_indices[:, 0])
+        total_size = np.prod(arr.shape[1:])
+        flat_indices = rng.choice(total_size, size=num_samples, replace=False)
 
-    # sanity check, to see if nan value are at same positions for all channels
-    for c_index in c_indices:
-        valid_indices_channel_c_index = valid_indices[valid_indices[:, 0] == c_index][:, 1:]
-        assert np.array_equal(valid_indices_channel_0, valid_indices_channel_c_index)
+        # Convert flat indices to 3D indices
+        z_indices, y_indices, x_indices = np.unravel_index(flat_indices, arr.shape[1:])
 
-    # Number of samples to draw (i.e. for each channel n_samples will be drawn), n_samples should be fraction of non nan values in chunk
-    n_samples = int(fraction * (len(valid_indices_channel_0)))
+        sampled_values = arr[:, z_indices, y_indices, x_indices]
 
-    # Sample randomly among the valid indices
-    sampled_indices = valid_indices_channel_0[rng.choice(len(valid_indices_channel_0), size=n_samples, replace=False)]
+        stacked = np.row_stack(
+            [sampled_values, z_indices.reshape(1, -1), y_indices.reshape(1, -1), x_indices.reshape(1, -1)]
+        )
 
-    # Create a mask with all elements set to False
-    mask = np.zeros_like(block, dtype=bool)
+        # return a numpy array with shape (1,1,num_samples, arr.shape[0]+1+1+1 )
+        return stacked.T[None, None, ...]
 
-    # Set True at sampled positions
-    mask[:, sampled_indices[:, 0], sampled_indices[:, 1], sampled_indices[:, 2]] = True
+    assert block.ndim == 4
+    chunk_location = block_info[0]["chunk-location"]
+    offset_z = block_info[0]["array-location"][1][0]
+    offset_y = block_info[0]["array-location"][2][0]
+    offset_x = block_info[0]["array-location"][3][0]
 
-    # Set non-sampled values to nan
-    result_array = np.where(mask, block, np.nan)
+    chunk_shape = block.shape
 
-    return result_array
+    # unique chunk ID for given z,y,x location.
+    chunk_id = (
+        chunk_location[1] * (chunk_shape[2] * chunk_shape[3]) + chunk_location[2] * chunk_shape[3] + chunk_location[3]
+    )
+    # make seed unique for each chunk in z,y,x so we sample differently in each of these chunks, but sample the same for given chunk in z,y,x in different channels.
+    seed = seed + chunk_id
+
+    total_size_z_y_x = np.prod(block.shape[1:])
+    num_samples = int(fraction * total_size_z_y_x)
+    if num_samples == 0:
+        num_samples = 1
+
+    block = _sample_values_and_z_y_x_indices(block, num_samples=num_samples, seed=seed)
+    # add the offset
+    block[:, :, :, -3] = block[:, :, :, -3] + offset_z
+    block[:, :, :, -2] = block[:, :, :, -2] + offset_y
+    block[:, :, :, -1] = block[:, :, :, -1] + offset_x
+
+    # pad here so we get same output block dimensions for every chunk, remove nans in later step.
+    padded_total_size_z_y_x = int(fraction * np.prod(_chunksize[1:]))
+    if padded_total_size_z_y_x == 0:
+        padded_total_size_z_y_x = 1
+
+    padding_y = padded_total_size_z_y_x - block.shape[2]
+    if padding_y > 0:
+        pad_width = [(0, 0), (0, 0), (0, padding_y), (0, 0)]  # No padding for c, z, x dimensions, padding for y
+        block = np.pad(block, pad_width=pad_width, mode="constant", constant_values=np.nan)
+
+    return block
+
+
+def _reshape(array: NDArray, chunksize: tuple[int, int]) -> NDArray:
+    assert array.ndim == 2
+    assert len(chunksize) == 2
+
+    split_rows = np.split(array, indices_or_sections=array.shape[0] // chunksize[0])
+    tiles = [
+        np.split(row_block, indices_or_sections=row_block.shape[1] // chunksize[1], axis=1) for row_block in split_rows
+    ]
+
+    array = np.vstack([tile for sublist in tiles for tile in sublist])
+
+    # remove sampels for which all channels are NaN
+    nan_mask = np.isnan(array[:, :-3]).all(axis=1)
+
+    return array[~nan_mask]
 
 
 def _nonzero_nonnan_percentile_axis_0(arr: Array, q: float):
