@@ -112,6 +112,7 @@ def kmeans(
 
     return sdata
 
+
 def flowsom(
     sdata: SpatialData,
     labels_layer: list[str],
@@ -319,12 +320,14 @@ def _kmeans(
     adata.obs[key_added] = pd.Categorical(kmeans.labels_)
     return adata
 
+
 def _flowsom(
     adata: AnnData,
     key_added: str = "flowsom",
     **kwargs,
 ) -> AnnData:
     from flowsom.models import FlowSOMEstimator
+
     model = FlowSOMEstimator(**kwargs).fit(adata.X)
     adata.obs[key_added] = pd.Categorical(model.labels_)
     return adata
@@ -386,11 +389,13 @@ class Cluster(ProcessTable):
 
         if "key_added" in inspect.signature(cluster_callable).parameters:
             self._perform_clustering(adata, cluster_callable=cluster_callable, key_added=key_added, **kwargs)
-            assert key_added in adata.obs.columns
+        else:
+            raise ValueError(f"Callable '{cluster_callable.__name__}' must include the parameter 'key_added'.")
+        assert key_added in adata.obs.columns
 
-            # TODO move this ranking of genes to somewhere else
-            if rank_genes:
-                sc.tl.rank_genes_groups(adata, groupby=key_added, method="wilcoxon")
+        # TODO move this ranking of genes to somewhere else
+        if rank_genes:
+            sc.tl.rank_genes_groups(adata, groupby=key_added, method="wilcoxon")
 
         self.sdata = _add_table_layer(
             self.sdata,
