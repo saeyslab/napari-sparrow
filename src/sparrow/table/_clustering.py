@@ -112,6 +112,7 @@ def kmeans(
 
     return sdata
 
+
 def flowsom(
     sdata: SpatialData,
     labels_layer: list[str],
@@ -319,12 +320,14 @@ def _kmeans(
     adata.obs[key_added] = pd.Categorical(kmeans.labels_)
     return adata
 
+
 def _flowsom(
     adata: AnnData,
     key_added: str = "flowsom",
     **kwargs,
 ) -> AnnData:
     from flowsom.models import FlowSOMEstimator
+
     model = FlowSOMEstimator(**kwargs).fit(adata.X)
     adata.obs[key_added] = pd.Categorical(model.labels_)
     return adata
