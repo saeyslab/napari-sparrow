@@ -96,37 +96,38 @@ def test_flowsom_algo(sdata_multi_c):
 
 
 @pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
-def test_flowsom(sdata_multi_c):
+def test_flowsom(sdata_blobs):
     from flowsom import FlowSOM
 
     from sparrow.table._clustering import flowsom
 
-    # TODO: add to test object or use datasets
-    sdata_multi_c = create_pixel_matrix(
-        sdata_multi_c,
-        img_layer=["raw_image"],
+    sdata_blobs = create_pixel_matrix(
+        sdata_blobs,
+        img_layer=["blobs_image"],
+        output_img_layer=["blobs_image_preprocessed"],
         output_table_layer="table_pixels",
-        channels=[2, 5, 7, 20],
+        channels=["lineage_0", "lineage_1", "lineage_5", "lineage_9"],
         q=99,
         q_sum=5,
         q_post=99.9,
         sigma=2.0,
         norm_sum=True,
         fraction=0.01,
-        chunks=512,
+        chunks=200,
         seed=10,
         overwrite=True,
     )
 
-    sdata_multi_c, fsom = flowsom(
-        sdata_multi_c,
-        image_layer="raw_image",
+    sdata_blobs, fsom = flowsom(
+        sdata_blobs,
+        image_layer="blobs_image",
         table_layer="table_pixels",
         output_layer="table_pixels_flowsom",
         n_clusters=10,
         overwrite=True,
     )
 
-    assert "table_pixels_flowsom" in sdata_multi_c.tables
-    assert sdata_multi_c.tables["table_pixels_flowsom"].shape == sdata_multi_c.tables["table_pixels"].shape
+    assert "table_pixels_flowsom" in sdata_blobs.tables
+    assert sdata_blobs.tables["table_pixels_flowsom"].shape == sdata_blobs.tables["table_pixels"].shape
+    assert sdata_blobs.tables["table_pixels_flowsom"].obs["flowsom"].unique().shape == (10,)
     assert isinstance(fsom, FlowSOM)

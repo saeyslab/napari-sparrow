@@ -5,7 +5,6 @@ import skimage as ski
 from dask.array.random import Generator
 from dask_image import ndfilters
 from loguru import logger
-from multiscale_spatial_image import MultiscaleSpatialImage
 from numpy.random import default_rng
 from scipy import ndimage as ndi
 from scipy.stats import qmc
