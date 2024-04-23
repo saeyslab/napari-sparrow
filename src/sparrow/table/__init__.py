@@ -15,4 +15,4 @@ log = get_pylogger(__name__)
 try:
     from ._clustering import flowsom
 except ImportError:
-    log.warning("'flowsom' not installed, 'sp.tb.flowsom' will not be available.")
+    log.warning("'flowsom' not installed, 'sp.tb.flowsom' will not be available .")
