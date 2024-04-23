@@ -5,7 +5,7 @@ from typing import Iterable
 import dask.array as da
 import numpy as np
 from dask.array import Array
-from dask_image.ndfilters import maximum_filter, minimum_filter
+from dask_image.ndfilters import gaussian_filter, maximum_filter, minimum_filter
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
@@ -137,6 +137,121 @@ def min_max_filtering(
     sdata = apply(
         sdata,
         _apply_min_max_filtering,
+        fn_kwargs=fn_kwargs,
+        img_layer=img_layer,
+        output_layer=output_layer,
+        combine_c=False,  # you want to process all channels independently.
+        combine_z=False,  # you want to process all z-stacks independently.
+        chunks=None,
+        crd=crd,
+        scale_factors=scale_factors,
+        overwrite=overwrite,
+    )
+
+    return sdata
+
+
+def gaussian_filtering(
+    sdata: SpatialData,
+    img_layer: str | None = None,
+    sigma: int | list[int] = 6,
+    output_layer="gaussian_filtered",
+    crd: tuple[int, int, int, int] | None = None,
+    scale_factors: ScaleFactors_t | None = None,
+    overwrite: bool = False,
+) -> SpatialData:
+    """
+    Apply Gaussian filtering to an image in a SpatialData object using dask.
+
+    The sigma value can be provided, either as an integer or a list of integers corresponding to each channel.
+    Compatibility with image layers that have either two or three spatial dimensions.
+    See `scipy.ndimage.filters.gaussian_filter` for more info
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial data object containing the images to be processed.
+    img_layer : Optional[str], default=None
+        The image layer in `sdata` to run min_max_filtering on. If not provided, the last image layer in `sdata` is used.
+    sigma : Union[int, List[int]], optional
+        Standard deviation for Gaussian kernel. If provided as a list, the length
+        must match the number of channels. Defaults to 85.
+    output_layer : str, optional
+        The name of the output layer. Defaults to "gaussian_filtered".
+    crd : Optional[Tuple[int, int, int, int]], default=None
+        The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
+    scale_factors
+        Scale factors to apply for multiscale.
+    overwrite: bool
+        If True overwrites the element if it already exists.
+
+    Returns
+    -------
+    SpatialData
+        The `sdata` object with the Gaussian filtered image added.
+
+    Raises
+    ------
+    ValueError
+        If `sigma` is a list and its length does not match the number of channels.
+
+    Examples
+    --------
+    Apply Gaussian filtering with a single sigma for all channels:
+
+    >>> sdata = gaussian_filtering(sdata, sigma=8)
+
+    Apply gaussian filtering with different sigmas for each channel:
+
+    >>> sdata = min_max_filtering(sdata, sigma=[6, 0, 4])
+
+    Set `sigma` to zero to copy the channel (i.e. no Gaussian filter).
+    """
+
+    def _apply_gaussian_filter(image: Array, sigma: int) -> Array:
+        # provide sigma==0 to copy the image (i.e. no gaussian filter)
+        image_dim = image.ndim
+        if image_dim == 3:
+            if image.shape[0] == 1:
+                image = da.squeeze(image, axis=0)
+            else:
+                raise ValueError("_apply_min_max_filtering only accepts c dimension equal to 1.")
+        elif image_dim == 4:
+            if image.shape[0] == 1 and image.shape[1] == 1:
+                image = da.squeeze(image, axis=(0, 1))
+            else:
+                raise ValueError("_apply_min_max_filtering only accepts c and z dimension equal to 1.")
+        else:
+            raise ValueError("Please provide numpy array containing c,(z),y and x dimension.")
+        image = gaussian_filter(image, sigma=sigma)
+
+        if image_dim == 3:
+            image = image[None, ...]
+        else:
+            image = image[None, None, ...]
+
+        return image
+
+    if img_layer is None:
+        img_layer = [*sdata.images][-1]
+        log.warning(
+            f"No image layer specified. "
+            f"Applying image processing on the last image layer '{img_layer}' of the provided SpatialData object."
+        )
+
+    se = _get_spatial_element(sdata, img_layer)
+
+    if isinstance(sigma, Iterable):
+        assert len(sigma) == len(
+            se.c.data
+        ), f"If 'sigma' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
+        fn_kwargs = {key: {"sigma": value} for (key, value) in zip(se.c.data, sigma)}
+    else:
+        fn_kwargs = {"sigma": sigma}
+
+    sdata = apply(
+        sdata,
+        _apply_gaussian_filter,
         fn_kwargs=fn_kwargs,
         img_layer=img_layer,
         output_layer=output_layer,

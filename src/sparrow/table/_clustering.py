@@ -14,9 +14,15 @@ from sparrow.utils.pylogger import get_pylogger
 log = get_pylogger(__name__)
 
 
+try:
+    import flowsom as fs
+except ImportError:
+    log.warning("'flowsom' not installed, 'sp.tb.flowsom' will not be available.")
+
+
 def kmeans(
     sdata: SpatialData,
-    labels_layer: list[str],
+    labels_layer: list[str] | None,
     table_layer: str,
     output_layer: str,
     calculate_umap: bool = True,
@@ -37,7 +43,7 @@ def kmeans(
     This function executes the KMeans clustering algorithm (via `sklearn.cluster.KMeans`) on spatial data encapsulated by a SpatialData object.
     It optionally computes a UMAP (Uniform Manifold Approximation and Projection) for dimensionality reduction
     and ranks genes based on their contributions to the clustering. The clustering results, along with optional
-    UMAP and gene ranking, are added to the `sdata.table` for downstream analysis.
+    UMAP and gene ranking, are added to the `sdata.tables[output_layer]` for downstream analysis.
 
     Parameters
     ----------
@@ -113,9 +119,96 @@ def kmeans(
     return sdata
 
 
+def flowsom(
+    sdata: SpatialData,
+    image_layer: list[str] | None,
+    table_layer: str,
+    output_layer: str,
+    n_clusters: int = 5,
+    key_added="flowsom",
+    index_names_var: Iterable[str] | None = None,
+    index_positions_var: Iterable[int] | None = None,
+    random_state: int = 100,
+    overwrite: bool = False,
+    **kwargs,  # keyword arguments for _flowsom
+) -> tuple[SpatialData, fs.FlowSOM]:
+    """
+    Applies flowsom clustering on the SpatialData object with optional UMAP calculation for visualization.
+
+    This function executes the flowsom clustering algorithm (via `fs.FlowSOM`) on spatial data encapsulated by a SpatialData object.
+    It optionally computes a UMAP (Uniform Manifold Approximation and Projection) for dimensionality reduction. The clustering results, along with optional
+    UMAP, are added to the `sdata.tables[output_layer]` for downstream analysis.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The input SpatialData object.
+    image_layer : str or Iterable[str]
+        The image layer(s) of `sdata` used to select the pixels via the _REGION_KEY.
+        Note that if `output_layer` is equal to `table_layer` and overwrite is True,
+        pixels in `sdata.tables[table_layer]` linked to other `image_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
+        If a list of image layers is provided, they will therefore be clustered together (e.g. multiple samples).
+    table_layer: str, optional
+        The table layer in `sdata` on which to perform clustering on.
+    output_layer: str, optional
+        The output table layer in `sdata` to which table layer with results of clustering will be written.
+    calculate_umap : bool, default=True
+        If True, calculates a UMAP via `scanpy.tl.umap` for visualization of computed clusters.
+    rank_genes : bool, default=True
+        If True, ranks genes based on their contributions to the clusters via `scanpy.tl.rank_genes_groups`. TODO: To be moved to a separate function.
+    n_neighbors : int, default=35
+        The number of neighbors to consider when calculating neighbors via `scanpy.pp.neighbors`. Ignored if `calculate_umap` is False.
+    n_pcs : int, default=17
+        The number of principal components to use when calculating neighbors via `scanpy.pp.neighbors`. Ignored if `calculate_umap` is False.
+    n_clusters : int, default=5
+        The number of clusters to form.
+    key_added : str, default="flowsom"
+        The key under which the clustering results are added to the SpatialData object (in `sdata.tables[table_layer].obs`).
+    index_names_var:
+        List of index names to subset in `sdata.tables[table_layer].var`. If None, `index_positions_var` will be used if not None.
+    index_positions_var:
+        List of integer positions to subset in `sdata.tables[table_layer].var`. Used if `index_names_var` is None.
+    random_state : int, default=100
+        A random state for reproducibility of the clustering.
+    overwrite : bool, default=False
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
+    **kwargs
+        Additional keyword arguments passed to the _flowsom callable.
+
+    Returns
+    -------
+    - SpatialData
+        The input `sdata` with the clustering results added.
+    - fs.FlowSOM
+
+    Notes
+    -----
+    - The function adds a table layer, adding (meta)clustering labels.
+
+    Warnings
+    --------
+    - The function is intended for use with spatial proteomcs data. Input data should be appropriately preprocessed
+      (e.g. via `sp.tb.create_pixel_matrix`) to ensure meaningful clustering results.
+    """
+    cluster = Cluster(sdata, image_layer=image_layer, table_layer=table_layer)
+    sdata, fsom = cluster.pixel_cluster(
+        output_layer=output_layer,
+        cluster_callable=_flowsom,
+        index_names_var=index_names_var,
+        index_positions_var=index_positions_var,
+        n_clusters=n_clusters,
+        key_added=key_added,
+        seed=random_state,
+        overwrite=overwrite,
+        **kwargs,
+    )
+
+    return sdata, fsom
+
+
 def leiden(
     sdata: SpatialData,
-    labels_layer: list[str],
+    labels_layer: list[str] | None,
     table_layer: str,
     output_layer: str,
     calculate_umap: bool = True,
@@ -195,7 +288,7 @@ def leiden(
     - The `rank_genes` functionality is marked for relocation to enhance modularity and clarity of the codebase.
     """
     cluster = Cluster(sdata, labels_layer=labels_layer, table_layer=table_layer)
-    cluster.cluster(
+    sdata = cluster.cluster(
         output_layer=output_layer,
         cluster_callable=_leiden,
         key_added=key_added,
@@ -224,6 +317,21 @@ def _kmeans(
     return adata
 
 
+def _flowsom(
+    adata: AnnData,
+    key_added: str = "flowsom",
+    n_clusters: int = 10,
+    **kwargs,
+) -> tuple[AnnData, fs.FlowSOM]:
+    fsom = fs.FlowSOM(adata, n_clusters=n_clusters, cols_to_use=None, **kwargs)
+    if "cols_used" in adata.var:
+        # can not back boolean column to zarr store
+        adata.var["cols_used"] = adata.var["cols_used"].astype(int)
+    adata.obs.rename(columns={"metaclustering": key_added}, inplace=True)
+
+    return adata, fsom
+
+
 def _leiden(
     adata: AnnData,
     key_added: str = "leiden",
@@ -245,6 +353,13 @@ class Cluster(ProcessTable):
         """Perform the specified clustering on the AnnData object."""
         cluster_callable(adata, key_added=key_added, **kwargs)
 
+    def _perform_pixel_clustering(
+        self, adata: AnnData, cluster_callable: Callable, key_added: str, **kwargs
+    ) -> fs.FlowSOM:
+        """Perform pixel clustering on the AnnData object and return the resulting FlowSOM object. AnnData object is updated inplace."""
+        adata, fsom = cluster_callable(adata, key_added=key_added, **kwargs)
+        return fsom
+
     def cluster(
         self,
         output_layer: str,
@@ -259,7 +374,7 @@ class Cluster(ProcessTable):
         umap_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.tl.umap
         overwrite: bool = False,
         **kwargs,
-    ):
+    ) -> SpatialData:
         """Run the preprocessing, optional neighborhood graph computation, optional UMAP computation, and clustering on 'sdata.table'."""
         adata = self._get_adata(index_names_var=index_names_var, index_positions_var=index_positions_var)
 
@@ -278,9 +393,7 @@ class Cluster(ProcessTable):
         if key_added in adata.obs.columns:
             log.warning(f"The column '{key_added}' already exists in the Anndata object. Proceeding to overwrite it.")
 
-        assert (
-            "key_added" in inspect.signature(cluster_callable).parameters
-        ), f"Callable '{cluster_callable.__name__}' must include the parameter 'key_added'."
+        self._sanity_check(cluster_callable=cluster_callable)
         self._perform_clustering(adata, cluster_callable=cluster_callable, key_added=key_added, **kwargs)
         assert key_added in adata.obs.columns
 
@@ -297,3 +410,35 @@ class Cluster(ProcessTable):
         )
 
         return self.sdata
+
+    def pixel_cluster(
+        self,
+        output_layer: str,
+        cluster_callable: Callable = _flowsom,  # callable that takes in adata and returns adata with adata.obs[ "key_added" ] column added.
+        key_added: str = "flowsom",
+        index_names_var: Iterable[str] | None = None,
+        index_positions_var: Iterable[int] | None = None,
+        overwrite: bool = False,
+        **kwargs,
+    ) -> tuple[SpatialData, fs.FlowSOM]:
+        """Run the preprocessing, optional neighborhood graph computation, optional UMAP computation, and clustering on 'sdata.table'."""
+        adata = self._get_adata(index_names_var=index_names_var, index_positions_var=index_positions_var)
+
+        self._sanity_check(cluster_callable=cluster_callable)
+        fsom = self._perform_pixel_clustering(adata, cluster_callable=cluster_callable, key_added=key_added, **kwargs)
+        assert key_added in adata.obs.columns
+
+        self.sdata = _add_table_layer(
+            self.sdata,
+            adata=adata,
+            output_layer=output_layer,
+            region=self.image_layer,
+            overwrite=overwrite,
+        )
+
+        return self.sdata, fsom
+
+    def _sanity_check(self, cluster_callable: Callable):
+        assert (
+            "key_added" in inspect.signature(cluster_callable).parameters
+        ), f"Callable '{cluster_callable.__name__}' must include the parameter 'key_added'."

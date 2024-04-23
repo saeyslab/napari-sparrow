@@ -4,6 +4,7 @@ import pytest
 
 from sparrow.table._clustering import kmeans, leiden
 from sparrow.table._preprocess import preprocess_proteomics
+from sparrow.table.pixel_clustering._create_pixel_matrix import create_pixel_matrix
 
 
 @pytest.mark.skipif(not importlib.util.find_spec("sklearn"), reason="requires the scikit-learn library")
@@ -85,12 +86,47 @@ def test_integration_clustering(sdata_multi_c):
 
 
 @pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
-def test_flowsom(sdata_multi_c):
+def test_flowsom_algo(sdata_multi_c):
     from flowsom import FlowSOM
 
     adata = sdata_multi_c.tables["table_intensities"]
-    adata.var["channel"] = adata.var.index
-    adata.var["marker"] = adata.var.index
-    fsom = FlowSOM(adata, cols_to_use=[0, 1], xdim=10, ydim=10, n_clus=10)
+    fsom = FlowSOM(adata, cols_to_use=[0, 1], xdim=10, ydim=10, n_clusters=10, seed=10)
 
-    assert len(fsom.mudata) == len(adata)
+    assert len(fsom.get_cell_data()) == len(adata)
+
+
+@pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
+def test_flowsom(sdata_multi_c):
+    from flowsom import FlowSOM
+
+    from sparrow.table._clustering import flowsom
+
+    # TODO: add to test object or use datasets
+    sdata_multi_c = create_pixel_matrix(
+        sdata_multi_c,
+        img_layer=["raw_image"],
+        output_table_layer="table_pixels",
+        channels=[2, 5, 7, 20],
+        q=99,
+        q_sum=5,
+        q_post=99.9,
+        sigma=2.0,
+        norm_sum=True,
+        fraction=0.01,
+        chunks=512,
+        seed=10,
+        overwrite=True,
+    )
+
+    sdata_multi_c, fsom = flowsom(
+        sdata_multi_c,
+        image_layer="raw_image",
+        table_layer="table_pixels",
+        output_layer="table_pixels_flowsom",
+        n_clusters=10,
+        overwrite=True,
+    )
+
+    assert "table_pixels_flowsom" in sdata_multi_c.tables
+    assert sdata_multi_c.tables["table_pixels_flowsom"].shape == sdata_multi_c.tables["table_pixels"].shape
+    assert isinstance(fsom, FlowSOM)

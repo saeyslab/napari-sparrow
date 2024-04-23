@@ -3,8 +3,8 @@ from sparrow.utils.pylogger import get_pylogger
 from ._apply import apply
 from ._combine import combine
 from ._contrast import enhance_contrast
+from ._filters import gaussian_filtering, min_max_filtering
 from ._image import _add_image_layer, _add_label_layer
-from ._minmax import min_max_filtering
 from ._shapes_to_labels import add_label_layer_from_shapes_layer
 from ._transcripts import transcript_density
 from .segmentation._align_masks import align_labels_layers
