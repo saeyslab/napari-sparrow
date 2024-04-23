@@ -9,6 +9,8 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from spatialdata import read_zarr
 
+from sparrow.datasets.cluster_blobs import cluster_blobs
+
 
 @pytest.fixture(scope="function")
 def cfg_pipeline_global() -> DictConfig:
@@ -42,7 +44,7 @@ def cfg_pipeline_global() -> DictConfig:
 # this is called by each test which uses `cfg_pipeline` arg
 # each test generates its own temporary logging path
 @pytest.fixture(scope="function")
-def cfg_pipeline(cfg_pipeline_global, tmp_path) -> DictConfig:
+def cfg_pipeline(cfg_pipeline_global, tmp_path):
     cfg = cfg_pipeline_global.copy()
 
     cfg.paths.output_dir = str(tmp_path)
@@ -73,6 +75,14 @@ def sdata_transcripts(tmpdir):
     # backing store for specific unit test
     sdata.write(os.path.join(tmpdir, "sdata_transcriptomics.zarr"))
     sdata = read_zarr(os.path.join(tmpdir, "sdata_transcriptomics.zarr"))
+    yield sdata
+
+
+@pytest.fixture
+def sdata_blobs():
+    sdata = cluster_blobs(
+        shape=(512, 512), n_cell_types=10, n_cells=100, noise_level_channels=1.2, noise_level_nuclei=1.2, seed=10
+    )
     yield sdata
 
 
