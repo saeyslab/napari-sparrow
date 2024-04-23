@@ -91,6 +91,6 @@ def test_flowsom(sdata_multi_c):
     adata = sdata_multi_c.tables["table_intensities"]
     adata.var["channel"] = adata.var.index
     adata.var["marker"] = adata.var.index
-    fsom = FlowSOM(adata, cols_to_use=[0, 1], xdim=10, ydim=10, n_clus=10)
+    fsom = FlowSOM(adata, cols_to_use=[0, 1], xdim=10, ydim=10, n_clusters=10)
 
-    assert len(fsom.mudata) == len(adata)
+    assert len(fsom.get_cell_data()) == len(adata)
