@@ -40,7 +40,7 @@ def score_genes(
     sdata : SpatialData
         Data containing spatial information.
     labels_layer : str or Iterable[str]
-        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
         If a list of labels layers is provided, they will therefore be scored together (e.g. multiple samples).
@@ -168,7 +168,7 @@ def cluster_cleanliness(
     sdata : SpatialData
         Data containing spatial information.
     labels_layer : str or Iterable[str]
-        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
         If a list of labels layers is provided, they will therefore be scored together (e.g. multiple samples).

@@ -52,7 +52,7 @@ def create_pixel_matrix(
         Quantile used for normalization. If specified, pixel values are normalized by this quantile across the specified channels.
         Each channel is normalized by its own calculated quantile.
     q_sum : float | None, optional
-        If the sum of the channel values at a pixel is below this quantile, the pixel values across all channels are set to NaN.
+        If the sum of the channel values at a pixel is below this quantile, the pixel values across all channels are set to NaN (and therefore excluded for being sampled).
     q_post : float, optional
         Quantile used for percentile calculations on the postprocessed channel matrix. Does not affect the resulting pixel matrix.
     sigma : float | Iterable[float] | None, optional

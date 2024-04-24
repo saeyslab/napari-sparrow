@@ -42,7 +42,7 @@ def preprocess_transcriptomics(
     sdata : SpatialData
         The input SpatialData object.
     labels_layer : str or Iterable[str]
-        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY  in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`
         (also from the backing zarr store if it is backed).
@@ -129,7 +129,7 @@ def preprocess_proteomics(
     sdata : SpatialData
         The input SpatialData object.
     labels_layer : str or Iterable[str]
-        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY  in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
         If a list of labels layers is provided, they will therefore be preprocessed together (e.g. multiple samples).

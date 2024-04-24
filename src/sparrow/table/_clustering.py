@@ -50,7 +50,7 @@ def kmeans(
     sdata : SpatialData
         The input SpatialData object.
     labels_layer : str or Iterable[str]
-        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
         If a list of labels layers is provided, they will therefore be clustered together (e.g. multiple samples).
@@ -128,6 +128,7 @@ def flowsom(
     key_added="flowsom",
     index_names_var: Iterable[str] | None = None,
     index_positions_var: Iterable[int] | None = None,
+    normalization_var: str = None,
     random_state: int = 100,
     overwrite: bool = False,
     **kwargs,  # keyword arguments for _flowsom
@@ -144,7 +145,7 @@ def flowsom(
     sdata : SpatialData
         The input SpatialData object.
     image_layer : str or Iterable[str]
-        The image layer(s) of `sdata` used to select the pixels via the _REGION_KEY.
+        The image layer(s) of `sdata` used to select the pixels via the _REGION_KEY in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         pixels in `sdata.tables[table_layer]` linked to other `image_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
         If a list of image layers is provided, they will therefore be clustered together (e.g. multiple samples).
@@ -168,6 +169,8 @@ def flowsom(
         List of index names to subset in `sdata.tables[table_layer].var`. If None, `index_positions_var` will be used if not None.
     index_positions_var:
         List of integer positions to subset in `sdata.tables[table_layer].var`. Used if `index_names_var` is None.
+    normalization_var:
+        If specified, `sdata.tables[table_layer]` will be divided by `sdata.tables[table_layer].var[normalization_var]` before running `fs.FlowSOM`. Resulting `output_layer` will contain these normalized values.
     random_state : int, default=100
         A random state for reproducibility of the clustering.
     overwrite : bool, default=False
@@ -196,6 +199,7 @@ def flowsom(
         cluster_callable=_flowsom,
         index_names_var=index_names_var,
         index_positions_var=index_positions_var,
+        normalization_var=normalization_var,
         n_clusters=n_clusters,
         key_added=key_added,
         seed=random_state,
@@ -237,7 +241,7 @@ def leiden(
     sdata : SpatialData
         The input SpatialData object.
     labels_layer : str or Iterable[str]
-        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
         If a list of labels layers is provided, they will therefore be clustered together (e.g. multiple samples).
@@ -418,11 +422,17 @@ class Cluster(ProcessTable):
         key_added: str = "flowsom",
         index_names_var: Iterable[str] | None = None,
         index_positions_var: Iterable[int] | None = None,
+        normalization_var: str = None,
         overwrite: bool = False,
         **kwargs,
     ) -> tuple[SpatialData, fs.FlowSOM]:
         """Run the preprocessing, optional neighborhood graph computation, optional UMAP computation, and clustering on 'sdata.table'."""
         adata = self._get_adata(index_names_var=index_names_var, index_positions_var=index_positions_var)
+        if normalization_var is not None:
+            assert (
+                normalization_var in adata.var
+            ), f"'{normalization_var}' not found in 'adata.var'. Please select 'normalization_var' from '{adata.var.columns}', or set to 'None'."
+            adata.X = adata.X / adata.var[normalization_var].values
 
         self._sanity_check(cluster_callable=cluster_callable)
         fsom = self._perform_pixel_clustering(adata, cluster_callable=cluster_callable, key_added=key_added, **kwargs)

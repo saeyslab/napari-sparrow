@@ -101,15 +101,18 @@ def test_flowsom(sdata_blobs):
 
     from sparrow.table._clustering import flowsom
 
+    img_layer = "blobs_image"
+    q_post = 99.9
+
     sdata_blobs = create_pixel_matrix(
         sdata_blobs,
-        img_layer=["blobs_image"],
-        output_img_layer=["blobs_image_preprocessed"],
+        img_layer=[img_layer],
+        output_img_layer=[f"{img_layer}_preprocessed"],
         output_table_layer="table_pixels",
         channels=["lineage_0", "lineage_1", "lineage_5", "lineage_9"],
         q=99,
         q_sum=5,
-        q_post=99.9,
+        q_post=q_post,
         sigma=2.0,
         norm_sum=True,
         fraction=0.01,
@@ -120,14 +123,19 @@ def test_flowsom(sdata_blobs):
 
     sdata_blobs, fsom = flowsom(
         sdata_blobs,
-        image_layer="blobs_image",
+        image_layer=[img_layer],
         table_layer="table_pixels",
         output_layer="table_pixels_flowsom",
+        index_names_var=["lineage_0", "lineage_1", "lineage_9"],
+        normalization_var=f"mean_post_norm_percentile_{q_post}",
         n_clusters=10,
         overwrite=True,
     )
 
     assert "table_pixels_flowsom" in sdata_blobs.tables
-    assert sdata_blobs.tables["table_pixels_flowsom"].shape == sdata_blobs.tables["table_pixels"].shape
+    assert sdata_blobs.tables["table_pixels_flowsom"].shape == (
+        sdata_blobs.tables["table_pixels"].shape[0],
+        sdata_blobs.tables["table_pixels"].shape[1] - 1,
+    )
     assert sdata_blobs.tables["table_pixels_flowsom"].obs["flowsom"].unique().shape == (10,)
     assert isinstance(fsom, FlowSOM)
