@@ -4,7 +4,6 @@ import pytest
 
 from sparrow.table._clustering import kmeans, leiden
 from sparrow.table._preprocess import preprocess_proteomics
-from sparrow.table.pixel_clustering._create_pixel_matrix import create_pixel_matrix
 
 
 @pytest.mark.skipif(not importlib.util.find_spec("sklearn"), reason="requires the scikit-learn library")
@@ -83,59 +82,3 @@ def test_integration_clustering(sdata_multi_c):
     )
 
     assert "leiden" in sdata_multi_c.tables["table_intensities_preprocessed"].obs.columns
-
-
-@pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
-def test_flowsom_algo(sdata_multi_c):
-    from flowsom import FlowSOM
-
-    adata = sdata_multi_c.tables["table_intensities"]
-    fsom = FlowSOM(adata, cols_to_use=[0, 1], xdim=10, ydim=10, n_clusters=10, seed=10)
-
-    assert len(fsom.get_cell_data()) == len(adata)
-
-
-@pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
-def test_flowsom(sdata_blobs):
-    from flowsom import FlowSOM
-
-    from sparrow.table._clustering import flowsom
-
-    img_layer = "blobs_image"
-    q_post = 99.9
-
-    sdata_blobs = create_pixel_matrix(
-        sdata_blobs,
-        img_layer=[img_layer],
-        output_img_layer=[f"{img_layer}_preprocessed"],
-        output_table_layer="table_pixels",
-        channels=["lineage_0", "lineage_1", "lineage_5", "lineage_9"],
-        q=99,
-        q_sum=5,
-        q_post=q_post,
-        sigma=2.0,
-        norm_sum=True,
-        fraction=0.01,
-        chunks=200,
-        seed=10,
-        overwrite=True,
-    )
-
-    sdata_blobs, fsom = flowsom(
-        sdata_blobs,
-        image_layer=[img_layer],
-        table_layer="table_pixels",
-        output_layer="table_pixels_flowsom",
-        index_names_var=["lineage_0", "lineage_1", "lineage_9"],
-        normalization_var=f"mean_post_norm_percentile_{q_post}",
-        n_clusters=10,
-        overwrite=True,
-    )
-
-    assert "table_pixels_flowsom" in sdata_blobs.tables
-    assert sdata_blobs.tables["table_pixels_flowsom"].shape == (
-        sdata_blobs.tables["table_pixels"].shape[0],
-        sdata_blobs.tables["table_pixels"].shape[1] - 1,
-    )
-    assert sdata_blobs.tables["table_pixels_flowsom"].obs["flowsom"].unique().shape == (10,)
-    assert isinstance(fsom, FlowSOM)

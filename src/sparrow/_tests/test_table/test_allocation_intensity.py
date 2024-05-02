@@ -90,7 +90,8 @@ def test_allocate_intensity_overwrite(sdata_multi_c: SpatialData):
 
     with pytest.raises(
         ValueError,
-        match=r"Attempting to overwrite sdata\.tables\[table_intensities\], but overwrite is set to False. Set overwrite to True to overwrite the \.zarr store.",
+        # match=r"Attempting to overwrite 'sdata\.tables\[\\"table_intensities\\"\]', but overwrite is set to False\. Set overwrite to True to overwrite the \.zarr store\.",
+        match=r'Attempting to overwrite \'sdata\.tables\["table_intensities"\]\', but overwrite is set to False. Set overwrite to True to overwrite the \.zarr store.',
     ):
         # unit test with append to True, and overwrite to False, which should not be allowed
         sdata_multi_c = allocate_intensity(

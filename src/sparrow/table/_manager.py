@@ -51,7 +51,7 @@ class TableLayerManager:
                     sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=adata)
                 else:
                     raise ValueError(
-                        f"Attempting to overwrite sdata.tables[{output_layer}], but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
+                        f"Attempting to overwrite 'sdata.tables[\"{output_layer}\"]', but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
                     )
             else:
                 sdata[output_layer] = adata

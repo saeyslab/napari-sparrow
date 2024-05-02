@@ -27,3 +27,10 @@ try:
     from ._tiling import tiling_correction
 except ImportError:
     log.warning("'jax' or 'basicpy' not installed, 'sp.im.tiling_correction' will not be available.")
+
+log = get_pylogger(__name__)
+
+try:
+    from .pixel_clustering._clustering import flowsom
+except ImportError:
+    log.warning("'flowsom' not installed, 'sp.im.flowsom' will not be available.")

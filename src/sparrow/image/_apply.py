@@ -157,7 +157,7 @@ def apply(
     >>> fn_kwargs={ 0.5: { "parameter": 2 }, 1.5: { "parameter": 3 } }
     >>> sdata = apply(sdata, my_function, fn_kwargs=fn_kwargs, img_layer="raw_image", output_layer="processed_image", combine_z=False)
 
-    Apply a custom function `my_function` to all z slices anc channels of an image layer using different parameters for each z slice
+    Apply a custom function `my_function` to all z slices and channels of an image layer using different parameters for each z slice
     and channel.
     (we assume sdata[ "raw_image" ] has 2 channels 0 and 1, and 2 z slices at 0.5 and 1.5, and has dimensions c,z,y,x ):
 
