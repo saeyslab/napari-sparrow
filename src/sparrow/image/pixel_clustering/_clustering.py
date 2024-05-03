@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Iterable
 
 import dask.array as da
-import flowsom as fs
 import numpy as np
 import pandas as pd
 from anndata import AnnData
@@ -50,7 +49,7 @@ def flowsom(
     sdata : SpatialData
         The input SpatialData object.
     image_layer : str or Iterable[str]
-        The image layer(s) of `sdata` on which flowsom is run. It is recommended to preprocess the data with `sp.im.pixel_clustering_preprocess`
+        The image layer(s) of `sdata` on which flowsom is run. It is recommended to preprocess the data with `sp.im.pixel_clustering_preprocess`.
     output_layer_clusters: str or Iterable[str]
         The output labels layer in `sdata` to which labels layer with predicted flowsom clusters are saved.
     output_layer_metaclusters: str or Iterable[str]
@@ -58,11 +57,11 @@ def flowsom(
     channels : int | str | Iterable[int] | Iterable[str] | None, optional
         Specifies the channels to be included in the pixel clustering.
     fraction : float, optional
-        Fraction of the data to sample for training flowsom. Inference will be done on the full dataset.
+        Fraction of the data to sample for training flowsom. Inference will be done on all pixels in `image_layer`.
     n_clusters : int, default=5
         The number of meta clusters to form.
     key_added : str, default="flowsom"
-        The key under which the clustering results are added to the `MuData` object (in the `fs.FlowSOM` object).
+        The key under which the metaclustering results are added to the `MuData` object (in the `fs.FlowSOM` object).
     random_state : int, default=100
         A random state for reproducibility of the clustering and sampling.
     chunks : str | int | tuple[int, ...] | None, optional
@@ -88,12 +87,12 @@ def flowsom(
     """
     assert 0 < fraction <= 1, "Value must be between 0 and 1"
 
-    def _fix_layer_name(layer: str | Iterable[str]):
+    def _fix_name(layer: str | Iterable[str]):
         return list(layer) if isinstance(layer, Iterable) and not isinstance(layer, str) else [layer]
 
-    img_layer = _fix_layer_name(img_layer)
-    output_layer_clusters = _fix_layer_name(output_layer_clusters)
-    output_layer_metaclusters = _fix_layer_name(output_layer_metaclusters)
+    img_layer = _fix_name(img_layer)
+    output_layer_clusters = _fix_name(output_layer_clusters)
+    output_layer_metaclusters = _fix_name(output_layer_metaclusters)
 
     assert (
         len(output_layer_clusters) == len(output_layer_metaclusters) == len(img_layer)
@@ -102,7 +101,7 @@ def flowsom(
     se_image = _get_spatial_element(sdata, layer=img_layer[0])
 
     if channels is not None:
-        channels = list(channels) if isinstance(channels, Iterable) and not isinstance(channels, str) else [channels]
+        channels = _fix_name(channels)
     else:
         if channels is None:
             channels = se_image.c.data
@@ -217,7 +216,7 @@ def _flowsom(
     return adata, fsom
 
 
-def _predict_flowsom_clusters_chunk(array: NDArray, fsom) -> NDArray:
+def _predict_flowsom_clusters_chunk(array: NDArray, fsom: fs.FlowSOM) -> NDArray:
     def _remove_nan_columns(array):
         # remove rows that contain NaN's, flowsom can not work with NaN's
         nan_mask = np.isnan(array[:, :-3]).any(axis=1)

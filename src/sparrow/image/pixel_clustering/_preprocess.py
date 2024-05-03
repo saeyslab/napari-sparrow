@@ -30,6 +30,8 @@ def pixel_clustering_preprocess(
     """
     Preprocess image layers specified in `img_layer`. Normalizes and blurs the images based on various quantile and gaussian blur parameters. The results are added to `sdata` as specified in `output_layer`.
 
+    Preprocessing function specifically designed for preprocessing images before using `sp.im.flowsom`.
+
     Parameters
     ----------
     sdata : SpatialData
