@@ -31,7 +31,7 @@ def flowsom(
     channels: int | str | Iterable[int] | Iterable[str] | None = None,
     fraction: float | None = 0.1,
     n_clusters: int = 5,
-    key_added: str = "flowsom",
+    key_added: str = "metaclustering",
     random_state: int = 100,
     chunks: str | int | tuple[int, ...] | None = None,
     scale_factors: ScaleFactors_t | None = None,
@@ -60,7 +60,7 @@ def flowsom(
         Fraction of the data to sample for training flowsom. Inference will be done on all pixels in `image_layer`.
     n_clusters : int, default=5
         The number of meta clusters to form.
-    key_added : str, default="flowsom"
+    key_added : str, default="metaclustering"
         The key under which the metaclustering results are added to the `MuData` object (in the `fs.FlowSOM` object).
     random_state : int, default=100
         A random state for reproducibility of the clustering and sampling.
@@ -82,8 +82,9 @@ def flowsom(
 
     Warnings
     --------
-    The function is intended for use with spatial proteomics data. Input data should be appropriately preprocessed
+    - The function is intended for use with spatial proteomics data. Input data should be appropriately preprocessed
       (e.g. via `sp.im.pixel_clustering_preprocess`) to ensure meaningful clustering results.
+    - The cluster and metacluster ID's found in `output_layer_clusters` and `output_layer_metaclusters` count from 1, while they count from 0 in the `FlowSOM` object.
     """
     assert 0 < fraction <= 1, "Value must be between 0 and 1"
 
@@ -198,6 +199,10 @@ def flowsom(
             overwrite=overwrite,
         )
 
+    # TODO decide on fix in flowsom to let clusters count from 1.
+    # fsom cluster ID's count from 0, while labels layer cluster ID's count from 1.
+    # fsom = _increase_cluster_ids(fsom)
+
     return sdata, fsom
 
 
@@ -249,11 +254,12 @@ def _predict_flowsom_clusters_chunk(array: NDArray, fsom: fs.FlowSOM) -> NDArray
     # y_metaclusters=fsom.model.predict(values )
     # y_clusters=fsom.model.cluster_labels_
 
-    clusters_array = np.full(array.shape[1:], np.nan, dtype=np.uint32)
-    clusters_array[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = y_clusters.astype(int)
+    # add +1 because we want labels to count from 1
+    clusters_array = np.full(array.shape[1:], 0, dtype=np.uint32)
+    clusters_array[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = y_clusters.astype(int) + 1
 
-    meta_clusters_array = np.full(array.shape[1:], np.nan, dtype=np.uint32)
-    meta_clusters_array[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = y_codes[y_clusters].astype(int)
+    meta_clusters_array = np.full(array.shape[1:], 0, dtype=np.uint32)
+    meta_clusters_array[coordinates[:, 0], coordinates[:, 1], coordinates[:, 2]] = y_codes[y_clusters].astype(int) + 1
 
     return np.stack([clusters_array, meta_clusters_array], axis=0)
 
@@ -296,3 +302,18 @@ def _sample_dask_array(array: Array, fraction: float = 0.1, remove_nan_columns: 
         return _remove_nan_columns(final_array[indices])
     else:
         return final_array[indices]
+
+
+def _increase_cluster_ids(fsom):
+    """Flosom cluster ID's start from 0, but because we want to save as a labels layer, we want to start from 1"""
+    fsom.get_cell_data().obs["clustering"] += 1
+    fsom.get_cell_data().obs["metaclustering"] += 1
+
+    fsom.get_cluster_data().obs.index = (fsom.get_cluster_data().obs.index.astype(int) + 1).astype(str)
+    fsom.get_cluster_data().obs["metaclustering"] += 1
+
+    fsom.get_cluster_data().uns["outliers"].index += 1
+    fsom.get_cluster_data().uns["outliers"]["index"] += 1
+    fsom.get_cluster_data().uns["metacluster_MFIs"].index += 1
+
+    return fsom
