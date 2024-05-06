@@ -31,13 +31,12 @@ def flowsom(
     channels: int | str | Iterable[int] | Iterable[str] | None = None,
     fraction: float | None = 0.1,
     n_clusters: int = 5,
-    key_added: str = "metaclustering",
     random_state: int = 100,
     chunks: str | int | tuple[int, ...] | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     **kwargs,  # keyword arguments passed to _flowsom
-) -> tuple[SpatialData, fs.FlowSOM]:
+) -> tuple[SpatialData, fs.FlowSOM, pd.Series]:
     """
     Applies flowsom clustering on image layer(s) of a SpatialData object.
 
@@ -60,8 +59,6 @@ def flowsom(
         Fraction of the data to sample for training flowsom. Inference will be done on all pixels in `image_layer`.
     n_clusters : int, default=5
         The number of meta clusters to form.
-    key_added : str, default="metaclustering"
-        The key under which the metaclustering results are added to the `MuData` object (in the `fs.FlowSOM` object).
     random_state : int, default=100
         A random state for reproducibility of the clustering and sampling.
     chunks : str | int | tuple[int, ...] | None, optional
@@ -79,6 +76,8 @@ def flowsom(
         The input `sdata` with the clustering results added.
     - fs.FlowSOM
         FlowSOM object containing a `MuData` object and a trained `fs.models.FlowSOMEstimator`. `MuData` object will only contain the fraction (via the `fraction` parameter) of the data sampled from the `img_layer` on which the FlowSOM model is trained.
+    - pd.Series
+        pandas Series object containing a mapping between the clusters and the metaclusters.
 
     Warnings
     --------
@@ -160,7 +159,7 @@ def flowsom(
         # 3D case, save z,y,x position
         adata.obsm["spatial"] = arr_sampled[:, -3:]
 
-    adata, fsom = _flowsom(adata, key_added=key_added, n_clusters=n_clusters, seed=random_state, **kwargs)
+    adata, fsom = _flowsom(adata, key_added="metaclustering", n_clusters=n_clusters, seed=random_state, **kwargs)
 
     assert len(img_layer) == len(_arr_list)
     # 2) apply fsom on all data
@@ -201,14 +200,18 @@ def flowsom(
 
     # TODO decide on fix in flowsom to let clusters count from 1.
     # fsom cluster ID's count from 0, while labels layer cluster ID's count from 1.
-    # fsom = _increase_cluster_ids(fsom)
 
-    return sdata, fsom
+    mapping = fsom.get_cluster_data().obs["metaclustering"].copy()
+    # +1 because flowsom clusters count from 0,
+    mapping.index = (mapping.index.astype(int) + 1).astype(str)
+    mapping += 1
+
+    return sdata, fsom, mapping
 
 
 def _flowsom(
     adata: AnnData,
-    key_added: str = "flowsom",
+    key_added: str = "metaclustering",
     n_clusters: int = 10,
     **kwargs,
 ) -> tuple[AnnData, fs.FlowSOM]:

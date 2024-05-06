@@ -20,6 +20,7 @@ from sparrow.image.segmentation._utils import (
     _SEG_DTYPE,
     _add_depth_to_chunks_size,
     _check_boundary,
+    _clean_up_masks,
     _clean_up_masks_exact,
     _merge_masks,
     _rechunk_overlap,
@@ -288,25 +289,34 @@ def _combine_dask_arrays(
     # return x_labels.squeeze(0)
 
     if not trim:
-        # TODO: we did not implement squidpy's way of handling chunks yet.
-        depth_1 = depth
-        depth_2 = {
-            0: 0,
-            1: depth_1[1] * 2,
-            2: depth_1[2] * 2,
-        }  # we will search in prediction of neighbouring chunks to resolve conflicts on borders
-        boundary = 0
-        x_labels = da.map_overlap(
-            _clean_up_masks_exact,
-            x_labels,
-            dtype=_SEG_DTYPE,
-            trim=False,  # we trim depth_2 inside _clean_up_masks
-            allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-            depth=depth_2,
-            boundary=boundary,
-            _depth_1=depth_1,
-            _depth_2=depth_2,
-        )
+        exact = False
+        if exact:
+            depth_1 = depth
+            depth_2 = {
+                0: 0,
+                1: depth_1[1] * 2,
+                2: depth_1[2] * 2,
+            }  # we will search in prediction of neighbouring chunks to resolve conflicts on borders
+            boundary = 0
+            x_labels = da.map_overlap(
+                _clean_up_masks_exact,
+                x_labels,
+                dtype=_SEG_DTYPE,
+                trim=False,  # we trim depth_2 inside _clean_up_masks
+                allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
+                depth=depth_2,
+                boundary=boundary,
+                _depth_1=depth_1,
+                _depth_2=depth_2,
+            )
+        else:
+            x_labels = da.map_blocks(
+                _clean_up_masks,
+                x_labels,
+                dtype=_SEG_DTYPE,
+                depth=depth,
+                **kwargs,
+            )
 
         output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
 
@@ -319,9 +329,9 @@ def _combine_dask_arrays(
             trim=False,
             allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
             chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
-            depth=depth_1,
+            depth=depth,
             boundary=boundary,
-            _depth=depth_1,
+            _depth=depth,
         )
 
     x_labels = x_labels.rechunk(x_labels.chunksize)

@@ -12,7 +12,7 @@ def test_flowsom(sdata_blobs):
     channels = ["lineage_0", "lineage_1", "lineage_5", "lineage_9"]
     fraction = 0.1
 
-    sdata_blobs, fsom = flowsom(
+    sdata_blobs, fsom, mapping = flowsom(
         sdata_blobs,
         img_layer=[img_layer],
         output_layer_clusters=[f"{img_layer}_clusters"],
@@ -46,7 +46,7 @@ def test_flowsom_multi_c(sdata_multi_c):
     img_layer = "raw_image"
     fraction = 0.1
 
-    sdata_multi_c, fsom = flowsom(
+    sdata_multi_c, fsom, mapping = flowsom(
         sdata_multi_c,
         img_layer=[img_layer],
         output_layer_clusters=[f"{img_layer}_clusters"],

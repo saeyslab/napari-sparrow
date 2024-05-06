@@ -86,6 +86,7 @@ def preprocess_transcriptomics(
     preprocess_instance = Preprocess(sdata, labels_layer=labels_layer, table_layer=table_layer)
     sdata = preprocess_instance.preprocess(
         output_layer=output_layer,
+        calculate_qc_metrics=True,
         filter_cells=True,
         filter_genes=True,
         calculate_cell_size=True,
@@ -175,6 +176,7 @@ def preprocess_proteomics(
     preprocess_instance = Preprocess(sdata, labels_layer=labels_layer, table_layer=table_layer)
     sdata = preprocess_instance.preprocess(
         output_layer=output_layer,
+        calculate_qc_metrics=False,
         filter_cells=False,
         filter_genes=False,
         calculate_cell_size=True,
@@ -184,7 +186,6 @@ def preprocess_proteomics(
         max_value_scale=max_value_scale,
         calculate_pca=calculate_pca,
         update_shapes_layers=False,
-        qc_kwargs={"percent_top": [2, 5]},
         pca_kwargs={"n_comps": n_comps},
         overwrite=overwrite,
     )
@@ -195,6 +196,7 @@ class Preprocess(ProcessTable):
     def preprocess(
         self,
         output_layer: str,
+        calculate_qc_metrics: bool = True,
         filter_cells: bool = True,
         filter_genes: bool = True,
         calculate_cell_size: bool = True,
@@ -215,13 +217,14 @@ class Preprocess(ProcessTable):
     ) -> SpatialData:
         adata = self._get_adata()
         # Calculate QC Metrics
-        sc.pp.calculate_qc_metrics(adata, inplace=True, **qc_kwargs)
+        if calculate_qc_metrics:
+            sc.pp.calculate_qc_metrics(adata, inplace=True, **qc_kwargs)
 
-        # Filter cells and genes
-        if filter_cells:
-            sc.pp.filter_cells(adata, **filter_cells_kwargs)
-        if filter_genes:
-            sc.pp.filter_genes(adata, **filter_genes_kwargs)
+            # Filter cells and genes
+            if filter_cells:
+                sc.pp.filter_cells(adata, **filter_cells_kwargs)
+            if filter_genes:
+                sc.pp.filter_genes(adata, **filter_genes_kwargs)
 
         if calculate_cell_size:
             # we do not want to loose the index (_CELL_INDEX)
