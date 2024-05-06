@@ -321,7 +321,7 @@ def _add_transcripts_to_sdata(
                 sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=points)
             else:
                 raise ValueError(
-                    f"Attempting to overwrite sdata.points[{output_layer}], but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
+                    f"Attempting to overwrite 'sdata.points[\"{output_layer}\"]', but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
                 )
         else:
             sdata[output_layer] = points

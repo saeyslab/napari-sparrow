@@ -54,7 +54,7 @@ def test_allocation_append(sdata_transcripts: SpatialData):
 def test_allocation_overwrite(sdata_transcripts: SpatialData):
     with pytest.raises(
         ValueError,
-        match=r"Attempting to overwrite sdata\.tables\[table_transcriptomics\], but overwrite is set to False. Set overwrite to True to overwrite the \.zarr store.",
+        match=r'Attempting to overwrite \'sdata\.tables\["table_transcriptomics"\]\', but overwrite is set to False. Set overwrite to True to overwrite the \.zarr store.',
     ):
         # unit test with append to True, and overwrite to False, which should not be allowed
         sdata_transcripts = allocate(

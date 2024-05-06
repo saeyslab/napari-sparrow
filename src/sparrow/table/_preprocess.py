@@ -42,7 +42,7 @@ def preprocess_transcriptomics(
     sdata : SpatialData
         The input SpatialData object.
     labels_layer : str or Iterable[str]
-        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY  in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`
         (also from the backing zarr store if it is backed).
@@ -86,6 +86,7 @@ def preprocess_transcriptomics(
     preprocess_instance = Preprocess(sdata, labels_layer=labels_layer, table_layer=table_layer)
     sdata = preprocess_instance.preprocess(
         output_layer=output_layer,
+        calculate_qc_metrics=True,
         filter_cells=True,
         filter_genes=True,
         calculate_cell_size=True,
@@ -129,7 +130,7 @@ def preprocess_proteomics(
     sdata : SpatialData
         The input SpatialData object.
     labels_layer : str or Iterable[str]
-        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY  in `sdata.tables[table_layer].obs`.
         Note that if `output_layer` is equal to `table_layer` and overwrite is True,
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
         If a list of labels layers is provided, they will therefore be preprocessed together (e.g. multiple samples).
@@ -175,6 +176,7 @@ def preprocess_proteomics(
     preprocess_instance = Preprocess(sdata, labels_layer=labels_layer, table_layer=table_layer)
     sdata = preprocess_instance.preprocess(
         output_layer=output_layer,
+        calculate_qc_metrics=False,
         filter_cells=False,
         filter_genes=False,
         calculate_cell_size=True,
@@ -184,7 +186,6 @@ def preprocess_proteomics(
         max_value_scale=max_value_scale,
         calculate_pca=calculate_pca,
         update_shapes_layers=False,
-        qc_kwargs={"percent_top": [2, 5]},
         pca_kwargs={"n_comps": n_comps},
         overwrite=overwrite,
     )
@@ -195,6 +196,7 @@ class Preprocess(ProcessTable):
     def preprocess(
         self,
         output_layer: str,
+        calculate_qc_metrics: bool = True,
         filter_cells: bool = True,
         filter_genes: bool = True,
         calculate_cell_size: bool = True,
@@ -215,13 +217,14 @@ class Preprocess(ProcessTable):
     ) -> SpatialData:
         adata = self._get_adata()
         # Calculate QC Metrics
-        sc.pp.calculate_qc_metrics(adata, inplace=True, **qc_kwargs)
+        if calculate_qc_metrics:
+            sc.pp.calculate_qc_metrics(adata, inplace=True, **qc_kwargs)
 
-        # Filter cells and genes
-        if filter_cells:
-            sc.pp.filter_cells(adata, **filter_cells_kwargs)
-        if filter_genes:
-            sc.pp.filter_genes(adata, **filter_genes_kwargs)
+            # Filter cells and genes
+            if filter_cells:
+                sc.pp.filter_cells(adata, **filter_cells_kwargs)
+            if filter_genes:
+                sc.pp.filter_genes(adata, **filter_genes_kwargs)
 
         if calculate_cell_size:
             # we do not want to loose the index (_CELL_INDEX)

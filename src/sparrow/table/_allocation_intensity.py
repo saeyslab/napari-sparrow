@@ -169,16 +169,17 @@ def allocate_intensity(
     cells.index.name = _CELL_INDEX
     adata = AnnData(X=channel_intensities, obs=cells, var=var)
 
-    adata.obs[_INSTANCE_KEY] = _cells_id
+    adata.obs[_INSTANCE_KEY] = _cells_id.astype(int)
     adata.obs[_REGION_KEY] = pd.Categorical([labels_layer] * len(adata.obs))
     if remove_background_intensity:
         adata = adata[adata.obs[_INSTANCE_KEY] != 0]
+        _cells_id = _cells_id[_cells_id != 0]
 
     # add center of cells here (via the masks).
     coordinates = center_of_mass(
         image=se_labels.data,
         label_image=se_labels.data,
-        index=_cells_id[1:] if remove_background_intensity else _cells_id,
+        index=_cells_id,
     )
     adata.obsm["spatial"] = coordinates.compute()
 

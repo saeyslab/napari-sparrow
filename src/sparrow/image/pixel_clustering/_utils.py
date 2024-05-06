@@ -10,3 +10,11 @@ def _nonzero_nonnan_percentile(array: Array, q: int) -> Array:
     array = da.compress(non_zero_non_nan_mask, array)
 
     return da.percentile(array, q=q)[0]
+
+
+def _nonzero_nonnan_percentile_axis_0(arr: Array, q: float):
+    results_percentile = []
+    for i in range(arr.shape[0]):
+        arr_percentile = _nonzero_nonnan_percentile(arr[i], q=q)
+        results_percentile.append(arr_percentile)
+    return da.stack(results_percentile, axis=0)

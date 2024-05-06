@@ -7,6 +7,7 @@ from ._filters import gaussian_filtering, min_max_filtering
 from ._image import _add_image_layer, _add_label_layer
 from ._shapes_to_labels import add_label_layer_from_shapes_layer
 from ._transcripts import transcript_density
+from .pixel_clustering._preprocess import pixel_clustering_preprocess
 from .segmentation._align_masks import align_labels_layers
 from .segmentation._apply import apply_labels_layers
 from .segmentation._expand_masks import expand_labels_layer
@@ -27,3 +28,8 @@ try:
     from ._tiling import tiling_correction
 except ImportError:
     log.warning("'jax' or 'basicpy' not installed, 'sp.im.tiling_correction' will not be available.")
+
+try:
+    from .pixel_clustering._clustering import flowsom
+except ImportError:
+    log.warning("'flowsom' not installed, 'sp.im.flowsom' will not be available.")
