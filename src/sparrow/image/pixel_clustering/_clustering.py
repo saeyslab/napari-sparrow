@@ -12,7 +12,7 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
 from sparrow.image._image import _add_label_layer, _get_spatial_element, _get_transformation
-from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
+from sparrow.utils._keys import _INSTANCE_KEY, _METACLUSTERING_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -159,7 +159,7 @@ def flowsom(
         # 3D case, save z,y,x position
         adata.obsm["spatial"] = arr_sampled[:, -3:]
 
-    adata, fsom = _flowsom(adata, key_added="metaclustering", n_clusters=n_clusters, seed=random_state, **kwargs)
+    _, fsom = _flowsom(adata, n_clusters=n_clusters, seed=random_state, **kwargs)
 
     assert len(img_layer) == len(_arr_list)
     # 2) apply fsom on all data
@@ -201,7 +201,7 @@ def flowsom(
     # TODO decide on fix in flowsom to let clusters count from 1.
     # fsom cluster ID's count from 0, while labels layer cluster ID's count from 1.
 
-    mapping = fsom.get_cluster_data().obs["metaclustering"].copy()
+    mapping = fsom.get_cluster_data().obs[_METACLUSTERING_KEY].copy()
     # +1 because flowsom clusters count from 0,
     mapping.index = (mapping.index.astype(int) + 1).astype(str)
     mapping += 1
@@ -211,7 +211,6 @@ def flowsom(
 
 def _flowsom(
     adata: AnnData,
-    key_added: str = "metaclustering",
     n_clusters: int = 10,
     **kwargs,
 ) -> tuple[AnnData, fs.FlowSOM]:
@@ -219,7 +218,6 @@ def _flowsom(
     if "cols_used" in adata.var:
         # can not back boolean column to zarr store
         adata.var["cols_used"] = adata.var["cols_used"].astype(int)
-    adata.obs.rename(columns={"metaclustering": key_added}, inplace=True)
 
     return adata, fsom
 
@@ -305,18 +303,3 @@ def _sample_dask_array(array: Array, fraction: float = 0.1, remove_nan_columns: 
         return _remove_nan_columns(final_array[indices])
     else:
         return final_array[indices]
-
-
-def _increase_cluster_ids(fsom):
-    """Flosom cluster ID's start from 0, but because we want to save as a labels layer, we want to start from 1"""
-    fsom.get_cell_data().obs["clustering"] += 1
-    fsom.get_cell_data().obs["metaclustering"] += 1
-
-    fsom.get_cluster_data().obs.index = (fsom.get_cluster_data().obs.index.astype(int) + 1).astype(str)
-    fsom.get_cluster_data().obs["metaclustering"] += 1
-
-    fsom.get_cluster_data().uns["outliers"].index += 1
-    fsom.get_cluster_data().uns["outliers"]["index"] += 1
-    fsom.get_cluster_data().uns["metacluster_MFIs"].index += 1
-
-    return fsom
