@@ -123,7 +123,6 @@ def preprocess_proteomics(
 
     Performs optional normalization (on size or via `scanpy.sc.pp.normalize_total`), log transformation, scaling, and PCA calculation for proteomics data
     contained in the `sdata`.
-    qc metrics are added to `sdata.tables[output_layer].obs` using `scanpy.pp.calculate_qc_metrics`.
 
     Parameters
     ----------

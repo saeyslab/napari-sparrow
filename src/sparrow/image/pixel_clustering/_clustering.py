@@ -50,7 +50,7 @@ def flowsom(
     image_layer : str or Iterable[str]
         The image layer(s) of `sdata` on which flowsom is run. It is recommended to preprocess the data with `sp.im.pixel_clustering_preprocess`.
     output_layer_clusters: str or Iterable[str]
-        The output labels layer in `sdata` to which labels layer with predicted flowsom clusters are saved.
+        The output labels layer in `sdata` to which labels layer with predicted flowsom SOM clusters are saved.
     output_layer_metaclusters: str or Iterable[str]
         The output labels layer in `sdata` to which labels layer with predicted flowsom metaclusters are saved.
     channels : int | str | Iterable[int] | Iterable[str] | None, optional

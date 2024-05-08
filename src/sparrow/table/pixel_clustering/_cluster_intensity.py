@@ -41,7 +41,7 @@ def cluster_intensity(
     img_layer : str
         The image layer of `sdata` from which the intensity is calculated.
     labels_layer : str
-        The labels layer in `sdata` that contains the SOM cluster IDs.
+        The labels layer in `sdata` that contains the SOM cluster IDs. I.e. the `output_layer_clusters` labels layer obtained through `sp.im.flowsom`.
     output_layer : str
         The output table layer in `sdata` where results are stored.
     channels : int | str | Iterable[int] | Iterable[str] | None, optional

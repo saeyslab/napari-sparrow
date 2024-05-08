@@ -81,7 +81,7 @@ def pixel_clustering_preprocess(
     )
     assert len(output_layer) == len(
         img_layer
-    ), "The number of `output_layer` specified should be the equal to the the number of `img_layer` specified."
+    ), "The number of 'output_layer' specified should be the equal to the the number of 'img_layer' specified."
 
     se_image = _get_spatial_element(sdata, layer=img_layer[0])
 
