@@ -107,7 +107,7 @@ class ProcessTable:
     def _get_adata(
         self, index_names_var: Iterable[str] | None = None, index_positions_var: Iterable[int] | None = None
     ) -> AnnData:
-        """Preprocess the data by filtering based on the labels layer(s) and setting spatialdata attributes."""
+        """Preprocess the data by filtering based on the table layer and setting spatialdata attributes."""
         if self.labels_layer is not None:
             adata = self.sdata.tables[self.table_layer][
                 self.sdata.tables[self.table_layer].obs[_REGION_KEY].isin(self.labels_layer)

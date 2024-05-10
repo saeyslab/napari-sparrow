@@ -27,7 +27,7 @@ def cluster_intensity(
     overwrite=False,
 ) -> SpatialData:
     """
-    Calculates average intensity per SOM cluster as available in the `labels_layer`, and saves it as a table layer in `sdata` as `output_layer`.
+    Calculates average intensity of each channel in `img_layer` per SOM cluster as available in the `labels_layer`, and saves it as a table layer in `sdata` as `output_layer`.
 
     This function computes average intensity for each SOM cluster identified in the `labels_layer` and stores the results in a new table layer.
     The intensity calculation can be subset by channels and adjusted for chunk size for efficient processing. SOM clusters can be calculated using `sp.im.flowsom`.

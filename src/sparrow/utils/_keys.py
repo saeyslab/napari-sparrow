@@ -8,3 +8,4 @@ _CELLSIZE_KEY = "shapeSize"
 
 # flowsom
 _METACLUSTERING_KEY = "metaclustering"
+_CLUSTERING_KEY = "clustering"

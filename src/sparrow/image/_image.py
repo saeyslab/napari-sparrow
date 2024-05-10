@@ -129,7 +129,6 @@ def _get_spatial_element(sdata: SpatialData, layer: str) -> SpatialImage | DataA
         return si
     elif isinstance(si, MultiscaleSpatialImage):
         # get the name of the unscaled image
-        # TODO maybe add some other checks here
         scale_0 = si.__iter__().__next__()
         name = si[scale_0].__iter__().__next__()
         return si[scale_0][name]

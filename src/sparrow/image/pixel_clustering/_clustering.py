@@ -12,6 +12,7 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
 from sparrow.image._image import _add_label_layer, _get_spatial_element, _get_transformation
+from sparrow.utils._flowsom import _flowsom
 from sparrow.utils._keys import _INSTANCE_KEY, _METACLUSTERING_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
@@ -20,7 +21,7 @@ log = get_pylogger(__name__)
 try:
     import flowsom as fs
 except ImportError:
-    log.warning("'flowsom' not installed, 'sp.tb.flowsom' will not be available.")
+    log.warning("'flowsom' not installed, 'sp.im.flowsom' will not be available.")
 
 
 def flowsom(
@@ -202,24 +203,11 @@ def flowsom(
     # fsom cluster ID's count from 0, while labels layer cluster ID's count from 1.
 
     mapping = fsom.get_cluster_data().obs[_METACLUSTERING_KEY].copy()
-    # +1 because flowsom clusters count from 0,
+    # +1 because flowsom SOM clusters count from 0,
     mapping.index = (mapping.index.astype(int) + 1).astype(str)
     mapping += 1
 
     return sdata, fsom, mapping
-
-
-def _flowsom(
-    adata: AnnData,
-    n_clusters: int = 10,
-    **kwargs,
-) -> tuple[AnnData, fs.FlowSOM]:
-    fsom = fs.FlowSOM(adata, n_clusters=n_clusters, cols_to_use=None, **kwargs)
-    if "cols_used" in adata.var:
-        # can not back boolean column to zarr store
-        adata.var["cols_used"] = adata.var["cols_used"].astype(int)
-
-    return adata, fsom
 
 
 def _predict_flowsom_clusters_chunk(array: NDArray, fsom: fs.FlowSOM) -> NDArray:

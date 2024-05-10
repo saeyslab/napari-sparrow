@@ -22,8 +22,37 @@ def cell_clustering_preprocess(
     output_layer: str,  # table layer
     chunks: str | int | tuple[int, ...] | None = None,
     overwrite: bool = False,
-):
-    """Preprocess to preprare for cell clustering."""
+) -> SpatialData:
+    """
+    Preprocesses spatial data for cell clustering.
+
+    This function prepares a SpatialData object for cell clustering by integrating cell segmentation masks (obtained via e.g. `sp.im.segment`) and SOM pixel/meta cluster (obtained via e.g. `sp.im.flosom`).
+    The function calculates the cluster count for each cell in `labels_layer_cells`, normalized by cell size.
+    The results are stored in a specified table layer within the `sdata` object of shape (#cells, #clusters).
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The input SpatialData object containing the spatial proteomics data.
+    labels_layer_cells : str or Iterable[str]
+        The labels layer(s) in `sdata` that contain cell segmentation masks. These masks should be previously generated using `sp.im.segment`.
+    labels_layer_clusters : str or Iterable[str]
+        The labels layer(s) in `sdata` that contain metacluster or cluster masks. These should be derived from `sp.im.flowsom`.
+    output_layer : str
+        The name of the table layer within `sdata` where the preprocessed data will be stored.
+    chunks : str | int | tuple[int, ...] | None, optional
+        Chunk sizes for processing the data. If provided as a tuple, it should detail chunk sizes for each dimension `(z)`, `y`, `x`.
+    overwrite : bool, default=False
+        If True, overwrites the existing data in the specified `output_layer` if it already exists.
+
+    Returns
+    -------
+    - SpatialData
+        The input `sdata` with a table layer added (`output_layer`).
+
+    Warnings
+    --------
+    """
     labels_layer_cells = (
         list(labels_layer_cells)
         if isinstance(labels_layer_cells, Iterable) and not isinstance(labels_layer_cells, str)
@@ -76,7 +105,7 @@ def cell_clustering_preprocess(
         _arr_list_clusters.append(_array_clusters)
 
     # should map on the same clusters, because predicted via same flowsom model,
-    # but _labels_layer_clusters of one FOV could contain cluster ID's that is not in other _labels_layer_clusters correponding to other FOV
+    # but _labels_layer_clusters of one FOV could contain cluster ID's that is not in other _labels_layer_clusters correponding to other FOV, therefore get all cluster ID's across all FOVs
     _unique_clusters = da.unique(da.stack(_arr_list_clusters, axis=0)).compute()
 
     _results_sum_of_chunks = []
@@ -85,6 +114,10 @@ def cell_clustering_preprocess(
     for i in range(len(_arr_list_labels)):
         _array_labels = _arr_list_labels[i]
         _array_clusters = _arr_list_clusters[i]
+
+        assert (
+            _array_labels.numblocks == _array_clusters.numblocks
+        ), f"Provided labels layers '{labels_layer_cells[i]}' and '{labels_layer_clusters[i]}' have different chunk sizes. Set 'chunk' parameter to fix this issue."
 
         _unique_mask = da.unique(_array_labels).compute()
 
