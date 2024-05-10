@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from typing import Iterable
 
@@ -17,9 +19,9 @@ from sparrow.utils._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY
 
 def cell_clustering_preprocess(
     sdata: SpatialData,
-    labels_layer_cells: str | Iterable[str],  # cell segmentation masks (obtained via sp.im.segment)
-    labels_layer_clusters: str | Iterable[str],  # metaclusters (obtained via sp.im.flowsom)
-    output_layer: str,  # table layer
+    labels_layer_cells: str | Iterable[str],
+    labels_layer_clusters: str | Iterable[str],
+    output_layer: str,
     chunks: str | int | tuple[int, ...] | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
@@ -27,7 +29,7 @@ def cell_clustering_preprocess(
     Preprocesses spatial data for cell clustering.
 
     This function prepares a SpatialData object for cell clustering by integrating cell segmentation masks (obtained via e.g. `sp.im.segment`) and SOM pixel/meta cluster (obtained via e.g. `sp.im.flosom`).
-    The function calculates the cluster count for each cell in `labels_layer_cells`, normalized by cell size.
+    The function calculates the cluster count (clusters provided via `labels_layer_clusters`) for each cell in `labels_layer_cells`, normalized by cell size.
     The results are stored in a specified table layer within the `sdata` object of shape (#cells, #clusters).
 
     Parameters
