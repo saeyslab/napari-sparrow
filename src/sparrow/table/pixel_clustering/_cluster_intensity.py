@@ -13,7 +13,7 @@ from sparrow.image._image import _get_spatial_element
 from sparrow.table._allocation_intensity import allocate_intensity
 from sparrow.table._preprocess import preprocess_proteomics
 from sparrow.table._table import ProcessTable, _add_table_layer
-from sparrow.utils._keys import _CELL_INDEX, _CELLSIZE_KEY, _INSTANCE_KEY
+from sparrow.utils._keys import _CELL_INDEX, _CELLSIZE_KEY, _INSTANCE_KEY, _METACLUSTERING_KEY
 
 
 def cluster_intensity(
@@ -27,7 +27,7 @@ def cluster_intensity(
     overwrite=False,
 ) -> SpatialData:
     """
-    Calculates average intensity per SOM cluster as available in the `labels_layer`, and saves it as a table layer in `sdata` as `output_layer`.
+    Calculates average intensity of each channel in `img_layer` per SOM cluster as available in the `labels_layer`, and saves it as a table layer in `sdata` as `output_layer`.
 
     This function computes average intensity for each SOM cluster identified in the `labels_layer` and stores the results in a new table layer.
     The intensity calculation can be subset by channels and adjusted for chunk size for efficient processing. SOM clusters can be calculated using `sp.im.flowsom`.
@@ -41,7 +41,7 @@ def cluster_intensity(
     img_layer : str
         The image layer of `sdata` from which the intensity is calculated.
     labels_layer : str
-        The labels layer in `sdata` that contains the SOM cluster IDs.
+        The labels layer in `sdata` that contains the SOM cluster IDs. I.e. the `output_layer_clusters` labels layer obtained through `sp.im.flowsom`.
     output_layer : str
         The output table layer in `sdata` where results are stored.
     channels : int | str | Iterable[int] | Iterable[str] | None, optional
@@ -111,7 +111,20 @@ def cluster_intensity(
     adata.obs.index = old_index
     adata.obs = adata.obs.drop(columns=[_CELL_INDEX])
 
-    assert not adata.obs["metaclustering"].isna().any(), "Not all SOM cluster IDs could be linked to a metacluster."
+    assert not adata.obs[_METACLUSTERING_KEY].isna().any(), "Not all SOM cluster IDs could be linked to a metacluster."
+
+    # calculate mean intensity per metacluster
+    df = adata.to_df().copy()
+    df[[_CELLSIZE_KEY, _METACLUSTERING_KEY]] = adata.obs[[_CELLSIZE_KEY, _METACLUSTERING_KEY]].copy()
+
+    if channels is None:
+        channels = adata.var.index.values
+    else:
+        channels = list(channels) if isinstance(channels, Iterable) and not isinstance(channels, str) else [channels]
+
+    df = _mean_intensity_per_metacluster(df, channels=channels)
+
+    adata.uns[f"{_METACLUSTERING_KEY}"] = df
 
     sdata = _add_table_layer(
         sdata,
@@ -124,10 +137,29 @@ def cluster_intensity(
     return sdata
 
 
+def _mean_intensity_per_metacluster(df, channels: Iterable[str]):
+    # Assuming df is your dataframe
+    def weighted_mean(x, data, weight):
+        """Calculate weighted mean for a column."""
+        return (x * data[weight]).sum() / data[weight].sum()
+
+    # Calculate weighted average for each marker per pixel_meta_cluster
+    weighted_averages = df.groupby(
+        _METACLUSTERING_KEY,
+    ).apply(
+        lambda x: pd.Series(
+            {col: weighted_mean(x[col], x, _CELLSIZE_KEY) for col in channels},
+        ),
+        include_groups=False,
+    )
+
+    return weighted_averages.reset_index()
+
+
 def _export_to_ark_format(adata: AnnData, output: str | Path | None) -> pd.DataFrame:
     """Export avg intensity per SOM cluster calculated via `sp.tb.cluster_intensity` to a csv file that can be visualized by the ark gui."""
     df = adata.to_df().copy()
-    df["pixel_meta_cluster"] = adata.obs["metaclustering"].copy()
+    df["pixel_meta_cluster"] = adata.obs[_METACLUSTERING_KEY].copy()
     df["pixel_som_cluster"] = adata.obs[_INSTANCE_KEY].copy()
     df["count"] = adata.obs[_CELLSIZE_KEY].copy()
 

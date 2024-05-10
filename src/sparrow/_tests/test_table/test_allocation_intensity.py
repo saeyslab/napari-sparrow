@@ -111,6 +111,7 @@ def test_calculate_intensity():
         np.array([[3, 0, 0, 0], [0, 3, 1, 1], [1, 0, 1, 1], [1, 1, 0, 0]]),
         chunks=chunk_size,
     )
+    mask_dask_array = mask_dask_array[None, ...]
 
     float_dask_array = da.from_array(
         np.array(
@@ -124,10 +125,11 @@ def test_calculate_intensity():
         chunks=chunk_size,
     )
 
+    float_dask_array = float_dask_array[None, ...]
+
     sum_of_chunks = _calculate_intensity(
         mask_dask_array=mask_dask_array,
         float_dask_array=float_dask_array,
-        chunks=chunk_size,
     )
 
     # intensity from label==0, label==1 and label==3

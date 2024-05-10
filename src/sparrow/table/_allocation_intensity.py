@@ -56,7 +56,7 @@ def allocate_intensity(
         This parameter can take a single integer or string or an iterable of integers or strings representing specific channels.
         If set to None (the default), intensity data will be aggregated from all available channels within the image layer.
     chunks : str | int | tuple[int, ...], optional
-        The chunk size for processing the image data.
+        The chunk size for processing the image data. If provided as a tuple, desired chunksize for (z), y, x should be provided.
     append: bool, optional.
         If set to True, and the `labels_layer` does not yet exist as a `_REGION_KEY` in `sdata.tables[output_layer].obs`,
         the intensity values extracted during the current function call will be appended (along axis=0) to any existing intensity data
@@ -147,12 +147,34 @@ def allocate_intensity(
     if channels is None:
         channels = se_image.c.data
 
-    # iterate over all the channels and collect intensity for each channel and each cell
+    _array_mask = se_labels.data
+    _array_img = se_image.data
+
+    to_squeeze = False
+    if se_image.ndim == 3:
+        to_squeeze = True
+        _array_mask = _array_mask[None, ...]
+        _array_img = _array_img[:, None, ...]
+
+    if chunks is not None:
+        if not isinstance(chunks, (int, str)):
+            if to_squeeze:
+                assert len(chunks) == _array_img.ndim - 2
+                chunks = (1, chunks[0], chunks[1])
+            else:
+                assert len(chunks) == _array_img.ndim - 1
+                chunks = (chunks[0], chunks[1], chunks[2])
+
     channel_intensities = []
     for channel in channels:
         channel_idx = list(se_image.c.data).index(channel)
+        _array_img_c = _array_img[channel_idx]
+
         channel_intensities.append(
-            _calculate_intensity(se_image.isel(c=channel_idx).data, se_labels.data, chunks=chunks)
+            _calculate_intensity(
+                _array_img_c.rechunk(chunks) if chunks is not None else _array_img_c,
+                _array_mask.rechunk(chunks) if chunks is not None else _array_mask,
+            )
         )
 
     channel_intensities = np.concatenate(channel_intensities, axis=1)
@@ -176,12 +198,17 @@ def allocate_intensity(
         _cells_id = _cells_id[_cells_id != 0]
 
     # add center of cells here (via the masks).
+    _array_mask = _array_mask.squeeze(0) if to_squeeze else _array_mask
     coordinates = center_of_mass(
-        image=se_labels.data,
-        label_image=se_labels.data,
+        image=_array_mask,
+        label_image=_array_mask,
         index=_cells_id,
     )
-    adata.obsm["spatial"] = coordinates.compute()
+
+    coordinates = coordinates.compute()
+    coordinates += np.array([t1y, t1x]) if to_squeeze else np.array([0, t1y, t1x])
+
+    adata.obsm["spatial"] = coordinates
 
     if append:
         region = []
@@ -212,7 +239,6 @@ def allocate_intensity(
 def _calculate_intensity(
     float_dask_array: Array,
     mask_dask_array: Array,
-    chunks: str | int | tuple[int, ...] | None = 10000,
 ) -> NDArray:
     # lazy computation of pixel intensities on one channel for each label in mask_dask_array
     # result is an array of shape (len(unique(mask_dask_array).compute(), 1 ), so be aware that if
@@ -220,9 +246,8 @@ def _calculate_intensity(
     # array will hold at postion 2 the intensity for cell with index 3.
 
     assert float_dask_array.shape == mask_dask_array.shape
-
-    float_dask_array = float_dask_array.rechunk(chunks)
-    mask_dask_array = mask_dask_array.rechunk(chunks)
+    assert float_dask_array.ndim == 3
+    assert float_dask_array.numblocks == mask_dask_array.numblocks
 
     labels = unique(mask_dask_array).compute()
 
@@ -244,7 +269,7 @@ def _calculate_intensity(
         mask_dask_array,
         float_dask_array,
         dtype=float,
-        chunks=(len(labels), 1),
+        chunks=(1, len(labels), 1),
     )
 
     # here you could persist array of shape (num_labels * nr_of_chunks_x, nr_of_chunks_y) into memory
@@ -256,12 +281,12 @@ def _calculate_intensity(
     num_chunks = chunk_sum.numblocks
     tasks = []
 
-    # sum the result for each chunk
     for i in range(num_chunks[0]):
         for j in range(num_chunks[1]):
-            current_chunk = chunk_sum.blocks[i, j]
-            task = delayed(np.add)(sum_of_chunks, current_chunk)
-            tasks.append(task)
+            for k in range(num_chunks[1]):
+                current_chunk = chunk_sum.blocks[i, j, k]
+                task = delayed(np.add)(sum_of_chunks, current_chunk)
+                tasks.append(task)
 
     total_sum_delayed = delayed(sum)(tasks)
 

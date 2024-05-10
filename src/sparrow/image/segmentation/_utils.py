@@ -514,7 +514,7 @@ def _clean_up_masks(
 
     # get the 'inside' region of the block, i.e. the original chunk without depth appended
     y_start, y_stop = depth[0], block.shape[1] - depth[0]
-    x_start, x_stop = depth[1], block.shape[2] - depth[1]  # TODO fix bug, should be depth[1]
+    x_start, x_stop = depth[1], block.shape[2] - depth[1]
 
     assert (
         block_id[0] == 0

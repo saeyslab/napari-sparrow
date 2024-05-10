@@ -3,6 +3,7 @@ import importlib.util
 import pytest
 
 from sparrow.table.pixel_clustering._cluster_intensity import _export_to_ark_format, cluster_intensity
+from sparrow.utils._keys import _METACLUSTERING_KEY
 
 
 @pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
@@ -39,5 +40,7 @@ def test_cluster_intensity(sdata_blobs):
 
     assert isinstance(fsom, fs.FlowSOM)
     assert "counts_clusters" in sdata_blobs.tables
+    # avg intensity per metacluster saved in .uns
+    assert _METACLUSTERING_KEY in sdata_blobs.tables["counts_clusters"].uns
     df = _export_to_ark_format(sdata_blobs["counts_clusters"], output=None)
     assert df.shape[0] == sdata_blobs.tables["counts_clusters"].shape[0]
