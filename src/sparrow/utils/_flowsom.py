@@ -1,6 +1,6 @@
 from anndata import AnnData
 
-from sparrow.utils._keys import _CLUSTERING_KEY, _METACLUSTERING_KEY
+from sparrow.utils._keys import ClusteringKey
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -21,7 +21,9 @@ def _flowsom(
         # can not back boolean column to zarr store
         adata.var["cols_used"] = adata.var["cols_used"].astype(int)
     # otherwise clusters can not be visualized in napari-spatialdata
-    adata.obs[_METACLUSTERING_KEY] = adata.obs[_METACLUSTERING_KEY].astype("category")
-    adata.obs[_CLUSTERING_KEY] = adata.obs[_CLUSTERING_KEY].astype("category")
+    adata.obs[ClusteringKey._METACLUSTERING_KEY.value] = adata.obs[ClusteringKey._METACLUSTERING_KEY.value].astype(
+        "category"
+    )
+    adata.obs[ClusteringKey._CLUSTERING_KEY.value] = adata.obs[ClusteringKey._CLUSTERING_KEY.value].astype("category")
 
     return adata, fsom

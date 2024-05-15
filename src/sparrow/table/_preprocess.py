@@ -12,7 +12,7 @@ from spatialdata import SpatialData
 from sparrow.image._image import _get_spatial_element
 from sparrow.shape._shape import _filter_shapes_layer
 from sparrow.table._table import ProcessTable, _add_table_layer
-from sparrow.utils._keys import _CELL_INDEX, _CELLSIZE_KEY, _INSTANCE_KEY, _REGION_KEY
+from sparrow.utils._keys import _CELL_INDEX, _CELLSIZE_KEY, _INSTANCE_KEY, _RAW_COUNTS_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -114,6 +114,7 @@ def preprocess_proteomics(
     log1p: bool = True,
     scale: bool = False,
     max_value_scale: float = 10,
+    q: float | None = None,
     calculate_pca: bool = False,
     n_comps: int = 50,
     overwrite: bool = False,
@@ -121,7 +122,7 @@ def preprocess_proteomics(
     """
     Preprocess a table (AnnData) attribute of a SpatialData object for proteomics data.
 
-    Performs optional normalization (on size or via `scanpy.sc.pp.normalize_total`), log transformation, scaling, and PCA calculation for proteomics data
+    Performs optional normalization (on size or via `scanpy.sc.pp.normalize_total`), log transformation, scaling/quantile normalization, and PCA calculation for proteomics data
     contained in the `sdata`.
 
     Parameters
@@ -145,6 +146,8 @@ def preprocess_proteomics(
         If True, scales the data to have zero mean and a variance of one. The scaling is capped at `max_value_scale`.
     max_value_scale : float, default=10
         The maximum value to which data will be scaled. Ignored if `scale` is False.
+    q: float | None = None,
+        Quantile used for normalization. If specified, values are normalized by this quantile calculated for each `adata.var`. Values are multiplied by 100 after normalization. Typical value used is 0.999,
     calculate_pca : bool, default=False
         If True, calculates principal component analysis (PCA) on the data.
     n_comps : int, default=50
@@ -164,6 +167,7 @@ def preprocess_proteomics(
         - If `sdata` does not contain any table layers.
         - If `labels_layer`, or one of the element of `labels_layer` is not a labels layer in `sdata`.
         - If `table_layer` is not a table layer in `sdata`.
+        - If both `scale` is set to True and `q` is not None.
 
     Warnings
     --------
@@ -182,6 +186,7 @@ def preprocess_proteomics(
         size_norm=size_norm,
         log1p=log1p,
         scale=scale,
+        q=q,
         max_value_scale=max_value_scale,
         calculate_pca=calculate_pca,
         update_shapes_layers=False,
@@ -203,6 +208,7 @@ class Preprocess(ProcessTable):
         log1p: bool = True,
         scale: bool = True,
         max_value_scale: Optional[float] = 10,  # ignored if scale is False,
+        q: float | None = None,  # quantile for normalization, typically 0.999
         calculate_pca: bool = True,
         update_shapes_layers: bool = True,  # whether to update the shapes layer based on the items filtered out in sdata.tables[self.table_layer].
         qc_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.pp.calculate_qc_metrics
@@ -245,7 +251,7 @@ class Preprocess(ProcessTable):
             adata.obs.index = old_index
             adata.obs = adata.obs.drop(columns=[_CELL_INDEX])
 
-        adata.layers["raw_counts"] = adata.X
+        adata.layers[_RAW_COUNTS_KEY] = adata.X.copy()
 
         if size_norm:
             adata.X = (adata.X.T * 100 / adata.obs[_CELLSIZE_KEY].values).T
@@ -255,10 +261,20 @@ class Preprocess(ProcessTable):
         if log1p:
             sc.pp.log1p(adata)
 
+        if scale and q is not None:
+            raise ValueError(
+                "Please choose between scaling via 'sp.pp.scale' or normalization by q quantile, not both."
+            )
+
         if scale:
-            # need to do .copy() here to set .raw value, because .scale still overwrites this .raw, which is unexpected behaviour
             adata.raw = adata.copy()
             sc.pp.scale(adata, max_value=max_value_scale)
+
+        if q is not None:
+            adata.raw = adata.copy()
+            array = np.where(adata.X == 0, np.nan, adata.X)
+            arr_quantile = np.nanquantile(array, q, axis=0)
+            adata.X = (adata.X.T * 100 / arr_quantile.reshape(-1, 1)).T
 
         if calculate_pca:
             # calculate the max amount of pc's possible

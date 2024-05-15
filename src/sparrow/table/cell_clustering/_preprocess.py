@@ -22,6 +22,7 @@ def cell_clustering_preprocess(
     labels_layer_cells: str | Iterable[str],
     labels_layer_clusters: str | Iterable[str],
     output_layer: str,
+    q: float | None = 0.999,
     chunks: str | int | tuple[int, ...] | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
@@ -29,7 +30,7 @@ def cell_clustering_preprocess(
     Preprocesses spatial data for cell clustering.
 
     This function prepares a SpatialData object for cell clustering by integrating cell segmentation masks (obtained via e.g. `sp.im.segment`) and SOM pixel/meta cluster (obtained via e.g. `sp.im.flosom`).
-    The function calculates the cluster count (clusters provided via `labels_layer_clusters`) for each cell in `labels_layer_cells`, normalized by cell size.
+    The function calculates the cluster count (clusters provided via `labels_layer_clusters`) for each cell in `labels_layer_cells`, normalized by cell size, and optionally by quantile normalization if `q` is provided.
     The results are stored in a specified table layer within the `sdata` object of shape (#cells, #clusters).
 
     Parameters
@@ -42,6 +43,8 @@ def cell_clustering_preprocess(
         The labels layer(s) in `sdata` that contain metacluster or cluster masks. These should be derived from `sp.im.flowsom`.
     output_layer : str
         The name of the table layer within `sdata` where the preprocessed data will be stored.
+    q: float | None = None,
+        Quantile used for normalization. If specified, each pixel SOM/meta cluster column in `output_layer` is normalized by this quantile. Values are multiplied by 100 after normalization.
     chunks : str | int | tuple[int, ...] | None, optional
         Chunk sizes for processing the data. If provided as a tuple, it should detail chunk sizes for each dimension `(z)`, `y`, `x`.
     overwrite : bool, default=False
@@ -51,9 +54,6 @@ def cell_clustering_preprocess(
     -------
     - SpatialData
         The input `sdata` with a table layer added (`output_layer`).
-
-    Warnings
-    --------
     """
     labels_layer_cells = (
         list(labels_layer_cells)
@@ -108,7 +108,7 @@ def cell_clustering_preprocess(
 
     # should map on the same clusters, because predicted via same flowsom model,
     # but _labels_layer_clusters of one FOV could contain cluster ID's that is not in other _labels_layer_clusters correponding to other FOV, therefore get all cluster ID's across all FOVs
-    _unique_clusters = da.unique(da.stack(_arr_list_clusters, axis=0)).compute()
+    _unique_clusters = da.unique(da.hstack([da.unique(_arr) for _arr in _arr_list_clusters])).compute()
 
     _results_sum_of_chunks = []
     _cells_id = []
@@ -175,6 +175,9 @@ def cell_clustering_preprocess(
     adata = adata[adata.obs[_INSTANCE_KEY] != 0].copy()
     adata = adata[:, ~adata.var_names.isin(["0"])].copy()
 
+    # remove cells with no overlap with any pixel cluster
+    adata = adata[~(adata.X == 0).all(axis=1)].copy()
+
     sdata = _add_table_layer(
         sdata,
         adata=adata,
@@ -183,7 +186,7 @@ def cell_clustering_preprocess(
         overwrite=overwrite,
     )
 
-    # for size normalization of counts by size of the labels
+    # for size normalization of counts by size of the labels; and quantile normalization
     sdata = preprocess_proteomics(
         sdata,
         labels_layer=labels_layer_cells,
@@ -192,6 +195,7 @@ def cell_clustering_preprocess(
         size_norm=True,
         log1p=False,
         scale=False,
+        q=q,
         calculate_pca=False,
         overwrite=True,
     )

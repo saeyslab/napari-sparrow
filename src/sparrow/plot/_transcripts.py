@@ -12,7 +12,7 @@ from spatialdata import SpatialData
 
 from sparrow.image._image import _get_boundary, _get_spatial_element
 from sparrow.plot import plot_shapes
-from sparrow.utils._keys import _REGION_KEY
+from sparrow.utils._keys import _RAW_COUNTS_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -113,15 +113,15 @@ def analyse_genes_left_out(
     filtered = pd.DataFrame(adata.X.sum(axis=0) / raw_counts)
 
     filtered = filtered.rename(columns={0: "proportion_kept"})
-    filtered["raw_counts"] = raw_counts
-    filtered["log_raw_counts"] = np.log(filtered["raw_counts"])
+    filtered[_RAW_COUNTS_KEY] = raw_counts
+    filtered[f"log_{_RAW_COUNTS_KEY}"] = np.log(filtered[_RAW_COUNTS_KEY])
 
     # first plot:
 
-    sns.scatterplot(data=filtered, y="proportion_kept", x="log_raw_counts")
-    plt.axvline(filtered["log_raw_counts"].median(), color="green", linestyle="dashed")
+    sns.scatterplot(data=filtered, y="proportion_kept", x=f"log_{_RAW_COUNTS_KEY}")
+    plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
     plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
-    plt.xlim(left=-0.5, right=filtered["log_raw_counts"].quantile(0.99))
+    plt.xlim(left=-0.5, right=filtered[f"log_{_RAW_COUNTS_KEY}"].quantile(0.99))
 
     if output:
         plt.savefig(f"{output}_0", bbox_inches="tight")
@@ -131,12 +131,12 @@ def analyse_genes_left_out(
 
     # second plot:
 
-    r, p = pearsonr(filtered["log_raw_counts"], filtered["proportion_kept"])
-    sns.regplot(x="log_raw_counts", y="proportion_kept", data=filtered)
+    r, p = pearsonr(filtered[f"log_{_RAW_COUNTS_KEY}"], filtered["proportion_kept"])
+    sns.regplot(x=f"log_{_RAW_COUNTS_KEY}", y="proportion_kept", data=filtered)
     ax = plt.gca()
     ax.text(0.7, 0.9, f"r={r:.2f}, p={p:.2g}", transform=ax.transAxes)
 
-    plt.axvline(filtered["log_raw_counts"].median(), color="green", linestyle="dashed")
+    plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
     plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
 
     if output:

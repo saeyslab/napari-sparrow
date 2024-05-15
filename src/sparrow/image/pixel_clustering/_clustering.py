@@ -13,7 +13,7 @@ from spatialdata.models.models import ScaleFactors_t
 
 from sparrow.image._image import _add_label_layer, _get_spatial_element, _get_transformation
 from sparrow.utils._flowsom import _flowsom
-from sparrow.utils._keys import _INSTANCE_KEY, _METACLUSTERING_KEY, _REGION_KEY
+from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY, ClusteringKey
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -202,9 +202,9 @@ def flowsom(
     # TODO decide on fix in flowsom to let clusters count from 1.
     # fsom cluster ID's count from 0, while labels layer cluster ID's count from 1.
 
-    mapping = fsom.get_cluster_data().obs[_METACLUSTERING_KEY].copy()
+    mapping = fsom.get_cluster_data().obs[ClusteringKey._METACLUSTERING_KEY.value].copy()
     # +1 because flowsom SOM clusters count from 0,
-    mapping.index = (mapping.index.astype(int) + 1).astype(str)
+    mapping.index = mapping.index.astype(int) + 1
     mapping += 1
 
     return sdata, fsom, mapping
