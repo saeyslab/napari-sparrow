@@ -10,4 +10,5 @@ from ._regionprops import add_regionprop_features
 from ._table import correct_marker_genes, filter_on_size
 from .cell_clustering._clustering import flowsom
 from .cell_clustering._preprocess import cell_clustering_preprocess
+from .cell_clustering._weighted_channel_expression import weighted_channel_expression
 from .pixel_clustering._cluster_intensity import cluster_intensity

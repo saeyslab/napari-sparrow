@@ -19,7 +19,6 @@ class ProcessTable:
         sdata: SpatialData,
         table_layer: str,
         labels_layer: str | Iterable[str] | None = None,
-        image_layer: str | Iterable[str] | None = None,
     ):
         """
         Base class for implementation of processing on tables.
@@ -32,17 +31,11 @@ class ProcessTable:
             The table layer to use.
         labels_layer : str or Iterable[str] or None
             The label layer(s) to use.
-        image_layer : str or Iterable[str] or None
-            The image layer(s) to use.
         """
         if sdata.tables == {}:
             raise ValueError(
                 "Provided SpatialData object 'sdata' does not contain any 'tables'. "
                 "Please create tables via e.g. 'sp.tb.allocation' or 'sp.tb.allocation_intensity' functions."
-            )
-        if labels_layer is not None and image_layer is not None:
-            raise ValueError(
-                "Please either specify a `labels_layer` or an `image_layer` to which the `table_layer` is linked not both."
             )
 
         if labels_layer is not None:
@@ -57,28 +50,16 @@ class ProcessTable:
                 else [labels_layer]
             )
 
-        if image_layer is not None:
-            if sdata.images == {}:
-                raise ValueError("Provided SpatialData object 'sdata' does not contain 'images'. ")
-            image_layer = (
-                list(image_layer)
-                if isinstance(image_layer, Iterable) and not isinstance(image_layer, str)
-                else [image_layer]
-            )
-
         self.sdata = sdata
         self.labels_layer = labels_layer
-        self.image_layer = image_layer
         self.table_layer = table_layer
         self._validated_table_layer()
         if self.labels_layer is not None:
-            self._validate_layer(layer_list=self.labels_layer, layer_type="labels")
-        if self.image_layer is not None:
-            self._validate_layer(layer_list=self.image_layer, layer_type="images")
-        if self.labels_layer is None and self.image_layer is None:
+            self._validate_layer(layer_list=self.labels_layer)
+        if self.labels_layer is None:
             self._validate()
 
-    def _validate_layer(self, layer_list, layer_type):
+    def _validate_layer(self, layer_list, layer_type="labels"):
         """Generic layer validation helper to reduce code duplication."""
         for _layer in layer_list:
             if _layer not in [*getattr(self.sdata, layer_type)]:
@@ -97,7 +78,7 @@ class ProcessTable:
     def _validate(self):
         assert (
             self.sdata.tables[self.table_layer].obs[_INSTANCE_KEY].is_unique
-        ), f"'{_INSTANCE_KEY}' is not unique. Please make sure these are unique, or specify a `labels_layer` or `image_layer` via '{_REGION_KEY}'."
+        ), f"'{_INSTANCE_KEY}' is not unique. Please make sure these are unique, or specify a 'labels_layer' via '{_REGION_KEY}'."
 
     def _validated_table_layer(self):
         """Validate if the specified table layer exists in the SpatialData object."""
@@ -112,10 +93,6 @@ class ProcessTable:
             adata = self.sdata.tables[self.table_layer][
                 self.sdata.tables[self.table_layer].obs[_REGION_KEY].isin(self.labels_layer)
             ]
-        elif self.image_layer is not None:
-            adata = self.sdata.tables[self.table_layer][
-                self.sdata.tables[self.table_layer].obs[_REGION_KEY].isin(self.image_layer)
-            ]
         else:
             adata = self.sdata.tables[self.table_layer]
         if index_names_var is not None or index_positions_var is not None:
@@ -125,8 +102,6 @@ class ProcessTable:
         adata = adata.copy()
         if self.labels_layer is not None:
             adata.uns["spatialdata_attrs"]["region"] = self.labels_layer
-        elif self.image_layer is not None:
-            adata.uns["spatialdata_attrs"]["region"] = self.image_layer
 
         return adata
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import uuid
 from pathlib import Path
 from typing import Iterable
 
@@ -12,24 +14,28 @@ from spatialdata import SpatialData
 from sparrow.image._image import _get_spatial_element
 from sparrow.table._allocation_intensity import allocate_intensity
 from sparrow.table._preprocess import preprocess_proteomics
-from sparrow.table._table import ProcessTable, _add_table_layer
-from sparrow.utils._keys import _CELL_INDEX, _CELLSIZE_KEY, _INSTANCE_KEY, _METACLUSTERING_KEY
+from sparrow.table._table import _add_table_layer
+from sparrow.utils._keys import _CELL_INDEX, _CELLSIZE_KEY, _INSTANCE_KEY, _RAW_COUNTS_KEY, ClusteringKey
+from sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def cluster_intensity(
     sdata: SpatialData,
-    mapping: pd.Series,  # pandas series with at the index the clusters and as values the metaclusters
-    img_layer: str,
-    labels_layer: str,
+    mapping: pd.Series,  # pandas series with at the index the clusters and as values the metaclusters # TODO maybe should also allow passing None, and calculate mapping from provided som labels layer and meta cluster labels layer
+    img_layer: str | Iterable[str],
+    labels_layer: str | Iterable[str],
     output_layer: str,
     channels: int | str | Iterable[int] | Iterable[str] | None = None,
     chunks: str | int | tuple[int, ...] | None = 10000,
     overwrite=False,
 ) -> SpatialData:
     """
-    Calculates average intensity of each channel in `img_layer` per SOM cluster as available in the `labels_layer`, and saves it as a table layer in `sdata` as `output_layer`.
+    Calculates average intensity of each channel in `img_layer` per SOM cluster as available in the `labels_layer`, and saves it as a table layer in `sdata` as `output_layer`. Average intensity per metacluster is calculated using the `mapping`.
 
-    This function computes average intensity for each SOM cluster identified in the `labels_layer` and stores the results in a new table layer.
+    This function computes average intensity for each SOM cluster identified in the `labels_layer` and stores the results in a new table layer (`output_layer`).
+    Average intensity per metacluster is added to `sdata.tables[output_layer].uns`.
     The intensity calculation can be subset by channels and adjusted for chunk size for efficient processing. SOM clusters can be calculated using `sp.im.flowsom`.
 
     Parameters
@@ -38,9 +44,9 @@ def cluster_intensity(
         The input SpatialData object.
     mapping : pd.Series
         A pandas Series mapping SOM cluster IDs (index) to metacluster IDs (values).
-    img_layer : str
+    img_layer : str | Iterable[str]
         The image layer of `sdata` from which the intensity is calculated.
-    labels_layer : str
+    labels_layer : str | Iterable[str]
         The labels layer in `sdata` that contains the SOM cluster IDs. I.e. the `output_layer_clusters` labels layer obtained through `sp.im.flowsom`.
     output_layer : str
         The output table layer in `sdata` where results are stored.
@@ -56,36 +62,46 @@ def cluster_intensity(
     SpatialData
         The input `sdata` with the new table layer added.
 
-    Warnings
-    --------
-    - Ensure that all SOM cluster IDs in `labels_layer` exist within the provided mapping Series; otherwise, an assertion error will occur.
-    - The function is designed for use with spatial proteomics data and assumes the input data is appropriately preprocessed.
-
     Raises
     ------
     AssertionError
         If some labels in `labels_layer` are not found in the provided mapping pandas Series.
     """
-    se = _get_spatial_element(sdata, layer=labels_layer)
-
-    labels = da.unique(se.data).compute()
-
-    assert np.all(
-        np.in1d(labels[labels != 0], mapping.index.astype(int))
-    ), "Some labels in `labels_layer` could not be found in the provided pandas Series that maps SOM cluster ID's to metacluster IDs."
-
-    # allocate the intensity to the clusters
-    sdata = allocate_intensity(
-        sdata,
-        img_layer=img_layer,
-        labels_layer=labels_layer,
-        output_layer=output_layer,
-        channels=channels,
-        chunks=chunks,
-        remove_background_intensity=True,
-        append=False,
-        overwrite=overwrite,
+    img_layer = list(img_layer) if isinstance(img_layer, Iterable) and not isinstance(img_layer, str) else [img_layer]
+    labels_layer = (
+        list(labels_layer)
+        if isinstance(labels_layer, Iterable) and not isinstance(labels_layer, str)
+        else [labels_layer]
     )
+
+    assert len(img_layer) == len(labels_layer)
+
+    for i, (_img_layer, _labels_layer) in enumerate(zip(img_layer, labels_layer)):
+        se = _get_spatial_element(sdata, layer=_labels_layer)
+
+        labels = da.unique(se.data).compute()
+
+        assert np.all(
+            np.in1d(labels[labels != 0], mapping.index.astype(int))
+        ), f"Some labels labels layer {_labels_layer} could not be found in the provided pandas Series that maps SOM cluster ID's to metacluster IDs."
+
+        # allocate the intensity to via the clusters labels layer
+
+        if i == 0:
+            append = False
+        else:
+            append = True
+        sdata = allocate_intensity(
+            sdata,
+            img_layer=_img_layer,
+            labels_layer=_labels_layer,
+            output_layer=output_layer,
+            channels=channels,
+            chunks=chunks,
+            remove_background_intensity=True,
+            append=append,
+            overwrite=overwrite,
+        )
 
     # for size normalization of cluster intensities
     sdata = preprocess_proteomics(
@@ -100,22 +116,49 @@ def cluster_intensity(
         overwrite=True,
     )
 
+    # we are interested in the non-normalized counts (to account for multiple fov's)
+    array = sdata.tables[output_layer].layers[_RAW_COUNTS_KEY]
+    df = pd.DataFrame(array)
+    df[_INSTANCE_KEY] = sdata.tables[output_layer].obs[_INSTANCE_KEY].values
+    df = df.groupby(_INSTANCE_KEY).sum()
+    df.sort_index(inplace=True)
+    df_obs = sdata.tables[output_layer].obs.copy()
+    df_obs = df_obs.groupby(_INSTANCE_KEY).sum(_CELLSIZE_KEY)
+    df_obs.sort_index(inplace=True)
+    df = df * (100 / df_obs.values)
+
+    var = pd.DataFrame(index=sdata[output_layer].var_names)
+    var.index = var.index.map(str)
+    var.index.name = "channels"
+
+    cells = pd.DataFrame(index=df.index)
+    _uuid_value = str(uuid.uuid4())[:8]
+    cells.index = cells.index.map(lambda x: f"{x}_{output_layer}_{_uuid_value}")
+    cells.index.name = _CELL_INDEX
+    adata = AnnData(X=df.values, obs=cells, var=var)
+    adata.obs[_INSTANCE_KEY] = df.index
+
+    adata.obs[_CELLSIZE_KEY] = df_obs[
+        _CELLSIZE_KEY
+    ].values  # for multiple fov's this is the sum of the size over all the clusters
+
     # append metacluster labels to the table using the mapping
     mapping = mapping.reset_index().rename(columns={"index": _INSTANCE_KEY})  # _INSTANCE_KEY is the cluster ID
     mapping[_INSTANCE_KEY] = mapping[_INSTANCE_KEY].astype(int)
-    # get the adata
-    process_table_instance = ProcessTable(sdata, labels_layer=labels_layer, table_layer=output_layer)
-    adata = process_table_instance._get_adata()
     old_index = adata.obs.index
     adata.obs = pd.merge(adata.obs.reset_index(), mapping, on=[_INSTANCE_KEY], how="left")
     adata.obs.index = old_index
     adata.obs = adata.obs.drop(columns=[_CELL_INDEX])
 
-    assert not adata.obs[_METACLUSTERING_KEY].isna().any(), "Not all SOM cluster IDs could be linked to a metacluster."
+    assert (
+        not adata.obs[ClusteringKey._METACLUSTERING_KEY.value].isna().any()
+    ), "Not all SOM cluster IDs could be linked to a metacluster."
 
     # calculate mean intensity per metacluster
     df = adata.to_df().copy()
-    df[[_CELLSIZE_KEY, _METACLUSTERING_KEY]] = adata.obs[[_CELLSIZE_KEY, _METACLUSTERING_KEY]].copy()
+    df[[_CELLSIZE_KEY, ClusteringKey._METACLUSTERING_KEY.value]] = adata.obs[
+        [_CELLSIZE_KEY, ClusteringKey._METACLUSTERING_KEY.value]
+    ].copy()
 
     if channels is None:
         channels = adata.var.index.values
@@ -124,13 +167,13 @@ def cluster_intensity(
 
     df = _mean_intensity_per_metacluster(df, channels=channels)
 
-    adata.uns[f"{_METACLUSTERING_KEY}"] = df
+    adata.uns[f"{ClusteringKey._METACLUSTERING_KEY.value}"] = df
 
     sdata = _add_table_layer(
         sdata,
         adata=adata,
         output_layer=output_layer,
-        region=process_table_instance.labels_layer,
+        region=None,  # can not be linked to a region, because it contains average over multiple labels layers (ID of the SOM clusters) in multiple fov scenario
         overwrite=True,
     )
 
@@ -145,7 +188,7 @@ def _mean_intensity_per_metacluster(df, channels: Iterable[str]):
 
     # Calculate weighted average for each marker per pixel_meta_cluster
     weighted_averages = df.groupby(
-        _METACLUSTERING_KEY,
+        ClusteringKey._METACLUSTERING_KEY.value,
     ).apply(
         lambda x: pd.Series(
             {col: weighted_mean(x[col], x, _CELLSIZE_KEY) for col in channels},
@@ -156,32 +199,16 @@ def _mean_intensity_per_metacluster(df, channels: Iterable[str]):
     return weighted_averages.reset_index()
 
 
-def _export_to_ark_format(adata: AnnData, output: str | Path | None) -> pd.DataFrame:
+def _export_to_ark_format(adata: AnnData, output: str | Path | None = None) -> pd.DataFrame:
     """Export avg intensity per SOM cluster calculated via `sp.tb.cluster_intensity` to a csv file that can be visualized by the ark gui."""
     df = adata.to_df().copy()
-    df["pixel_meta_cluster"] = adata.obs[_METACLUSTERING_KEY].copy()
+    df["pixel_meta_cluster"] = adata.obs[ClusteringKey._METACLUSTERING_KEY.value].copy()
     df["pixel_som_cluster"] = adata.obs[_INSTANCE_KEY].copy()
     df["count"] = adata.obs[_CELLSIZE_KEY].copy()
 
     if output is not None:
-        df.to_csv(output, index=False)
+        output_file = os.path.join(output, "average_intensities_SOM_clusters.csv")
+        log.info(f"writing average intensities per SOM cluster to {output_file}")
+        df.to_csv(output_file, index=False)
 
     return df
-
-
-def _grouped_obs_mean(adata: AnnData, group_key: str, layer: str = None) -> pd.DataFrame:
-    if layer is not None:
-        getX = lambda x: x.layers[layer]
-    else:
-        getX = lambda x: x.X
-
-    grouped = adata.obs.groupby(group_key)
-    columns = list(grouped.groups.keys())
-    out = pd.DataFrame(
-        np.zeros((adata.shape[1], len(grouped)), dtype=np.float64), columns=columns, index=adata.var_names
-    )
-
-    for group, idx in grouped.indices.items():
-        X = getX(adata[idx])
-        out[group] = np.ravel(X.mean(axis=0, dtype=np.float64))
-    return out
