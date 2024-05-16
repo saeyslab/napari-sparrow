@@ -32,9 +32,10 @@ def cluster_intensity(
     overwrite=False,
 ) -> SpatialData:
     """
-    Calculates average intensity of each channel in `img_layer` per SOM cluster as available in the `labels_layer`, and saves it as a table layer in `sdata` as `output_layer`.
+    Calculates average intensity of each channel in `img_layer` per SOM cluster as available in the `labels_layer`, and saves it as a table layer in `sdata` as `output_layer`. Average intensity per metacluster is calculated using the `mapping`.
 
-    This function computes average intensity for each SOM cluster identified in the `labels_layer` and stores the results in a new table layer.
+    This function computes average intensity for each SOM cluster identified in the `labels_layer` and stores the results in a new table layer (`output_layer`).
+    Average intensity per metacluster is added to `sdata.tables[output_layer].uns`.
     The intensity calculation can be subset by channels and adjusted for chunk size for efficient processing. SOM clusters can be calculated using `sp.im.flowsom`.
 
     Parameters
@@ -60,11 +61,6 @@ def cluster_intensity(
     -------
     SpatialData
         The input `sdata` with the new table layer added.
-
-    Warnings
-    --------
-    - Ensure that all SOM cluster IDs in `labels_layer` exist within the provided mapping Series; otherwise, an assertion error will occur.
-    - The function is designed for use with spatial proteomics data and assumes the input data is appropriately preprocessed.
 
     Raises
     ------
@@ -177,7 +173,7 @@ def cluster_intensity(
         sdata,
         adata=adata,
         output_layer=output_layer,
-        region=None,
+        region=None,  # can not be linked to a region, because it contains average over multiple labels layers (ID of the SOM clusters) in multiple fov scenario
         overwrite=True,
     )
 

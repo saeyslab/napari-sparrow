@@ -37,7 +37,7 @@ def flowsom(
     **kwargs,  # keyword arguments for _flowsom
 ) -> tuple[SpatialData, fs.FlowSOM]:
     """
-    Prepares the data obtained from pixel clustering for cell clustering (see docstring of `sp.tb.cell_clustering_preprocess`) and then executes the FlowSOM clustering algorithm on `output_layer` of the SpatialData object.
+    Prepares the data obtained from pixel clustering for cell clustering (see docstring of `sp.tb.cell_clustering_preprocess`) and then executes the FlowSOM clustering algorithm on the resulting table layer (`output_layer`) of the SpatialData object.
 
     This function applies the FlowSOM clustering algorithm (via `fs.FlowSOM`) on spatial data contained in a SpatialData object.
     The algorithm organizes data into self-organizing maps and then clusters these maps, grouping them into `n_clusters`.
@@ -53,7 +53,7 @@ def flowsom(
         The labels layer(s) in `sdata` that contain cell segmentation masks. These masks should be previously generated using `sp.im.segment`.
         If a list of labels layers is provided, they will be clustered together (e.g. multiple samples).
     labels_layer_clusters : str or Iterable[str]
-        The labels layer(s) in `sdata` that contain metacluster or cluster masks. These should be derived from `sp.im.flowsom`.
+        The labels layer(s) in `sdata` that contain metacluster or SOM cluster masks. These should be obtained via `sp.im.flowsom`.
     output_layer : str
         The output table layer in `sdata` where results of the clustering and metaclustering will be stored.
     q: float | None = None,
