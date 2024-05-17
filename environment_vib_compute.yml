@@ -3,15 +3,16 @@ channels:
   - pytorch
   - conda-forge
   - conda
+  - nvidia
+  - defaults
 dependencies:
+  - python=3.10.8
   - geopandas=0.12.2
-  - leidenalg=0.9.1
+  - leidenalg
+  - napari=0.4.18
   - pyqt
-  - opencv=4.5.5
+  - opencv
   - pip=22.2.2
-  - python=3.9
-  - pytorch=1.13.0
-  - mkl=2024.0.0 # temp workaround, see https://github.com/pytorch/pytorch/issues/123097
   - rasterio=1.3.2
   - scanpy=1.9.4
   - seaborn=0.13.0
@@ -19,6 +20,7 @@ dependencies:
   - pip:
       - anndata==0.10.3
       - basicpy==1.0.0
+      - torch
       - cellpose==2.2.3
       - jax==0.4.6
       - jaxlib==0.4.6

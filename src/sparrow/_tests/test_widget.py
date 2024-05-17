@@ -1,6 +1,8 @@
 """This file tests the napari widgets and should be used for development purposes."""
+
+import os
+
 import pytest
-import tifffile as tiff
 from hydra.core.hydra_config import HydraConfig
 
 
@@ -33,8 +35,7 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
 
     _run_event_loop_until_worker_finishes(worker)
 
-    assert "Finished creating sdata" in caplog.text
-    assert f"Added '{utils.LOAD}'" in caplog.text
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "sdata.zarr"))
 
     # Start clean widget
     _clean_widget = clean_widget()
@@ -43,11 +44,10 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
 
     _run_event_loop_until_worker_finishes(worker)
 
-    assert "Tiling correction finished" in caplog.text
-    assert "Min max filtering finished" in caplog.text
-    assert "Contrast enhancing finished" in caplog.text
-    assert f"Added {utils.CLEAN}" in caplog.text
-    assert "Cleaning finished" in caplog.text
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "original.png"))
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "tiling_correction.png"))
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "min_max_filtered.png"))
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "clahe.png"))
 
     # Start segment widget
     _segment_widget = segment_widget()
@@ -56,8 +56,7 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
 
     _run_event_loop_until_worker_finishes(worker)
 
-    assert "Segmentation finished" in caplog.text
-    assert f"Added {utils.SEGMENT}" in caplog.text
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "plot_segmentation.png"))
 
     # Start allocate widget
     _allocate_widget = allocate_widget()
@@ -66,10 +65,8 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
 
     _run_event_loop_until_worker_finishes(worker)
 
-    assert "Allocation finished" in caplog.text
-    assert "Preprocessing AnnData finished" in caplog.text
-    assert "Clustering finished" in caplog.text
-    assert f"Added '{utils.ALLOCATION}' layer" in caplog.text
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "plot_transcript_density.png"))
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "plot_shapes_leiden.png"))
 
     if cfg_pipeline.dataset.markers is not None:
         # Start annotate widget
@@ -79,8 +76,7 @@ def test_sparrow_widgets(make_napari_viewer, cfg_pipeline, caplog):
 
         _run_event_loop_until_worker_finishes(worker)
 
-        assert "Scoring genes finished" in caplog.text
-        assert "Annotation metadata added" in caplog.text
+        assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "plot_score_genes_leiden_annotation.png"))
 
 
 @pytest.mark.skip
@@ -105,40 +101,7 @@ def test_load_widget(make_napari_viewer, cfg_pipeline, caplog):
 
     _run_event_loop_until_worker_finishes(worker)
 
-    assert "Finished creating sdata" in caplog.text
-    assert f"Added {utils.LOAD}" in caplog.text
-
-
-@pytest.mark.skip
-def test_clean_widget(make_napari_viewer, cfg_pipeline, caplog):
-    """Tests if the clean widget works."""
-
-    from sparrow import utils as utils
-    from sparrow.widgets import (
-        clean_widget,
-    )
-
-    HydraConfig().set_config(cfg_pipeline)
-
-    viewer = make_napari_viewer()
-
-    image = tiff.imread(cfg_pipeline.dataset.image)
-
-    viewer.add_image(image, name=utils.LOAD)
-
-    viewer.layers[utils.LOAD].metadata["cfg"] = cfg_pipeline
-
-    _clean_widget = clean_widget()
-
-    worker = _clean_widget(viewer, viewer.layers[utils.LOAD])
-
-    _run_event_loop_until_worker_finishes(worker)
-
-    assert "Tiling correction finished" in caplog.text
-    assert "Min max filtering finished" in caplog.text
-    assert "Contrast enhancing finished" in caplog.text
-    assert f"Added {utils.CLEAN}" in caplog.text
-    assert "Cleaning finished" in caplog.text
+    assert os.path.exists(os.path.join(cfg_pipeline.paths.output_dir, "sdata.zarr"))
 
 
 def _run_event_loop_until_worker_finishes(worker):
