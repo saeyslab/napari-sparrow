@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import geopandas
 from longsgis import voronoiDiagram4plg
 from shapely.geometry import Polygon
