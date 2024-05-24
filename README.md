@@ -15,6 +15,10 @@ A library for spatial transcriptomics data analysis.
 
 Check out the docs for [installation instructions](docs/installation.md).
 
+# Tutorials
+
+See [here](docs/tutorials/) for tutorials.
+
 # Usage
 
 [Learn](docs/usage.md) how SPArrOW can be integrated into your workflow in different ways.
