@@ -10,19 +10,18 @@ def cluster(sdata: SpatialData, pcs: int, neighbors: int, cluster_resolution: fl
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Input SpatialData object containing spatial data and annotations.
-    pcs : int
+    pcs
         Number of principal components for neighborhood graph construction.
-    neighbors : int
+    neighbors
         Number of neighbors for neighborhood graph construction.
-    cluster_resolution : float, optional
+    cluster_resolution
         Resolution parameter for Leiden clustering (default is 0.8).
 
     Returns
     -------
-    SpatialData
-        The modified SpatialData object containing clustering results and embeddings.
+    The modified SpatialData object containing clustering results and embeddings.
 
     Notes
     -----
@@ -34,7 +33,7 @@ def cluster(sdata: SpatialData, pcs: int, neighbors: int, cluster_resolution: fl
 
     See Also
     --------
-    - pl.cluster : Visualize the clustering and differential gene expression.
+    sparrow.pl.cluster : Visualize the clustering and differential gene expression.
     """
     # Neighborhood analysis
     sc.pp.neighbors(sdata.table, n_neighbors=neighbors, n_pcs=pcs, random_state=100)

@@ -34,37 +34,36 @@ def enhance_contrast(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the image to enhance.
-    img_layer : Optional[str], default=None
+    img_layer
         The image layer in `sdata` on which the enhance_contrast function will be applied.
         If not provided, the last image layer in `sdata` is used.
-    contrast_clip : Union[float, List[float]], optional
+    contrast_clip
         The clip limit for the CLAHE algorithm. Higher values result in stronger contrast enhancement
         but also stronger noise amplification.
         If provided as a list, the length must match the number of channels,
         as the parameter will be used to process the different channels.
         The default value is 3.5.
-    chunks : str | Tuple[int,...] | int, optional
+    chunks
         The size of the chunks used during dask image processing.
         The default value is 10000.
-    depth : Tuple[int, ...] | Dict[ int, int ] | int, optional
+    depth
         The overlapping depth used in dask array map_overlap operation.
         The default value is 3000.
-    output_layer : str, optional
+    output_layer
         The name of the image layer where the enhanced image will be stored.
         The default value is "clahe".
-    crd : Optional[Tuple[int, int, int, int]], default=None
+    crd
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
         Scale factors to apply for multiscale.
-    overwrite: bool
+    overwrite
         If True overwrites the element if it already exists.
 
     Returns
     -------
-    SpatialData
-        An updated `sdata` object with the contrast enhanced image added as a new layer.
+    An updated `sdata` object with the contrast enhanced image added as a new layer.
 
     Raises
     ------

@@ -9,6 +9,7 @@ from ._transcripts import transcript_density
 from .segmentation._align_masks import align_labels_layers
 from .segmentation._apply import apply_labels_layers
 from .segmentation._expand_masks import expand_labels_layer
+from .segmentation._filter_masks import filter_labels_layer
 from .segmentation._merge_masks import (
     mask_to_original,
     merge_labels_layers,

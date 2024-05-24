@@ -37,33 +37,32 @@ def allocate_intensity(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing spatial information about cells.
-    img_layer : str, optional
+    img_layer
         The name of the layer in `sdata` that contains the image data from which to extract intensity information.
         Both the `img_layer` and `labels_layer` should have the same shape and alignment. If not provided,
         will use last img_layer.
-    labels_layer : str, optional
+    labels_layer
         The name of the layer in `sdata` containing the labels (segmentation) used to define the boundaries of cells.
         These labels correspond with regions in the `img_layer`. If not provided, will use last labels_layer.
-    channels : int or str or Iterable[int] or Iterable[str], optional
+    channels
         Specifies the channels to be considered when extracting intensity information from the `img_layer`.
         This parameter can take a single integer or string or an iterable of integers or strings representing specific channels.
         If set to None (the default), intensity data will be aggregated from all available channels within the image layer.
-    chunks : str | int | tuple[int, ...], optional
+    chunks
         The chunk size for processing the image data.
-    append: bool, optional.
+    append
         If set to True, and the `labels_layer` does not yet exist as an `_INSTANCE_KEY` in `sdata.table.obs`,
         the intensity values extracted during the current function call will be appended (along axis=0) to any existing intensity data
         within the SpatialData object's table attribute. If False, any existing data in `sdata.table` will be overwritten by the newly extracted intensity values.
-    remove_background_intensity: bool, optional.
+    remove_background_intensity
         If set to True, the calculated intensity for the background (INSTANCE_KEY==0) will not be added to `sdata.table`.
 
     Returns
     -------
-    SpatialData
-        An updated version of the input SpatialData object. The updated object includes a 'table' attribute
-        containing an AnnData object with intensity values for each cell across the channels in the `img_layer`.
+    An updated version of the input SpatialData object. The updated object includes a 'table' attribute
+    containing an AnnData object with intensity values for each cell across the channels in the `img_layer`.
 
     Notes
     -----

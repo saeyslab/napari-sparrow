@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import scanpy as sc
@@ -6,8 +6,21 @@ import seaborn as sns
 from spatialdata import SpatialData
 
 
-def preprocess_anndata(sdata: SpatialData, output: Optional[str] = None) -> None:
-    """Function plots the size of the nucleus/cell related to the counts."""
+def preprocess_anndata(sdata: SpatialData, output: str | None = None) -> None:
+    """
+    Function plots the size of the nucleus/cell related to the counts.
+
+    Parameters
+    ----------
+    sdata
+        SpatialData object containing the spatial data and annotations.
+    output
+        The file path prefix for the plots (default is None).
+
+    See Also
+    --------
+    sparrow.tb.preprocess_anndata: Calculate neighborhood enrichment.
+    """
     sc.pl.pca(
         sdata.table,
         color="total_counts",

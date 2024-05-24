@@ -13,11 +13,23 @@ log = get_pylogger(__name__)
 def correct_marker_genes(
     sdata: SpatialData,
     celltype_correction_dict: Dict[str, Tuple[float, float]],
-):
-    """Returns the updated SpatialData object.
+) -> SpatialData:
+    """
+    Correct celltype expression in `sdata.table` using `celltype_correction_dict`.
 
     Corrects celltypes that are higher expessed by dividing them by a value if they exceed a certain threshold.
-    The celltype_correction_dict has as keys the celltypes that should be corrected and as values the threshold and the divider.
+    The `celltype_correction_dict` has as keys the celltypes that should be corrected and as values the threshold and the divider.
+
+    Parameters
+    ----------
+    sdata
+        The SpatialData object.
+    celltype_correction_dict
+        The `celltype_correction_dict` has as keys the celltypes that should be corrected and as values the threshold and the divider.
+
+    Returns
+    -------
+    The updated SpatialData object.
     """
     # Correct for all the genes
     for celltype, values in celltype_correction_dict.items():
@@ -37,10 +49,22 @@ def correct_marker_genes(
     return sdata
 
 
-def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 100000):
-    """Returns the updated SpatialData object.
+def filter_on_size(sdata: SpatialData, min_size: int = 100, max_size: int = 100000) -> SpatialData:
+    """
+    All cells in `sdata.table` with a size outside of the min and max size range are removed.
 
-    All cells with a size outside of the min and max size range are removed.
+    Parameters
+    ----------
+    sdata
+        The SpatialData object.
+    min_size
+        minimum size in pixels.
+    max_size
+        maximum size in pixels.
+
+    Returns
+    -------
+    The updated SpatialData object.
     """
     start = sdata.table.shape[0]
 

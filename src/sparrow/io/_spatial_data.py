@@ -32,7 +32,7 @@ def create_sdata(
     z_projection: bool = True,
 ) -> SpatialData:
     """
-    Convert input images or arrays into a SpatialData object.
+    Convert input images or arrays into a SpatialData object with the image added as an image layer with name `img_layer`.
 
     This function allows you to ingest various input formats of images or data arrays,
     convert them into a unified SpatialData format and write them out to a specified
@@ -41,70 +41,71 @@ def create_sdata(
 
     The input parameter can be formatted in four ways:
 
-    - Path to a single image, either grayscale or multiple channels.
+    - 1. Path to a single image, either grayscale or multiple channels.
 
     Examples
     --------
-      input=DAPI_z3.tif -> single channel
+      input='DAPI_z3.tif' -> single channel
 
-      input=DAPI_Poly_z3.tif -> multi (DAPI, Poly) channel
+      input='DAPI_Poly_z3.tif' -> multi (DAPI, Poly) channel
 
-    - Pattern representing a collection of z-stacks
+    - 2. Pattern representing a collection of z-stacks
       (if this is the case, a z-projection is performed which selects the maximum intensity value across the z-dimension).
 
     Examples
     --------
-      input=DAPI_z*.tif -> z-projection performed
+      input='DAPI_z*.tif' -> z-projection performed
 
-      input=DAPI_Poly_z*.tif -> z-projection performed
+      input='DAPI_Poly_z*.tif' -> z-projection performed
 
-    - List of filename patterns (where each list item corresponds to a different channel)
+    - 3. List of filename patterns (where each list item corresponds to a different channel)
 
     Examples
     --------
-      input=[ DAPI_z3.tif, Poly_z3.tif ] -> multi (DAPI, Poly) channel
+      input=[ 'DAPI_z3.tif', 'Poly_z3.tif' ] -> multi (DAPI, Poly) channel
 
-      input[ DAPI_z*.tif, Poly_z*.tif ] -> multi (DAPI, Poly) channel, z projection performed
+      input=[ 'DAPI_z*.tif', 'Poly_z*.tif' ] -> multi (DAPI, Poly) channel, z projection performed
 
-    - Single numpy or dask array.
+    - 4. Single numpy or dask array.
       The dims parameter should specify its dimension, e.g. ['y','x'] for a 2D array or
       [ 'c', 'y', 'x', 'z' ] for a 4D array with channels. If a z-dimension >1 is present, a z-projection is performed.
 
     Parameters
     ----------
-    input : Union[str, Path, np.ndarray, da.Array, List[Union[str, Path, np.ndarray, da.Array]]]
+    input
         The filename pattern, path or list of filename patterns to the images that
         should be loaded. In case of a list, each list item should represent a different
         channel, and each image corresponding to a filename pattern should represent.
         a different z-stack.
         Input can also be a numpy array. In that case the dims parameter should be specified.
-    output_path : Optional[str | Path], default=None
+    output_path
         If specified, the resulting SpatialData object will be written to this path as a zarr.
-    img_layer : str, default="raw_image"
+    img_layer
         The name of the image layer to be created in the SpatialData object.
-    chunks : Optional[int, tuple], default=None
+    chunks
         If specified, the underlying dask array will be rechunked to this size.
         If Tuple, desired chunksize along c,z,y,x should be specified, e.g. (1,1,1024,1024).
-    dims : Optional[List[str]], default=None
+    dims
         The dimensions of the input data if it's a numpy array. E.g., ['y','x'] or ['c','y','x','z'].
         If input is a str, Path or List[str], List[Path], this parameter is ignored.
-    crd : tuple of int, optional
+    crd
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
         If specified, this region is cropped from the image, and added as image layer to the
         SpatialData object.
     scale_factors
         Scale factors to apply for multiscale.
-    c_coords : int | str | Iterable[ int | str], optional
+    c_coords
         Names of the channels in the input image. If None, channel names will be named sequentially as 0,1,...
+    z_projection
+        Whether to perform a z projection (maximum intensity projection along the z-axis).
 
     Returns
     -------
-    SpatialData
-        The constructed SpatialData object containing image layer with name 'img_layer' with dimension (c,y,x)
+    The constructed SpatialData object containing image layer with name `img_layer` and dimension (c,(z),y,x)
 
     Notes
     -----
-    If 'crd' is specified and some of its values are None, the function infers the missing
+    If `crd` is specified and some of its values are None, the function infers the missing
     values based on the input image's shape.
     """
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -194,6 +195,8 @@ def _load_image_to_dask(
         If input is a str of Path, this parameter is ignored.
     crd : tuple of int, optional
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
+    z_projection
+        Whether to perform a z projection (maximum intensity projection).
     output_dir: if input is a str, Path, or List[str], List[Path], the intermediate results for each channel
         will be written to zarr store in output_dir to prevent unnecessary memory usage.
 
