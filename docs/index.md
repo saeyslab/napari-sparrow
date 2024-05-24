@@ -4,9 +4,11 @@
   :alt: Dambi banner
 ```
 
-# sparrow
+<br><br>
 
-sparrow is a library for spatial transcriptomics data analysis.
+# A library for spatial transcriptomics data analysis.
+
+SPArrOW is a library for spatial transcriptomics data analysis.
 
 Please see our preprint ... for citation and to learn more.
 
@@ -20,33 +22,39 @@ Please see our preprint ... for citation and to learn more.
     :link: installation
     :link-type: doc
 
-    Learn how to install ``sparrow``.
+    Learn how to install ``SPArrOW``.
+
+.. card:: Tutorials
+    :link: notebooks
+    :link-type: doc
+
+    Learn how to use ``SPArrOW``.
 
 .. card:: Usage
     :link: usage
     :link-type: doc
 
-    Learn how to use ``sparrow``.
+    Learn how to use ``SPArrOW``.
 
 .. card:: API
     :link: api
     :link-type: doc
 
-    Find a detailed documentation of ``sparrow``.
+    Find a detailed documentation of ``SPArrOW``.
 
 
 .. card:: HPC
     :link: hpc
     :link-type: doc
 
-    Learn how to run ``sparrow`` in a HPC environment.
+    Learn how to run ``SPArrOW`` in a HPC environment.
 
 
 .. card:: Contributing
     :link: contributing
     :link-type: doc
 
-    Learn how to contribute to ``sparrow``.
+    Learn how to contribute to ``SPArrOW``.
 
 ```
 
@@ -55,6 +63,7 @@ Please see our preprint ... for citation and to learn more.
 :maxdepth: 1
 
 installation.md
+notebooks.md
 usage.md
 api.md
 hpc.md

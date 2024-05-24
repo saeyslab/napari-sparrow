@@ -70,8 +70,7 @@ def align_labels_layers(
     scale_factors
         Scale factors to apply for multiscale.
     overwrite
-        If True, allows the function to overwrite the data in 'output_labels_layer' with the aligned
-        data. If False and 'output_labels_layer' is None, a ValueError is raised. Default is False.
+        If True, allows the function to overwrite the data in `output_labels_layer` and `output_shapes_layer` with the aligned data.
 
     Returns
     -------
@@ -81,9 +80,6 @@ def align_labels_layers(
     ------
     AssertionError
         If the shapes of the label arrays or their translations do not match.
-    ValueError
-        If `output_labels_layer` is None and `overwrite is False, indicating ambiguity in the
-        user's intent.
 
     Notes
     -----
