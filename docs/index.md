@@ -28,13 +28,13 @@ Please see our preprint ... for citation and to learn more.
     :link: notebooks
     :link-type: doc
 
-    Learn how to use ``SPArrOW``.
+    Tutorials to help you get up to speed with ``SPArrOW``.
 
 .. card:: Usage
     :link: usage
     :link-type: doc
 
-    Learn how to use ``SPArrOW``.
+    Learn how SPArrOW can be integrated into your workflow in different ways.
 
 .. card:: API
     :link: api
@@ -47,7 +47,7 @@ Please see our preprint ... for citation and to learn more.
     :link: hpc
     :link-type: doc
 
-    Learn how to run ``SPArrOW`` in a HPC environment.
+    Learn how to run ``SPArrOW`` in a High-Performance Computing (HPC) environment.
 
 
 .. card:: Contributing
