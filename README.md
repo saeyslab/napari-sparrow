@@ -17,7 +17,7 @@ Check out the docs for [installation instructions](docs/installation.md).
 
 # Usage
 
-See [here](docs/usage.md) for information on how to use SPArrOW.
+[Learn](docs/usage.md) how SPArrOW can be integrated into your workflow in different ways.
 
 ## Contributing
 
