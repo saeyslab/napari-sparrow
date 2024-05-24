@@ -1,4 +1,4 @@
-from typing import List, Optional
+from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import scanpy as sc
@@ -10,12 +10,12 @@ from sparrow.table._keys import _ANNOTATION_KEY
 
 def cluster_cleanliness(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
+    img_layer: str | None = None,
     shapes_layer: str = "segmentation_mask_boundaries",
-    crd: Optional[List[int]] = None,
-    color_dict: Optional[dict] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    color_dict: dict | None = None,
     celltype_column: str = _ANNOTATION_KEY,
-    output: Optional[str] = None,
+    output: str | None = None,
 ) -> None:
     """
     Generate plots that allow assessing the "cleanliness" or accuracy of the cell clustering:
@@ -26,21 +26,21 @@ def cluster_cleanliness(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         SpatialData object containing the spatial data and annotations.
-    img_layer: str, optional
+    img_layer
         Name of the imgage layer in the SpatialData object (default is None).
-    shapes_layer : str, optional
+    shapes_layer
         Name of the shapes layer in the SpatialData object (default is "segmentation_mask_boundaries").
-    crd : List[int], optional
+    crd
         An optional rectangle [xmin, xmax, ymin, ymax] (default is None).
         If specified, the tissue image will be cropped to this rectangle,
         otherwise the full image will be displayed.
-    color_dict : dict, optional
+    color_dict
         Custom colormap dictionary for coloring cell types in the barplot.
-    celltype_column : str, optional
+    celltype_column
         Name of the column in sdata.table containing cell type annotations (default is `_ANNOTATION_KEY`).
-    output : str, optional
+    output
         The file path prefix for the plots (default is None).
         If provided, the plots will be saved to the specified output file path with "_barplot.png",
         "_{celltype_column}.png", "_{celltype_column}_crop.png" and "_{celltype_column}_umap.png" as suffixes.

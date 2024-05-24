@@ -34,46 +34,46 @@ def combine(
     """
     Combines specific channels within an image layer of a SpatialData object.
 
-    When given, nuc_channels are aggregated together, as are mem_channels.
+    When given, `nuc_channels` are aggregated together, as are `mem_channels`.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Spatial data object containing the image to be combined.
-    img_layer : Optional[str], default=None
+    img_layer
         The image layer in `sdata` to process. If not provided, the last image layer in `sdata` is used.
-    output_layer : Optional[str]
+    output_layer
         The name of the output layer where results will be stored. This must be specified.
-    nuc_channels : Optional[int | str | Iterable[int | str ]], default=None
+    nuc_channels
         Specifies which channel(s) to consider as nuclear channels.
-    mem_channels : Optional[int | str | Iterable[int | str ]], default=None
+    mem_channels
         Specifies which channel(s) to consider as membrane channels.
-    crd : Optional[Tuple[int, int, int, int]], default=None
+    crd
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
         Scale factors to apply for multiscale.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
 
     Returns
     -------
-    SpatialData
-        The `sdata` object with the combined image added to the specified output layer.
-        If nuc_channels and mem_channels is not None, the nuc channels will be at position 0 and the mem channel at position 1.
+    The `sdata` object with the combined image added to the specified output layer.
+    If `nuc_channels` and `mem_channels` is not None, the nuc channels will be at position 0 and the mem channel at position 1.
 
     Raises
     ------
     ValueError
         If `output_layer` is not provided.
+    ValueError
         If no channels are specified for combining.
+    ValueError
         If provided arrays are not 2D or 3D (c, (z) , y, x).
 
     Notes
     -----
     The function combines specified channels from a SpatialData object's image layer, creating a new image layer.
     The provided channels can be specified as nuclear or membrane channels. If coordinates (crd) are specified, only
-    the region within those coordinates will be considered for the combination. The function handles 2D images and uses dask
-    for potential out-of-core computation.
+    the region within those coordinates will be considered for the combination.
 
     Examples
     --------

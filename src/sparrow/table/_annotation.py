@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 from itertools import chain
-from typing import Dict, List, Optional, Tuple
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -20,48 +21,41 @@ def score_genes(
     path_marker_genes: str,
     delimiter=",",
     row_norm: bool = False,
-    repl_columns: Optional[Dict[str, str]] = None,
-    del_celltypes: Optional[List[str]] = None,
+    repl_columns: dict[str, str] | None = None,
+    del_celltypes: list[str] | None = None,
     input_dict=False,
-) -> Tuple[dict, pd.DataFrame]:
+) -> tuple[dict, pd.DataFrame]:
     """
-    The function loads marker genes from a CSV file and scores cells for each cell type using those markers using scanpy's score_genes function.
+    The function loads marker genes from a CSV file and scores cells for each cell type using those markers using scanpy's `sc.tl.score_genes` function.
 
     Marker genes can be provided as a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column;
     or in dictionary format. The function further allows replacements of column names and deletions of specific marker genes.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information.
-    path_marker_genes : str
+    path_marker_genes
         Path to the CSV file containing the marker genes.
         CSV file should be a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column.
-    delimiter : str, optional
+    delimiter
         Delimiter used in the CSV file, default is ','.
-    row_norm : bool, optional
+    row_norm
         Flag to determine if row normalization is applied, default is False.
-    repl_columns : dict, optional
+    repl_columns
         Dictionary containing cell types to be replaced. The keys are the original cell type names and
         the values are their replacements.
-    del_celltypes : list, optional
+    del_celltypes
         List of cell types to be deleted from the list of possible cell type candidates.
         Cells are scored for these cell types, but will not be assigned a cell type from this list.
-    input_dict : bool, optional
+    input_dict
         If True, the marker gene list from the CSV file is treated as a dictionary with the first column being
         the cell type names and the subsequent columns being the marker genes for those cell types. Default is False.
 
     Returns
     -------
-    dict
-        Dictionary with cell types as keys and their respective marker genes as values.
-    pd.DataFrame
-        Index:
-            cells: The index corresponds to indivdual cells ID's.
-        Columns:
-            celltypes (as provided via the markers file).
-        Values:
-            Score obtained using scanpy's score_genes function for each celltype and for each cell.
+    A dictionary with cell types as keys and their respective marker genes as values.
+    A DataFrame with the following structure. Index: cells, which corresponds to individual cell IDs. Columns: celltypes, as provided via the markers file. Values: Score obtained using scanpy's score_genes function for each cell type and for each cell.
 
     Notes
     -----
@@ -128,10 +122,10 @@ def score_genes(
 
 def cluster_cleanliness(
     sdata: SpatialData,
-    celltypes: List[str],
-    celltype_indexes: Optional[Dict[str, int]] = None,
-    colors: Optional[List[str]] = None,
-) -> Tuple[SpatialData, Optional[dict]]:
+    celltypes: list[str],
+    celltype_indexes: dict[str, int] | None = None,
+    colors: list[str] | None = None,
+) -> tuple[SpatialData, dict | None]:
     """
     Re-calculates annotations, potentially following corrections to the list of celltypes, or after a manual update of the assigned scores per cell type via e.g. `correct_marker_genes`.
 
@@ -140,27 +134,24 @@ def cluster_cleanliness(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information.
-    celltypes : List[str]
+    celltypes
         List of celltypes used for annotation.
-    celltype_indexes : dict, optional
+    celltype_indexes
         Dictionary with cell type as keys and indexes as values.
         Cell types with provided indexes will be grouped together under new cell type provided as key.
         E.g.:
         celltype_indexes = {"fibroblast": [4,5,23,25], "stellate": [28,29,30]} ->
         celltypes at index 4,5,23 and 25 in provided list of celltypes (after an alphabetic sort) will be grouped together as "fibroblast".
-    colors : list, optional
+    colors
         List of colors to be used for visualizing different cell types. If not provided,
         a default colormap will be generated.
 
     Returns
     -------
-    SpatialData
-        Updated spatial data after the cleanliness analysis.
-    dict
-        Dictionary with cell types as keys and their corresponding colors as values.
-
+    Updated spatial data after the cleanliness analysis.
+    Dictionary with cell types as keys and their corresponding colors as values.
     """
     celltypes = np.array(sorted(celltypes), dtype=str)
     color_dict = None
@@ -219,10 +210,10 @@ def cluster_cleanliness(
 
 def _annotate_celltype(
     sdata: SpatialData,
-    celltypes: List[str],
+    celltypes: list[str],
     row_norm: bool = False,
     celltype_column: str = _ANNOTATION_KEY,
-) -> Tuple[SpatialData, pd.DataFrame]:
+) -> tuple[SpatialData, pd.DataFrame]:
     scoresper_cluster = sdata.table.obs[[col for col in sdata.table.obs if col in celltypes]]
 
     # Row normalization for visualisation purposes

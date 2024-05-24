@@ -21,40 +21,39 @@ def expand_labels_layer(
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
-):
+) -> SpatialData:
     """
     Expaned cells in labels layer `labels_layer` of Spatialdata object with `distance`, using `skimage.segmentation.expand_labels`.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The spatialdata object containing the labels layer to be expanded.
-    labels_layer : str
+    labels_layer
         The name of the labels layer to be expanded.
-    distance: int, default=10
+    distance
         distance passed to skimage.segmentation.expand_labels.
-    depth : Tuple[int, int] | int, default=100
+    depth
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Default is 100. Please set depth>cell diameter + distance to avoid chunking effects.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+    chunks
         The desired chunk size for the Dask computation, or "auto" to allow the function to
         choose an optimal chunk size based on the data. Default is "auto".
-    output_labels_layer : Optional[str], default=None
+    output_labels_layer
         The name of the output labels layer where results will be stored. This must be specified.
-    output_shapes_layer : Optional[str], optional
+    output_shapes_layer
         The name for the new shapes layer generated from the aligned labels layer. If None, no shapes
         layer is created. Default is None.
-    scale_factors : Optional[ScaleFactors_t], default=None
+    scale_factors
         Scale factors to apply for multiscale.
-    overwrite : bool, default=False
-        If True, overwrites the output layer if it already exists in `sdata`.
+    overwrite
+        If True, overwrites the output layers if they already exist in `sdata`.
 
     Returns
     -------
-    SpatialData
-        The modified spatial data object with the aligned labels layers and potentially new layers
-        based on the alignment.
+    The modified spatial data object with the aligned labels layers and potentially new layers
+    based on the alignment.
 
     Notes
     -----

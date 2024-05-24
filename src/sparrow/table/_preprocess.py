@@ -26,7 +26,7 @@ def preprocess_anndata(
     n_comps: int = 50,
 ) -> SpatialData:
     """
-    Preprocess the table (AnnData) attribute of a SpatialData object.
+    Preprocess the table (`AnnData` object) attribute of a SpatialData object.
 
     Calculates nucleus/cell size from either shapes_layer or labels_layer, and adds it
     to sdata.table.obs as column "shapeSize".
@@ -34,35 +34,35 @@ def preprocess_anndata(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The input SpatialData object.
-    shapes_layer : str, optional
+    shapes_layer
         The shapes_layer of `sdata` that will be used to calculate nucleus size for normalization
         (or cell size if shapes_layer holds cell shapes).
         This should be None if labels_layer is specified.
-    labels_layer : str, optional
+    labels_layer
         The labels_layer of `sdata` that will be used to calculate nucleus size for normalization
         (or cell size if labels_layer holds cell labels).
         This should be None if shapes_layer is specified.
-    min_counts : int, default=10
+    min_counts
         Minimum number of genes a cell should contain to be kept.
-    min_cells : int, default=5
+    min_cells
         Minimum number of cells a gene should be in to be kept.
-    size_norm : bool, default=True
+    size_norm
         If True, normalization is based on the size of the nucleus/cell. Else the normalize_total function of scanpy is used.
-    n_comps : int, default=50
+    n_comps
         Number of principal components to calculate.
 
     Returns
     -------
-    SpatialData
-        The preprocessed `sdata` containg the preprocessed AnnData object as an attribute (sdata.table).
+    The preprocessed `sdata` containg the preprocessed `AnnData` object as an attribute (`sdata.table`).
 
     Raises
     ------
     ValueError
-        - If both `shapes_layer` and `labels_layer` are specified.
-        - If `shapes_layer` contains 3D polygons.
+        If both `shapes_layer` and `labels_layer` are specified.
+    ValueError
+        If `shapes_layer` contains 3D polygons.
 
     Notes
     -----
@@ -71,8 +71,7 @@ def preprocess_anndata(
 
     Warnings
     --------
-    - If the dimensionality of the table attribute is smaller than the desired number of principal components,
-      `n_comps` is set to the minimum dimensionality and a message is printed.
+    If the dimensionality of the table attribute is smaller than the desired number of principal components, `n_comps` is set to the minimum dimensionality and a message is printed.
     """
     # Calculate QC Metrics
 

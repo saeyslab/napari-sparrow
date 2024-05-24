@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -15,11 +15,11 @@ from sparrow.table._keys import _ANNOTATION_KEY, _CLEANLINESS_KEY
 def score_genes(
     sdata: SpatialData,
     scoresper_cluster: pd.DataFrame,
-    img_layer: Optional[str] = None,
+    img_layer: str | None = None,
     shapes_layer: str = "segmentation_mask_boundaries",
-    crd=None,
-    filter_index: Optional[int] = None,
-    output: Optional[str] = None,
+    crd: tuple[int, int, int, int] = None,
+    filter_index: int | None = None,
+    output: str | None = None,
 ) -> None:
     """
     Function generates following plots:
@@ -32,24 +32,24 @@ def score_genes(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information for plotting.
-    scoresper_cluster : pd.DataFrame
+    scoresper_cluster
         Index:
             cells: The index corresponds to indivdual cells ID's.
         Columns:
             celltypes (as provided via the markers file).
         Values:
             Score obtained using the scanpy's score_genes function for each celltype and for each cell.
-    img_layer : str, optional
+    img_layer
         Image layer to be plotted. If not provided, the last image layer in `sdata` will be used.
-    shapes_layer : str, optional
+    shapes_layer
         Name of the layer containing segmentation mask boundaries, by default "segmentation_mask_boundaries".
-    crd : tuple of int, optional
+    crd
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax). Only used for plotting purposes.
-    filter_index : int or None, optional
+    filter_index
         Index used to filter leiden clusters when plotting the heatmap. Only leiden clusters >= filter index will be plotted.
-    output : str or None, optional
+    output
         Filepath to save the plots. If not provided, plots will be displayed without being saved.
 
     Returns

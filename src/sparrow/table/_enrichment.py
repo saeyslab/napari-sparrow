@@ -6,10 +6,17 @@ from sparrow.table._table import _back_sdata_table_to_zarr
 
 
 def nhood_enrichment(sdata: SpatialData, celltype_column: str = _ANNOTATION_KEY, seed: int = 0) -> SpatialData:
-    """Returns the AnnData object.
+    """
+    Calculate the nhood enrichment using squidpy via `sq.gr.spatial_neighbors` and `sq.gr.nhood_enrichment`.
 
-    Performs some adaptations to save the data.
-    Calculate the nhood enrichment"
+    Parameters
+    ----------
+    sdata
+        Input SpatialData object containing spatial data.
+    celltype_column
+        This will be passed to `cluster_key` of `squidpy.gr.nhood_enrichment`.
+    seed
+        seed
     """
     # Adaptations for saving
     sdata.table.raw.var.index.names = ["genes"]

@@ -19,7 +19,7 @@ log = get_pylogger(__name__)
 def add_regionprop_features(
     sdata: SpatialData,
     labels_layer: str | None = None,
-):
+) -> SpatialData:
     """
     Enhances a SpatialData object with region property features calculated from the specified labels layer, updating its table attribute with these computed cellular properties.
 
@@ -31,26 +31,24 @@ def add_regionprop_features(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing spatial information about cells/nuclei. This object will be updated with
         new region property features.
-    labels_layer : str, optional
+    labels_layer
         The name of the layer in `sdata` that contains the labeled regions, typically derived from a segmentation
         process. Each distinct label corresponds to a different cell, and properties will be calculated for these
         labeled regions. If not provided, the function will infer or require a default layer.
 
     Returns
     -------
-    SpatialData
-        The original SpatialData object, updated to include a range of new region-specific property measurements
-        in its `sdata.table.obs` attribute.
+    The original SpatialData object, updated to include a range of new region-specific property measurements
+    in its `sdata.table.obs` attribute.
 
     Notes
     -----
     - The function operates by pulling the required data (masks) into memory for processing, as the underlying 'regionprops'
       functionality does not support lazy loading. Consequently, sufficient memory must be available for large datasets.
-    - Computed properties are merged (using keys `_INSTANCE_KEY` and `_REGION_KEY` in `sdata.table.obs`)
-    with the existing observations within the SpatialData's table (`sdata.table.obs`).
+    - Computed properties are merged (using keys `_INSTANCE_KEY` and `_REGION_KEY` in `sdata.table.obs`) with the existing observations within the SpatialData's table (`sdata.table.obs`).
 
     Example
     -------

@@ -22,42 +22,41 @@ def filter_labels_layer(
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
-):
+) -> SpatialData:
     """
     Filter labels in labels layer `labels_layer` of Spatialdata object that have a size less than `min_size` or size greater than `max_size`.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The spatialdata object containing the labels layer to be filtered.
-    labels_layer : str
+    labels_layer
         The name of the labels layer to be filtered.
-    min_size : int, default=10
+    min_size
         labels in `labels_layer` with size smaller than `min_size` will be set to 0.
-    max_size : int, default=100000
+    max_size
         labels in `labels_layer` with size larger than `max_size` will be set to 0.
-    depth : Tuple[int, int] | int, default=100
+    depth
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Default is 100. Please set depth>cell diameter to avoid chunking effects.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+    chunks
         The desired chunk size for the Dask computation, or "auto" to allow the function to
         choose an optimal chunk size based on the data. Default is "auto".
-    output_labels_layer : Optional[str], default=None.
+    output_labels_layer
         The name of the output labels layer where results will be stored. This must be specified.
-    output_shapes_layer : Optional[str], default=None.
+    output_shapes_layer
         The name for the new shapes layer generated from the aligned labels layer. If None, no shapes
         layer is created. Default is None.
-    scale_factors : Optional[ScaleFactors_t], default=None
+    scale_factors
         Scale factors to apply for multiscale.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
 
     Returns
     -------
-    SpatialData
-        The modified spatial data object with the aligned labels layers and potentially new layers
-        based on the alignment.
+    The modified spatial data object with the aligned labels layers and potentially new layers
+    based on the alignment.
 
     Notes
     -----

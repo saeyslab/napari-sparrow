@@ -31,25 +31,25 @@ def allocate(
     chunks: str | tuple[int, ...] | int | None = 10000,
 ) -> SpatialData:
     """
-    Allocates transcripts to cells via provided shapes_layer and points_layer and returns updated SpatialData augmented with a table attribute holding the AnnData object with cell counts.
+    Allocates transcripts to cells via provided `shapes_layer`/`table_layer` and `points_layer` and returns updated SpatialData augmented with a table attribute holding the AnnData object with cell counts.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object.
-    labels_layer : str, optional
+    labels_layer
         The layer in `sdata` that contains the masks corresponding to the shapes layer
         (possibly before performing operation on the shapes layer, such as calculating voronoi expansion).
         Only used for determining offset if `allocate_from_shapes_layer` is True.
-    shapes_layer : str, optional
+    shapes_layer
         The layer in `sdata` that contains the boundaries of the segmentation mask, by default "segmentation_mask_boundaries".
         Required if `allocate_from_shapes_layer` is True.
-    points_layer: str, optional
+    points_layer
         The layer in `sdata` that contains the transcripts.
-    allocate_from_shapes_layer: bool, optional
+    allocate_from_shapes_layer
         Whether to allocate transcripts using `shapes_layer` or `labels_layer`.
         Only supported if `shapes_layer` contains 2D polygons.
-    chunks : Optional[str | int | tuple[int, ...]], default=10000
+    chunks
         Chunk sizes for processing. Can be a string, integer or tuple of integers.
         Consider setting the chunks to a relatively high value to speed up processing
         (>10000, or only chunk in z-dimension if data is 3D, and one z-slice fits in memory),
