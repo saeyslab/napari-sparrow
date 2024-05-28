@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +12,7 @@ def nhood_enrichment(
     sdata: SpatialData,
     table_layer: str,
     celltype_column: str = _ANNOTATION_KEY,
-    output: Optional[str] = None,
+    output: str | None = None,
 ) -> None:
     """
     Plot the neighborhood enrichment across cell-type annotations.
@@ -23,14 +23,14 @@ def nhood_enrichment(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the data for analysis.
     table_layer: str, optional
         The table layer in `sdata` to visualize.
     celltype_column : str, optional
         The column name in the SpatialData object's table that specifies the cell type annotations.
         The default value is `_ANNOTATION_KEY`.
-    output : str or None, optional
+    output
         If provided, the plot will be displayed and also saved to a file with the specified filename.
         If None, the plot will be displayed directly without saving.
 
@@ -45,7 +45,7 @@ def nhood_enrichment(
 
     See Also
     --------
-    - tb.nhood_enrichment : Calculate neighborhood enrichment.
+    sparrow.tb.nhood_enrichment : Calculate neighborhood enrichment.
     """
     # remove 'nan' values.
     tmp = sdata.tables[table_layer].uns[f"{celltype_column}_nhood_enrichment"]["zscore"]

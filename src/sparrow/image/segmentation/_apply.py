@@ -45,56 +45,59 @@ def apply_labels_layers(
     relabel_chunks: bool = True,
     trim: bool = False,  # set to True if you do not expect chunking effects from func, e.g. func is a filter on size, or on shape of individual labels.
     **kwargs: Any,  # keyword arguments to be passed to func
-):
+) -> SpatialData:
     """
     Apply a specified function to a labels layer in a SpatialData object.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Spatial data object containing the labels layer to be processed.
-    func : Callable[..., NDArray | Array]
+    func
         The Callable to apply to the labels layer.
-    labels_layer : List[str] | str.
+    labels_layers
         The labels layer(s) in `sdata` to process.
-    output_labels_layer : Optional[str], default=None.
+    output_labels_layer
         The name of the output labels layer where results will be stored. This must be specified.
-    output_shapes_layer : Optional[str], default=None.
+    output_shapes_layer
         The name of the output shapes layer where results will be stored.
-    depth : Tuple[int, int] | int, default=100
+    depth
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Default is 100. Please set depth>cell diameter to avoid chunking effects.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+    chunks
         Specification for rechunking the data before applying the function.
         If chunks is a Tuple, they should contain desired chunk size for 'y', 'x'.
-    scale_factors, default=None
+    scale_factors
         Scale factors to apply for multiscale.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
     relabel_chunks: bool, default=True.
         Whether to relabel the labels of each chunk after being processed by func. If set to True, a bit shift will be applied, ensuring no collisions.
-    trim: bool, default=False.
+    trim
         Whether to trim overlap added by map_overlap, or postprocess the chunks to avoid chunking effects.
         Set to true if you do not expect chunking effects from `func`, e.g. `func` is a filter on size or shape of individual labels, and is designed carefully
         to prevent chunking effects.
-    **kwargs : Any
+    **kwargs
         Keyword arguments to be passed to func.
 
     Returns
     -------
-    SpatialData
-        The `sdata` object with the processed labels layer added to the specified output layer.
-        If `output_shapes_layer` is provided, a shapes layer will be created corresponding to this labels layer.
+    The `sdata` object with the processed labels layer added to the specified `output_labels_layer`.
+    If `output_shapes_layer` is provided, a shapes layer will be created corresponding to this labels layer.
 
     Raises
     ------
     ValueError
-        - If `output_labels_layer` is not provided.
-        - If `chunks` is a Tuple, and does not match (y,x).
-        - If `depth` is a Tuple, and does not match (y,x).
-        - If a label layer in `labels_layer` can not be found.
-        - If number of blocks in z-dimension is not equal to 1.
+        If `output_labels_layer` is not provided.
+    ValueError
+        If `chunks` is a Tuple, and does not match (y,x).
+    ValueError
+        If `depth` is a Tuple, and does not match (y,x).
+    ValueError
+        If a label layer in `labels_layer` can not be found.
+    ValueError
+        If number of blocks in z-dimension is not equal to 1.
 
     Notes
     -----

@@ -34,7 +34,7 @@ def allocate(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object.
     labels_layer : str, optional
         The labels layer (i.e. segmentation mask) in `sdata` to be used to allocate the transcripts to cells.

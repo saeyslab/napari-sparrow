@@ -28,66 +28,58 @@ def align_labels_layers(
     sdata: SpatialData,
     labels_layer_1: str,
     labels_layer_2: str,
-    depth: tuple[int, ...] | int = 100,
-    chunks: str | int | tuple[int, ...] | None = "auto",
+    depth: tuple[int, int] | int = 100,
+    chunks: str | int | tuple[int, int] | None = "auto",
     output_labels_layer: str | None = None,
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
-):
+) -> SpatialData:
     """
     Align two labels layers.
 
-    This function aligns two label layers by examining the labels in labels_layer_1
-    and identifying their maximum overlap with labels in labels_layer_2.
-    It then updates the labels in labels_layer_1,
-    reassigning them to match the corresponding overlapping label values from labels_layer_2.
-    The function can also generate a shapes layer based on the resulting output_labels_layer.
+    This function aligns two label layers by examining the labels in `labels_layer_1`
+    and identifying their maximum overlap with labels in `labels_layer_2`.
+    It then updates the labels in `labels_layer_1`, reassigning them to match the corresponding overlapping label values from `labels_layer_2`.
+    If there is no overlap with a label from `labels_layer_1` with `label_layer_2`, the label in `labels_layer_1` is set to zero.
+    The function can also generate a shapes layer based on the resulting `output_labels_layer`.
     The layers are identified by their names and must exist within the SpatialData object passed.
-    Usually, labels_layer_1 consists of masks derived from nucleus segmentation,
-    while labels_layer_2 contains masks resulting from whole cell segmentation.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The spatial data object containing the labels layers to be aligned.
-    labels_layer_1 : str
+    labels_layer_1
         The name of the first labels layer to align.
-    labels_layer_2 : str
+    labels_layer_2
         The name of the second labels layer to align.
-    depth : Tuple[int, ...], default=100.
+    depth
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Default is 100. Please set depth>cell size to avoid chunking effects.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto".
+    chunks
         The desired chunk size for the Dask computation in 'y' and 'x', or "auto" to allow the function to
         choose an optimal chunk size based on the data. Default is "auto".
-    output_labels_layer : Optional[str], optional
+    output_labels_layer
         The name for the new labels layer generated after alignment. If None and overwrite is False,
         a ValueError is raised. If None and overwrite is True, 'labels_layer_1' will be overwritten
         with the aligned layer. Default is None.
-    output_shapes_layer : Optional[str], optional
+    output_shapes_layer
         The name for the new shapes layer generated from the aligned labels layer. If None, no shapes
         layer is created. Default is None.
-    scale_factors : Optional[ScaleFactors_t], optional
+    scale_factors
         Scale factors to apply for multiscale.
-    overwrite : bool, optional
-        If True, allows the function to overwrite the data in 'output_labels_layer' with the aligned
-        data. If False and 'output_labels_layer' is None, a ValueError is raised. Default is False.
+    overwrite
+        If True, allows the function to overwrite the data in `output_labels_layer` and `output_shapes_layer` with the aligned data.
 
     Returns
     -------
-    SpatialData
-        The modified spatial data object with the aligned labels layers and potentially new layers
-        based on the alignment.
+    The modified spatial data object with the aligned labels layer.
 
     Raises
     ------
     AssertionError
         If the shapes of the label arrays or their translations do not match.
-    ValueError
-        If 'output_labels_layer' is None and 'overwrite' is False, indicating ambiguity in the
-        user's intent.
 
     Notes
     -----

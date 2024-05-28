@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import scanpy as sc
@@ -9,7 +9,7 @@ from sparrow.utils._keys import _CELLSIZE_KEY
 
 
 def preprocess_transcriptomics(
-    sdata: SpatialData, table_layer: str = "table_transcriptomics", output: Optional[str] = None
+    sdata: SpatialData, table_layer: str = "table_transcriptomics", output: str | None = None
 ) -> None:
     """Function plots the size of the nucleus/cell related to the counts."""
     sc.pl.pca(

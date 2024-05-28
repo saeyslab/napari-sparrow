@@ -176,7 +176,7 @@ For more info on configuring experiments, we refer to the [hpc](docs/hpc.md) doc
 
 ## Contributing
 
-Find more information and instructions in the `docs/` folder.
+See [here](docs/contributing.md) for info on how to contribute to SPArrOW.
 
 ## References
 

@@ -57,54 +57,53 @@ def segment(
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     **kwargs: Any,
-):
+) -> SpatialData:
     """
     Segment images using a provided model and add segmentation results (labels layer and shapes layer) to the SpatialData object.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the image layer to segment.
-    img_layer : Optional[str], default=None
+    img_layer
         The image layer in `sdata` to be segmented. If not provided, the last image layer in `sdata` is used.
-    model : Callable[..., NDArray], default=_cellpose
+    model
         The segmentation model function used to process the images.
         Callable should take as input numpy arrays of dimension (z,y,x,c) and return labels of dimension (z,y,x,c), with
         c dimension==1. It can have an arbitrary number of other parameters.
-    output_labels_layer : str, default="segmentation_mask"
+    output_labels_layer
         Name of the label layer in which segmentation results will be stored in `sdata`.
-    output_shapes_layer : Optional[str], default="segmentation_mask_boundaries"
+    output_shapes_layer
         Name of the shapes layer where boundaries obtained output_labels_layer will be stored. If set to None, shapes won't be stored.
-    depth : Tuple[int, int] | int, default=100
+    depth
         The depth in y and x dimension. The depth parameter is passed to map_overlap. If trim is set to False,
         it's recommended to set the depth to a value greater than twice the estimated diameter of the cells/nulcei.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+    chunks
         Chunk sizes for processing. Can be a string, integer or tuple of integers. If chunks is a Tuple,
         they  contain the chunk size that will be used in y and x dimension. Chunking in 'z' or 'c' dimension is not supported.
-    boundary : str, default="reflect"
+    boundary
         Boundary parameter passed to map_overlap.
-    trim : bool, default=False
+    trim
         If set to True, overlapping regions will be processed using the `squidpy` algorithm.
         If set to False, the `sparrow` algorithm will be employed instead. For dense cell distributions,
-        we recommend setting trim to True.
-    crd : Optional[Tuple[int, int, int, int]], default=None
+        we recommend setting trim to False.
+    crd
         The coordinates specifying the region of the image to be segmented. Defines the bounds (x_min, x_max, y_min, y_max).
-    scale_factors : Optional[ScaleFactors_t], optional
+    scale_factors
         Scale factors to apply for multiscale.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the existing layers if they exist. Otherwise, raises an error if the layers exist.
-    **kwargs : Any
+    **kwargs
         Additional keyword arguments passed to the provided `model`.
 
     Returns
     -------
-    SpatialData
-        Updated `sdata` object containing the segmentation results.
+    Updated `sdata` object containing the segmentation results.
 
     Raises
     ------
     TypeError
-        If the provided `model` is not callable.
+        If the provided `model` is not a callable.
     """
     fn_kwargs = kwargs
 
@@ -136,7 +135,7 @@ def segment(
 
 def segment_points(
     sdata: SpatialData,
-    labels_layer: str | None = None,  # the prior
+    labels_layer: str,  # the prior
     points_layer: str | None = None,
     name_x: str = "x",
     name_y: str = "y",
@@ -152,68 +151,67 @@ def segment_points(
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
     **kwargs: Any,
-):
+) -> SpatialData:
     """
     Segment images using a `points_layer` and a prior (`labels_layer`) and add segmentation results (labels layer and shapes layer) to the SpatialData object.
 
-    Currently only segmentation using a prior is supported.
+    Currently only segmentation using a prior is supported (i.e. `labels_layer` should be provided).
     The `points_layer` and the `labels_layer` should be registered (i.e. same coordinate space in `sdata`).
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the image layer to segment.
-    labels_layer : Optional[str], default=None
+    labels_layer
         The labels layer in `sdata` to be used as a prior.
-    points layer : Optional[str], default=None
-        The points layer in `sdata` to be used for segmentation.
-    name_x: Optional[str], default="x"
+    points_layer
+        The points layer in `sdata` to be used for segmentation. If None, 'last' points layer in `sdata` will be used.
+    name_x
         Column name for x-coordinates of the transcripts in the points layer, by default "x".
-    name_y: Optional[str], default="y"
+    name_y
         Column name for y-coordinates of the transcripts in the points layer, by default "y".
-    name_gene : str, optional
+    name_gene
         Column name in the points_layer representing gene information, by default "gene".
-    model : Callable[..., NDArray], default=_model_points
+    model
         The segmentation model function used to process the images.
         Callable should take as input numpy arrays of dimension (z,y,x,c), a pandas dataframe with the transcripts,
         and parameters 'name_x', 'name_y' and 'name_gene' with the column names of the x and y location and the column
         name for the transcripts. It should return labels of dimension (z,y,x,c), with c dimension==1.
         Currently only 2D segmentation is supported (y,x).
         It can have an arbitrary number of other parameters.
-    output_labels_layer : str, default="segmentation_mask"
+    output_labels_layer
         Name of the label layer in which segmentation results will be stored in `sdata`.
-    output_shapes_layer : Optional[str], default="segmentation_mask_boundaries"
+    output_shapes_layer
         Name of the shapes layer where boundaries obtained output_labels_layer will be stored. If set to None, shapes won't be stored.
-    depth : Tuple[int, int] | int, default=100
+    depth
         The depth in y and x dimension. The depth parameter is passed to map_overlap. If trim is set to False,
         it's recommended to set the depth to a value greater than twice the estimated diameter of the cells/nulcei.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+    chunks
         Chunk sizes for processing. Can be a string, integer or tuple of integers. If chunks is a Tuple,
         they  contain the chunk size that will be used in y and x dimension. Chunking in 'z' or 'c' dimension is not supported.
-    boundary : str, default="reflect"
+    boundary
         Boundary parameter passed to map_overlap.
-    trim : bool, default=False
+    trim
         If set to True, overlapping regions will be processed using the `squidpy` algorithm.
         If set to False, the `sparrow` algorithm will be employed instead. For dense cell distributions,
         we recommend setting trim to False.
-    crd : Optional[Tuple[int, int, int, int]], default=None
+    crd
         The coordinates specifying the region of the `points_layer` to be segmented. Defines the bounds (x_min, x_max, y_min, y_max).
-    scale_factors : Optional[ScaleFactors_t], optional
+    scale_factors
         Scale factors to apply for multiscale.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the existing layers if they exist. Otherwise, raises an error if the layers exist.
-    **kwargs : Any
+    **kwargs
         Additional keyword arguments passed to the provided `model`.
 
     Returns
     -------
-    SpatialData
-        Updated `sdata` object containing the segmentation results.
+    Updated `sdata` object containing the segmentation results.
 
     Raises
     ------
     ValueError
-        If the `labels_layer` is not provided.
+        If the `labels_layer` is None.
 
     TypeError
         If the provided `model` is not callable.

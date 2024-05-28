@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -15,11 +15,11 @@ def score_genes(
     sdata: SpatialData,
     table_layer: str,
     celltypes: list[str],
-    img_layer: Optional[str] = None,
+    img_layer: str | None = None,
     shapes_layer: str = "segmentation_mask_boundaries",
-    crd=None,
-    filter_index: Optional[int] = None,
-    output: Optional[str] = None,
+    crd: tuple[int, int, int, int] = None,
+    filter_index: int | None = None,
+    output: str | None = None,
 ) -> None:
     """
     Function generates following plots:
@@ -32,7 +32,7 @@ def score_genes(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information for plotting.
     table_layer: str, optional
         The table layer in `sdata` to visualize.
@@ -40,13 +40,13 @@ def score_genes(
         list of celltypes to plot.
     img_layer : str, optional
         Image layer to be plotted. If not provided, the last image layer in `sdata` will be used.
-    shapes_layer : str, optional
+    shapes_layer
         Name of the layer containing segmentation mask boundaries, by default "segmentation_mask_boundaries".
-    crd : tuple of int, optional
+    crd
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax). Only used for plotting purposes.
-    filter_index : int or None, optional
+    filter_index
         Index used to filter leiden clusters when plotting the heatmap. Only leiden clusters >= filter index will be plotted.
-    output : str or None, optional
+    output
         Filepath to save the plots. If not provided, plots will be displayed without being saved.
 
     Returns

@@ -32,10 +32,10 @@ def add_regionprop_features(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing spatial information about cells/nuclei. This object will be updated with
         new region property features.
-    labels_layer : str, optional
+    labels_layer
         The name of the layer in `sdata` that contains the labeled regions, typically derived from a segmentation
         process. Each distinct label corresponds to a different cell, and properties will be calculated for these
         labeled regions. If not provided, the function will default to the 'last' labels layer in `sdata`.

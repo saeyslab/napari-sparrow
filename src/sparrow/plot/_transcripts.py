@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from pandas import DataFrame
 from scipy.stats import pearsonr
 from spatialdata import SpatialData
 
@@ -27,13 +26,13 @@ def analyse_genes_left_out(
     name_y: str = "y",
     name_gene_column: str = "gene",
     output: str | Path | None = None,
-) -> DataFrame:
+) -> pd.DataFrame:
     """
     Analyse and visualize the proportion of genes that could not be assigned to a cell during allocation step.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information for plotting.
     labels_layer : str
         The layer in `sdata` that contains the segmentation masks, by default "segmentation_mask".
@@ -47,32 +46,34 @@ def analyse_genes_left_out(
         The layer in `sdata` containing transcript information, by default "transcripts".
     name_x : str, optional
         The column name representing the x-coordinate in `points_layer`, by default "x".
-    name_y : str, optional
+    name_y
         The column name representing the y-coordinate in `points_layer`, by default "y".
-    name_gene_column : str, optional
+    name_gene_column
         The column name representing the gene name in `points_layer`, by default "gene".
-    output : str or Path, optional
+    output
         The path to save the generated plots. If None, plots will be shown directly using plt.show().
 
     Returns
     -------
-    DataFrame
-        A DataFrame containing information about the proportion of transcripts kept for each gene,
-        raw counts (i.e. obtained from `points_layer` of `sdata`), and the log of raw counts.
+    A DataFrame containing information about the proportion of transcripts kept for each gene,
+    raw counts (i.e. obtained from `points_layer` of `sdata`), and the log of raw counts.
 
     Raises
     ------
     AttributeError
-        If the provided `sdata` does not contain the necessary attributes (i.e., "labels" or "points").
+        If the provided `sdata` does not contain the necessary attributes (i.e., 'labels' or 'points').
 
     Notes
     -----
     This function produces two plots:
-    1. A scatter plot of the log of raw gene counts vs. the proportion of transcripts kept.
-    2. A regression plot for the same data with Pearson correlation coefficients.
+        - A scatter plot of the log of raw gene counts vs. the proportion of transcripts kept.
+        - A regression plot for the same data with Pearson correlation coefficients.
 
     The function also prints the ten genes with the highest proportion of transcripts filtered out.
 
+    See Also
+    --------
+    sparrow.tb.allocate
     """
     # we need the segmentation_mask to calculate crd used during allocation step,
     # otherwise transcript counts in points layer of sdata (containing all transcripts)
@@ -169,29 +170,33 @@ def transcript_density(
 
     Parameters
     ----------
-    sdata: SpatialData
+    sdata
         Data containing spatial information for plotting.
-    img_layer: Tuple[str, str], default=["raw_image", "transcript_density"]
+    img_layer
         A tuple where the first element indicates the base image layer and
         the second element indicates the transcript density.
-    channel: int, default=0
+    channel
         The channel of the image to be visualized.
         If the channel not in one of the images, the first available channel of the image will be plotted
-    crd: Optional[Tuple[int, int, int, int]], default=None
+    crd
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
-    figsize: Optional[Tuple[int, int]], default=None
+    figsize
         The figure size for the visualization. If None, a default size will be used.
-    output: Optional[str | Path], default=None
+    output
         Path to save the output image. If None, the image will not be saved and will be displayed instead.
 
     Returns
     -------
     None
 
-    Example:
-    -------
+    Examples
+    --------
     >>> sdata = SpatialData(...)
     >>> transcript_density(sdata, img_layer=["raw_img", "density"], crd=(2000,4000,2000,4000))
+
+    See Also
+    --------
+    sparrow.im.transcript_density
     """
     plot_shapes(
         sdata,

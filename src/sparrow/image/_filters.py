@@ -25,7 +25,7 @@ def min_max_filtering(
     overwrite: bool = False,
 ) -> SpatialData:
     """
-    Apply min max filtering to an image in a SpatialData object using dask.
+    Apply min max filtering to an image in a SpatialData object using dask (using `dask_image.ndfilters.maximum_filter` and `dask_image.ndfilters.minimum_filter`).
 
     The size of the filter can be provided
     either as an integer or a list of integers corresponding to each channel.
@@ -33,26 +33,25 @@ def min_max_filtering(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Spatial data object containing the images to be processed.
-    img_layer : Optional[str], default=None
+    img_layer
         The image layer in `sdata` to run min_max_filtering on. If not provided, the last image layer in `sdata` is used.
-    size_min_max_filter : Union[int, List[int]], optional
+    size_min_max_filter
         Size of the min_max filter. If provided as a list, the length
         must match the number of channels. Defaults to 85.
-    output_layer : str, optional
+    output_layer
         The name of the output layer. Defaults to "min_max_filtered".
-    crd : Optional[Tuple[int, int, int, int]], default=None
+    crd
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
         Scale factors to apply for multiscale.
-    overwrite: bool
+    overwrite
         If True overwrites the element if it already exists.
 
     Returns
     -------
-    SpatialData
-        The `sdata` object with the min_max-filtered image added.
+    The `sdata` object with the min max filtered image added.
 
     Raises
     ------

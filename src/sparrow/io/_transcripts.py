@@ -24,18 +24,17 @@ def read_resolve_transcripts(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object to which the transcripts will be added.
-    path_count_matrix : str | Path
+    path_count_matrix
         Path to the file containing the transcripts information specific to Resolve.
         Expected to contain x, y coordinates and a gene name.
-    overwrite: bool, default=False
+    overwrite
         If True overwrites the `output_layer` (a points layer) if it already exists.
 
     Returns
     -------
-    SpatialData
-        The updated SpatialData object containing the transcripts.
+    The updated SpatialData object containing the transcripts.
     """
     args = (sdata, path_count_matrix)
     kwargs = {
@@ -62,20 +61,19 @@ def read_vizgen_transcripts(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object to which the transcripts will be added.
-    path_count_matrix : str | Path
+    path_count_matrix
         Path to the file containing the transcripts information specific to Vizgen.
         Expected to contain x, y coordinates and a gene name.
-    path_transform_matrix : str | Path
+    path_transform_matrix
         Path to the transformation matrix for the affine transformation.
     overwrite: bool, default=False
         If True overwrites the `output_layer` (a points layer) if it already exists.
 
     Returns
     -------
-    SpatialData
-        The updated SpatialData object containing the transcripts.
+    The updated SpatialData object containing the transcripts.
     """
     args = (sdata, path_count_matrix, path_transform_matrix)
     kwargs = {
@@ -102,9 +100,9 @@ def read_stereoseq_transcripts(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object to which the transcripts will be added.
-    path_count_matrix : str | Path
+    path_count_matrix
         Path to the file containing the transcripts information specific to Stereoseq.
         Expected to contain x, y coordinates, gene name, and a midcount column.
     overwrite: bool, default=False
@@ -112,8 +110,7 @@ def read_stereoseq_transcripts(
 
     Returns
     -------
-    SpatialData
-        The updated SpatialData object containing the transcripts.
+    The updated SpatialData object containing the transcripts.
     """
     args = (sdata, path_count_matrix)
     kwargs = {
@@ -157,12 +154,12 @@ def read_transcripts(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object to which the transcripts will be added.
-    path_count_matrix : Union[str, Path]
+    path_count_matrix
         Path to the .txt file containing the transcripts information. Each row should contain an x, y coordinate and a gene name.
         Optional a midcount column is provided. If a midcount column is provided, rows are repeated.
-    path_transform_matrix : Optional[Union[str, Path]], default=None
+    path_transform_matrix
         This file should contain a 3x3 transformation matrix for the affine transformation.
         The matrix defines the linear transformation to be applied to the coordinates of the transcripts.
         If no transform matrix is specified, the identity matrix will be used.
@@ -172,42 +169,41 @@ def read_transcripts(
         If True overwrites the `output_layer` (a points layer) if it already exists.
     debug : bool, default=False
         If True, a sample of the data is processed for debugging purposes.
-    column_x : int, default=0
+    column_x
         Column index of the X coordinate in the count matrix.
-    column_y : int, default=1
+    column_y
         Column index of the Y coordinate in the count matrix.
-    column_z : int, default=None
+    column_z
         Column index of the Z coordinate in the count matrix.
-    column_gene : int, default=3
+    column_gene
         Column index of the gene information in the count matrix.
-    column_midcount : Optional[int], default=None
+    column_midcount
         Column index for the count value to repeat rows in the count matrix. Ignored when set to None.
-    delimiter : str, default=","
+    delimiter
         Delimiter used to separate values in the CSV file.
-    header : Optional[int], default=None
+    header
         Row number to use as the header in the CSV file. If None, no header is used.
-    comment : Optional[str], default=None
+    comment
         Character indicating that the remainder of line should not be parsed.
         If found at the beginning of a line, the line will be ignored altogether.
         This parameter must be a single character.
-    crd : tuple of int, optional
+    crd
         The coordinates (in pixels) for the region of interest in the format (xmin, xmax, ymin, ymax).
         If None, all transcripts are considered.
-    filter_gene_names: list or list of strings, optional
+    filter_gene_names
         Regular expression(s) of gene names that need to be filtered out (via str.contains), mostly control genes that were added, and which you don't want to use.
         If list of strings, all items in the list are seen as regular expressions. Filtering is case insensitive.
-    blocksize: str, default="64MB"
+    blocksize
         Block size of the partions of the dask dataframe stored as `points_layer` in `sdata`.
 
     Returns
     -------
-    SpatialData
-        The updated SpatialData object containing the transcripts.
+    The updated SpatialData object containing the transcripts.
 
     Notes
     -----
-    This function reads the CSV file using Dask and applies a transformation matrix to the coordinates.
-    It can also repeat rows based on the MIDCount value and can work in a debug mode that samples the data.
+    This function reads a .csv file using Dask and applies a transformation matrix to the coordinates.
+    It can also repeat rows based on the `MIDCount` value and can work in a debug mode that samples the data.
     """
     # Read the CSV file using Dask
     ddf = dd.read_csv(

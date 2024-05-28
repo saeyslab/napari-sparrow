@@ -29,24 +29,24 @@ def tiling_correction(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information for plotting.
-    img_layer : Tuple[str, str], optional
+    img_layer
         Tuple where the first string represents the layer name for the uncorrected image and the second string
         represents the layer name for the tiling corrected image. Default is ["raw_image", "tiling_correction"].
         Images will be plotted next to each other.
-    channel : int or Iterable[int], optional
+    channel
         Specifies the channel or channels to visualize. If not provided, all channels are used.
-    crd : tuple of int, optional
+    crd
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
         If provided, only this region is visualized, by default None.
-    figsize : Tuple[int, int], optional
+    figsize
         Size of the generated figure for visualization.
-    img_title : bool, optional
+    img_title
         Whether to display the image title on the visualization, by default True.
-    channel_title : bool, optional
+    channel_title
         Whether to display the channel title on the visualization, by default True.
-    output : str or Path, optional
+    output
         Path where the generated visualization will be saved. If not provided, the visualization
         is only displayed and not saved.
 
@@ -59,6 +59,9 @@ def tiling_correction(
     >>> sdata = SpatialData(...)
     >>> tiling_correction(sdata, img_layer=["original", "corrected"], crd=(2000, 4000, 2000, 4000))
 
+    See Also
+    --------
+    sparrow.im.tiling_correction
     """
     plot_shapes(
         sdata,
@@ -82,9 +85,9 @@ def flatfield(flatfield: np.ndarray, output: str | Path | None = None) -> None:
 
     Parameters
     ----------
-    flatfield : np.ndarray
+    flatfield
         A 2D numpy array representing the flatfield image used for correction.
-    output : str or Path, optional
+    output
         Path where the generated visualization will be saved. If not provided, the visualization
         is displayed but not saved. Default is None.
 
@@ -96,6 +99,10 @@ def flatfield(flatfield: np.ndarray, output: str | Path | None = None) -> None:
     --------
     >>> img = np.array(...)
     >>> flatfield(img, output="path/to/save/image.png")
+
+    See Also
+    --------
+    sparrow.im.tiling_correction
     """
     fig, ax = plt.subplots(1, 1, figsize=(20, 10))
     ax.imshow(flatfield, cmap="gray")

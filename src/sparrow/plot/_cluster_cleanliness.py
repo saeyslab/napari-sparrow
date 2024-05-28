@@ -1,4 +1,4 @@
-from typing import List, Optional
+from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import scanpy as sc
@@ -11,12 +11,12 @@ from sparrow.utils._keys import _ANNOTATION_KEY
 def cluster_cleanliness(
     sdata: SpatialData,
     table_layer: str,
-    img_layer: Optional[str] = None,
+    img_layer: str | None = None,
     shapes_layer: str = "segmentation_mask_boundaries",
-    crd: Optional[List[int]] = None,
-    color_dict: Optional[dict] = None,
+    crd: tuple[int, int, int, int] | None = None,
+    color_dict: dict | None = None,
     celltype_column: str = _ANNOTATION_KEY,
-    output: Optional[str] = None,
+    output: str | None = None,
 ) -> None:
     """
     Generate plots that allow assessing the "cleanliness" or accuracy of the cell clustering:
@@ -27,7 +27,7 @@ def cluster_cleanliness(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         SpatialData object containing the spatial data and annotations.
     table_layer: str, optional
         The table layer in `sdata` to visualize.
@@ -39,7 +39,7 @@ def cluster_cleanliness(
         An optional rectangle [xmin, xmax, ymin, ymax] (default is None).
         If specified, the tissue image will be cropped to this rectangle,
         otherwise the full image will be displayed.
-    color_dict : dict, optional
+    color_dict
         Custom colormap dictionary for coloring cell types in the barplot.
     celltype_column : str, optional
         Name of the column in `sdata.tables[table_layer]` containing cell type annotations (default is `_ANNOTATION_KEY`).

@@ -40,78 +40,79 @@ def apply(
     **kwargs: Any,
 ) -> SpatialData:
     """
-    Apply a specified function to an image layer in a SpatialData object.
+    Apply a specified function to an image layer of a SpatialData object.
 
     Parameters
     ----------
-    sdata : SpatialData
-        Spatial data object containing the image to be processed.
-    func : Callable[..., NDArray | Array] | Mapping[ str | Any ]
+    sdata
+        Spatial data object containing the image to be processe.
+    func
         The Callable to apply to the image.
         Can also be a Mapping if different Callable should be applied different z_slices and/or channels
         e.g. { 'channel1': function, 'channel2': function2 ... } or { 'channel': { 'z_slice': function ... } ... }.
         If a Mapping is specified, and fn_kwargs is specified then the Mapping should match
         the Mapping specified in fn_kwargs.
-    fn_kwargs : Mapping[str, Any], default=MappingProxyType({})
+    fn_kwargs
         Keyword arguments to pass to `func`.
         If different fn_kwargs should be passed to different z_slices and or channels, one can specify e.g.
         {'channel1': fn_kwargs1, 'channel2': fn_kwargs2 ... } or { 'channel': { 'z_slice': fn_kwargs ... } ... }.
-    img_layer : Optional[str], default=None
+    img_layer
         The image layer in `sdata` to process. If not provided, the last image layer in `sdata` is used.
-    output_layer : Optional[str]
+    output_layer
         The name of the output layer where results will be stored. This must be specified.
-    channel : Optional[int | Iterable[int] | str | Iterable[str] ], default=None
+    channel
         Specifies which channel(s) to run `func` on.
         If None, the `func` is run on all channels if `func` is a Callable,
         and if `func` or `fn_kwargs` is a Mapping, it will run on the specfied channels in `func`/`fn_kwargs` if provided.
-    z_slice : Optional[float | Iterable[float]], default=None
+    z_slice
         Specifies which z_slice(s) to run `func` on.
         If None, the `func` is run on all z_slices if `func` is a Callable,
         and if `func` or `fn_kwargs` is a Mapping, in will run on the specfied z slices in `func`/`fn_kwargs` if provided.
-    combine_c : bool, default=True.
+    combine_c
         If False, each channel is processed indepentently,
         i.e. input to `func`/map_blocks/map_overlap will be of shape (1,(z),y,x).
         If set to True, input to the Callable will depend on the chunk parameter specified for the c dimension.
-    combine_z : bool, default=True.
+    combine_z
         If False, each z slice is processed indepentently,
         i.e. input to `func`/map_blocks/map_overlap will be of shape (c,1,y,x).
         If set to True, input to the Callable will depend on the chunk parameter specified for the z dimension.
         Ignored when `img_layer` does not contain a z dimension.
-    chunks : str | Tuple[int, ...] | int | None, default=None
+    chunks
         Specification for rechunking the data before applying the function.
         If specified, dask's map_overlap or map_blocks is used depending on the occurence of the "depth" parameter in kwargs.
         If chunks is a Tuple, they should contain desired chunk size for c, (z), y, x.
-    output_chunks: Tuple[Tuple[int, ...], ...], default=None
+    output_chunks
         Chunk shape of resulting blocks if the function does not preserve
         shape. If not provided, the resulting array is assumed to have the same
         block structure as the first input array.
         Ignored when chunks is None. Passed to map_overlap/map_blocks as `chunks`.
         E.g. ( (3,), (256,) , (256,)  ).
-    crd : Optional[Tuple[int, int, int, int]], default=None
+    crd
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
         Scale factors to apply for multiscale.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
-    **kwargs : Any
+    **kwargs
         Additional keyword arguments passed to dask's map_overlap or map_blocks
         depending of the occurence of "depth" in kwargs.
 
     Returns
     -------
-    SpatialData
-        The `sdata` object with the processed image added to the specified output layer.
+    The `sdata` object with the processed image added to the specified output layer.
 
     Raises
     ------
     ValueError
-        - If `output_layer` is not provided.
-        - If chunks is a Tuple, and do not match (c,(z),y,x).
-        - If depth is a Tuple, and do not match (c,(z),y,x).
+        If `output_layer` is not provided.
+    ValueError
+        If chunks is a Tuple, and do not match (c,(z),y,x).
+    ValueError
+        If depth is a Tuple, and do not match (c,(z),y,x).
 
     Notes
     -----
-    This function is designed for processing images stored in a SpatialData object using dask for potential
+    This function is designed for processing images stored in a SpatialData object using Dask for potential
     parallelism and out-of-core computation. Depending on the `chunks` parameter and other settings,
     it can leverage dask's map_overlap or map_blocks functions to apply the desired image processing function.
 

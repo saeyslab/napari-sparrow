@@ -2,7 +2,7 @@
 
 ```{eval-rst}
 
-Import sparrow as::
+Import SPArrOW as::
 
     import sparrow as sp
 
@@ -31,7 +31,7 @@ I/O.
 
 ## Image
 
-Operations on images.
+Operations on image and labels layers.
 
 ```{eval-rst}
 
@@ -45,16 +45,22 @@ Operations on images.
     im.tiling_correction
     im.enhance_contrast
     im.min_max_filtering
-    im.segment
     im.transcript_density
     im.combine
+    im.segment
+    im.segment_points
     im.expand_labels_layer
     im.align_labels_layers
+    im.apply_labels_layers
+    im.filter_labels_layer
+    im.mask_to_original
+    im.merge_labels_layers
+    im.merge_labels_layers_nuclei
 ```
 
 ## Shape
 
-Operations on shapes (polygons).
+Operations on shapes (polygons) layers.
 
 ```{eval-rst}
 
@@ -69,7 +75,7 @@ Operations on shapes (polygons).
 
 ## Table
 
-Operations on tables (`AnnData` object).
+Operations on table (`AnnData` object) layers.
 
 ```{eval-rst}
 

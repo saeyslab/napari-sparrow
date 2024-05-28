@@ -39,7 +39,7 @@ def preprocess_transcriptomics(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The input SpatialData object.
     labels_layer : str or Iterable[str]
         The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY  in `sdata.tables[table_layer].obs`.

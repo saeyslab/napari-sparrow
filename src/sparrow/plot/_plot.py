@@ -37,20 +37,24 @@ def plot_image(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information for plotting.
-    img_layer : str, optional
+    img_layer
         Image layer to be plotted. Default is "raw_image".
-    channel : int or str or Iterable[int] or Iterable[str], optional
+    channel
         Channel(s) to be displayed from the image.
-    z_slice: float or None, optional
+    z_slice
         The z_slice to visualize in case of 3D (c,z,y,x) image.
-    crd : tuple of int, optional
+    crd
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
-    output : str or Path, optional
+    output
         Path to save the plot. If not provided, plot will be displayed.
-    **kwargs : dict
-        Additional arguments to be passed to the plot_shapes function.
+    **kwargs
+        Additional arguments to be passed to the `sp.pl.plot_shapes` function.
+
+    See Also
+    --------
+    sparrow.pl.plot_shapes
     """
     plot_shapes(
         sdata,
@@ -77,18 +81,22 @@ def plot_labels(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information for plotting.
-    labels_layer : str, optional
+    labels_layer
         Labels layer to be plotted. Default is "segmentation_mask".
-    z_slice: float or None, optional
+    z_slice
         The z_slice to visualize in case of 3D (c,z,y,x) labels.
-    crd : tuple of int, optional
+    crd
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
-    output : str or Path, optional
+    output
         Path to save the plot. If not provided, plot will be displayed.
-    **kwargs : dict
-        Additional arguments to be passed to the plot_shapes function.
+    **kwargs
+        Additional arguments to be passed to the `sp.pl.plot_shapes` function.
+
+    See Also
+    --------
+    sparrow.pl.plot_shapes
     """
     plot_shapes(
         sdata,
@@ -129,7 +137,7 @@ def plot_shapes(
     """
     Plot shapes and/or images/labels from a SpatialData object.
 
-    The number of provided 'img_layer' or 'labels_layer' and 'shapes_layer' should be equal if both are iterables and if their length is greater than 1.
+    The number of provided `img_layer` or `labels_layer` and `shapes_layer` should be equal if both are iterables and if their length is greater than 1.
 
     Examples
     --------
@@ -162,19 +170,19 @@ def plot_shapes(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information for plotting.
-    img_layer : str or Iterable[str], optional
+    img_layer
         Image layer(s) to be plotted. If not provided, and labels_layer is also not provided, the last added image layer is plotted.
         Displayed as columns in the plot, if multiple are provided.
-    labels_layer : str or Iterable[str], optional
+    labels_layer
         Labels layer(s) to be plotted.
         Displayed as columns in the plot, if multiple are provided.
-    shapes_layer : str or Iterable[str], optional
+    shapes_layer
         Specifies which shapes to plot. If set to None, no shapes_layer is plotted.
         Displayed as columns in the plot, if multiple are provided.
     table_layer : str, optional
-        Table layer(s) to be plotted (i.e. to base cell colors on) if `column` is specified.
+        Table layer to be plotted (i.e. to base cell colors on) if `column` is specified.
     column : str or None, optional
         Column in `sdata.tables[table_layer].obs` or name in `sdata.tables[table_layer].var.index` to base cell colors on. If none provided, default color is used.
     region : str, optional
@@ -185,38 +193,35 @@ def plot_shapes(
         Channel(s) to be displayed from the image. Displayed as rows in the plot.
         If channel is None, get the number of channels from the first img_layer given as input.
         Ignored if img_layer is None and labels_layer is specified.
-    z_slice: float or None, optional
+    z_slice
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
         If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
         If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
-    crd : tuple of int, optional
+    crd
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
-    vmin : float or None, optional
+    vmin
         Lower bound for color scale for continuous data (i.e. a column). Given as a percentile. Ignored if column is None.
-    vmax : float or None, optional
+    vmax
         Upper bound for color scale for continuous data (i.e. a column). Given as a percentile. Ignored if column is None.
-    vmin_img : float or None, optional
+    vmin_img
         Lower bound for plotting of `img_layer` or `labels_layer`.
-    vmax_img : float or None, optional
+    vmax_img
         Upper bound for plotting of `img_layer` or `labels_layer`.
-    shapes_layer_filtered : str or Iterable[str], optional
+    shapes_layer_filtered
         Extra shapes layers to plot. E.g. shapes filtered out in previous preprocessing steps.
-    img_title: bool, default=False
+    img_title
         A flag indicating whether the image layer's name should be added to the title of the plot.
-    shapes_title: bool, default=False
+    shapes_title
         A flag indicating whether the shapes layer's name should be added to the title of the plot.
-    channel_title: bool, default=True
+    channel_title
         A flag indicating whether the channel's name should be added to the title of the plot.
         Ignored if img_layer is None and labels_layer is specified.
-    aspect : str, default='equal'
+    aspect
         Aspect ratio for the plot.
-    figsize : Tuple[int, int], optional
+    figsize
         Size of the figure for plotting. If not provided, a default size is used based on the number of columns and rows.
-    output : str or Path, optional
+    output
         Path to save the plot. If not provided, plot will be displayed.
-    **kwargs : dict
-        Additional arguments to be passed to the internal `_plot` function.
-
 
     Raises
     ------
@@ -231,7 +236,7 @@ def plot_shapes(
     Notes
     -----
     - This function offers advanced visualization options for `sdata` with support for multiple image layers, labels layers shape layers, and channels.
-    - Either img_layer or labels_layer should be specified, not both.
+    - Either `img_layer` or `labels_layer` should be specified, not both.
     """
     if img_layer is not None and labels_layer is not None:
         raise ValueError(
@@ -377,18 +382,18 @@ def _plot(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information for plotting.
-    ax : plt.Axes, optional
+    ax
         Axes object to plot on.
-    img_layer : str or None, optional
+    img_layer
         Image layer to be plotted. By default, the last added image layer is plotted.
-    labels_layer : str or None, optional
+    labels_layer
         Labels layer to be plotted.
-    shapes_layer : str or None, optional
+    shapes_layer
         Specifies which shapes to plot. Default is 'segmentation_mask_boundaries'. If set to None, no shapes_layer is plot.
     table_layer : str, optional
-        Table layer(s) to be plotted (i.e. to base cell colors on) if `column` is specified.
+        Table layer to be plotted (i.e. to base cell colors on) if `column` is specified.
     column : str or None, optional
         Column in `sdata.tables[table_layer].obs` or name in `sdata.tables[table_layer].var.index` to base cell colors on. If none provided, default color is used for plotting shapes.
     region : str, optional
@@ -398,38 +403,37 @@ def _plot(
     channel : int or str or None, optional
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
         Ignored if img_layer is None and labels_layer is specified.
-    z_slice: float or None, optional
+    z_slice
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
         If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
         If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
-    alpha : float, default=0.5
+    alpha
         Transparency level for the cells, given by the alpha parameter of matplotlib.
-    crd : tuple of int, optional
+    crd
         The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
-    vmin : float or None, optional
+    vmin
         Lower bound for color scale for continuous data (i.e. a column). Given as a percentile. Ignored if column is None.
-    vmax : float or None, optional
+    vmax
         Upper bound for color scale for continuous data (i.e. a column). Given as a percentile. Ignored if column is None.
-    vmin_img : float or None, optional
+    vmin_img
         Lower bound for plotting of `img_layer` or `labels_layer`.
-    vmax_img : float or None, optional
+    vmax_img
         Upper bound for plotting of `img_layer` or `labels_layer`.
-    shapes_layer_filtered : str or Iterable[str], optional
+    shapes_layer_filtered
         Extra shapes layers to plot. E.g. shapes filtered out in previous preprocessing steps.
-    img_title: bool, default=False
+    img_title
         A flag indicating whether the image layer's name should be added to the title of the plot.
-    shapes_title: bool, default=False
+    shapes_title
         A flag indicating whether the shapes layer's name should be added to the title of the plot.
-    channel_title: bool, default=True
+    channel_title
         A flag indicating whether the channel's name should be added to the title of the plot.
         Ignored if img_layer is None and labels_layer is specified.
-    aspect : str, default='equal'
+    aspect
         Aspect ratio for the plot.
 
     Returns
     -------
-    plt.Axes
-        The axes with the plotted SpatialData.
+    The axes with the plotted SpatialData.
 
     Raises
     ------
@@ -443,7 +447,7 @@ def _plot(
 
     Notes
     -----
-    - The function supports various visualization options such as image layers, shape layers, channels, color mapping, and custom regions.
+    The function supports various visualization options such as image layers, shape layers, channels, color mapping, and custom regions.
     """
     if img_layer is not None and labels_layer is not None:
         raise ValueError(

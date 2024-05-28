@@ -37,45 +37,43 @@ def merge_labels_layers(
     in a SpatialData object. The function will copy all labels from `labels_layer_1` to `output_labels_layer`, and for all labels
     in `labels_layer_2` it will check if they have less than `threshold` overlap with labels from `labels_layer_1`, if so,
     label in `labels_layer_2` will be copied to `output_labels_layer` at locations where 'labels_layer_1' is 0.
-    the label
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the labels layers to be merged.
-    labels_layer_1 : str
+    labels_layer_1
         The name of the first labels layer. This layer will get priority.
-    labels_layer_2 : str
+    labels_layer_2
         The name of the second labels layer to be merged in `labels_layer_1`.
-    threshold : float, default=0.5
+    threshold
         The threshold value to control the merging of labels. This value determines how the merge operation is
         conducted based on the overlap between the labels in `labels_layer_1` and `labels_layer_2`.
-    depth : Tuple[int, int] | int, default=100
+    depth
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Please set depth>cell diameter + distance to avoid chunking effects.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+    chunks
         Specification for rechunking the data before applying the merge operation. This parameter defines how the data
         is divided into chunks for processing.
-    output_labels_layer : Optional[str], default=None
+    output_labels_layer
         The name of the output labels layer where the merged results will be stored.
-    output_shapes_layer : Optional[str], default=None
+    output_shapes_layer
         The name of the output shapes layer where results will be stored if shape data is produced from the merge operation.
-    scale_factors : Optional[ScaleFactors_t], default=None
+    scale_factors
         Scale factors to apply for multiscale processing.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
 
     Returns
     -------
-    SpatialData
-        The `sdata` object with the merged labels layer added to the specified output layer. If `output_shapes_layer` is
-        provided, a shapes layer will be created corresponding to this labels layer.
+    The `sdata` object with the merged labels layer added to the specified output layer. If `output_shapes_layer` is
+    provided, a shapes layer will be created corresponding to this labels layer.
 
     Raises
     ------
     ValueError
-        - If any of the specified labels layers cannot be found in `sdata`.
+        If any of the specified labels layers cannot be found in `sdata`.
 
     Notes
     -----
@@ -122,44 +120,44 @@ def merge_labels_layers_nuclei(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the labels layers.
-    labels_layer : str
+    labels_layer
         The name of the labels layer to merge with nuclei labels.
-    labels_layer_nuclei_expanded : str
+    labels_layer_nuclei_expanded
         The name of the expanded nuclei labels layer.
-    labels_layer_nuclei : str
+    labels_layer_nuclei
         The name of the nuclei labels layer.
-    threshold : float, default=0.5
+    threshold
         The threshold value to control the merging of labels. This value determines how the merge operation is
         conducted based on the overlap between the labels in `labels_layer_nuclei` and `labels_layer`.
-    depth : Tuple[int, int] | int, default=100
+    depth
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Please set depth>cell diameter + distance to avoid chunking effects.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+    chunks
         Specification for rechunking the data before applying the merge operation. This parameter defines how the data
         is divided into chunks for processing. If 'auto', the chunking strategy is determined automatically.
-    output_labels_layer : Optional[str], default=None
+    output_labels_layer
         The name of the output labels layer where the merged results will be stored.
-    output_shapes_layer : Optional[str], default=None
+    output_shapes_layer
         The name of the output shapes layer where results will be stored if shape data is produced from the merge operation.
-    scale_factors : Optional[ScaleFactors_t], default=None
+    scale_factors
         Scale factors to apply for multiscale processing.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
 
     Returns
     -------
-    SpatialData
-        The `sdata` object with the merged labels layer added to the specified output layer.
-        If `output_shapes_layer` is provided, a shapes layer will be created corresponding to this labels layer.
+    The `sdata` object with the merged labels layer added to the specified output layer.
+    If `output_shapes_layer` is provided, a shapes layer will be created corresponding to this labels layer.
 
     Raises
     ------
     ValueError
-        - If any of the specified labels layers cannot be found in `sdata`.
-        - If the labels in `labels_layer_nuclei_expanded` do not match the labels in `labels_layer_nuclei`.
+        If any of the specified labels layers cannot be found in `sdata`.
+    ValueError
+        If the labels in `labels_layer_nuclei_expanded` do not match the labels in `labels_layer_nuclei`.
 
     Notes
     -----
@@ -282,24 +280,23 @@ def mask_to_original(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Spatialdata object containing the mask and original labels layers.
-    labels_layer : str
+    labels_layer
         The name of the labels layer used as a mask for mapping.
-    original_labels_layers : List[str]
+    original_labels_layers
         The names of the original labels layers to which the mask labels are mapped.
-    depth : Tuple[int, int] | int, default=100
+    depth
         The depth around the boundary of each block to load when the array is split into blocks. This ensures
         that the split doesn't cause misalignment along the edges. Default is 400. Set depth larger than the maximum
         cell diameter to avoid chunking effects.
-    chunks : Optional[str | int | Tuple[int, int]], default="auto"
+    chunks
         Specification for rechunking the data before applying the function. If chunks is a Tuple, they should contain
         desired chunk size for 'y', 'x'. 'auto' allows the function to determine optimal chunking. Setting chunks to a
         relative small size (~1000) will significantly speed up the computations.
 
     Returns
     -------
-    DataFrame
         A pandas DataFrame where each row corresponds to a unique cell id from the mask layer, and columns correspond
         to the original labels layers. Each cell in the DataFrame contains the label from the original layer that
         overlaps most with the mask label.
@@ -307,16 +304,18 @@ def mask_to_original(
     Raises
     ------
     AssertionError
-        - If arrays from different labels layers do not have the same shape.
-        - If depth is provided as a Tuple but does not match (y, x) dimensions.
-        - If chunks is a Tuple, and does not match (y, x) dimensions.
-        - If the number of blocks in the z-dimension is not equal to 1.
+        If arrays from different labels layers do not have the same shape.
+    AssertionError
+        If depth is provided as a Tuple but does not match (y, x) dimensions.
+    AssertionError
+        If chunks is a Tuple, and does not match (y, x) dimensions.
+    AssertionError
+        If the number of blocks in the z-dimension is not equal to 1.
 
     Notes
     -----
     This function is designed to facilitate the comparison or integration of segmentation results by mapping mask
-    labels back to their original labels. It handles arrays with different dimensions and ensures that chunking
-    and depth parameters are appropriately applied for efficient computation.
+    labels back to their original labels.
     """
     labels_arrays = [sdata.labels[labels_layer].data]
 
