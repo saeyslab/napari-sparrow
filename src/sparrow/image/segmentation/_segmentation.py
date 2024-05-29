@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import shutil
+import uuid
 from abc import ABC, abstractmethod
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
@@ -13,6 +16,7 @@ from spatial_image import SpatialImage
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Identity, Translation
+from upath import UPath
 from xarray import DataArray
 
 from sparrow.image._image import (
@@ -389,6 +393,7 @@ class SegmentationModel(ABC):
     def _segment(
         self,
         x: Array,  # array with dimension z,y,x,c
+        output_path: str | Path,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
     ) -> Array:  # array with dimension z,y,x
@@ -456,6 +461,15 @@ class SegmentationModel(ABC):
 
         # For now, only support processing of x_labels with 1 channel dim
         x_labels = x_labels.squeeze(-1)
+        # write to intermediate zarr store if sdata is backed to reduce ram memory.
+        if output_path is not None:
+            _chunks = x_labels.chunks
+            x_labels.rechunk(x_labels.chunksize).to_zarr(
+                output_path,
+                overwrite=True,
+            )
+            x_labels = da.from_zarr(output_path)
+            x_labels = x_labels.rechunk(_chunks)
 
         # if trim==True --> use squidpy's way of handling neighbouring blocks
         if trim:
@@ -631,8 +645,14 @@ class SegmentationModelStains(SegmentationModel):
                 x = x[:, crd[2] : crd[3], crd[0] : crd[1], :]
                 x = x.rechunk(x.chunksize)
 
+        if sdata.is_backed():
+            _output_intermediate_path = UPath(sdata.path).parent / f"{uuid.uuid4()}.zarr"
+        else:
+            _output_intermediate_path = None
+
         x_labels = self._segment(
             x,
+            output_path=_output_intermediate_path,
             fn_kwargs=fn_kwargs,
             **kwargs,
         )
@@ -654,6 +674,10 @@ class SegmentationModelStains(SegmentationModel):
             scale_factors=scale_factors,
             overwrite=overwrite,
         )
+
+        if _output_intermediate_path is not None:
+            # TODO this will not work if sdata in s3 bucket.
+            shutil.rmtree(_output_intermediate_path)
 
         return sdata
 
@@ -756,8 +780,14 @@ class SegmentationModelPoints(SegmentationModel):
         # need this original crd for when we do the query
         self._crd_points = _crd_points
 
+        if sdata.is_backed():
+            _output_intermediate_path = UPath(sdata.path).parent / f"{uuid.uuid4()}.zarr"
+        else:
+            _output_intermediate_path = None
+
         x_labels = self._segment(
             x,
+            output_path=_output_intermediate_path,
             fn_kwargs=fn_kwargs,
             **kwargs,
         )
@@ -779,6 +809,9 @@ class SegmentationModelPoints(SegmentationModel):
             scale_factors=scale_factors,
             overwrite=overwrite,
         )
+
+        if _output_intermediate_path is not None:
+            shutil.rmtree(_output_intermediate_path)
 
         return sdata
 
