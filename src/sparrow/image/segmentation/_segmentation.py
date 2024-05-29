@@ -56,7 +56,7 @@ def segment(
     trim: bool = False,
     iou: bool = False,
     iou_depth: tuple[int, int] | int = 2,
-    iou_threshold: float = 0.2,
+    iou_threshold: float = 0.7,
     crd: tuple[int, int, int, int] | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
@@ -163,7 +163,7 @@ def segment_points(
     trim: bool = False,
     iou: bool = False,
     iou_depth: tuple[int, int] | int = 2,
-    iou_threshold: float = 0.2,
+    iou_threshold: float = 0.7,
     crd: tuple[int, int, int, int] | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
@@ -330,8 +330,7 @@ class SegmentationModel(ABC):
                 else:
                     assert len(depth) == x.ndim - 2, f"Please (only) provide '{key}' for ( 'y', 'x')."
                     # set depth for every dimension
-                    depth2 = {0: 0, 1: depth[0], 2: depth[1], 3: 0}
-                    kwargs[key] = depth2
+                    kwargs[key] = {0: 0, 1: depth[0], 2: depth[1], 3: 0}
             return kwargs
 
         kwargs = _fix_depth(kwargs, key="depth")
@@ -457,7 +456,6 @@ class SegmentationModel(ABC):
 
         # For now, only support processing of x_labels with 1 channel dim
         x_labels = x_labels.squeeze(-1)
-        print(iou)
 
         # if trim==True --> use squidpy's way of handling neighbouring blocks
         if trim:

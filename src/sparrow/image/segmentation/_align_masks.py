@@ -34,6 +34,8 @@ def align_labels_layers(
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
+    iou_depth: tuple[int, int] | int = 2,
+    iou_threshold: float = 0.7,
 ) -> SpatialData:
     """
     Align two labels layers.
@@ -71,6 +73,10 @@ def align_labels_layers(
         Scale factors to apply for multiscale.
     overwrite
         If True, allows the function to overwrite the data in `output_labels_layer` and `output_shapes_layer` with the aligned data.
+    iou_depth
+        iou depth used for linking labels.
+    iou_threshold
+        iou threshold used for linking labels.
 
     Returns
     -------
@@ -104,6 +110,8 @@ def align_labels_layers(
         scale_factors=scale_factors,
         overwrite=overwrite,
         relabel_chunks=False,
+        iou_depth=iou_depth,
+        iou_threshold=iou_threshold,
     )
 
     return sdata

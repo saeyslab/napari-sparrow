@@ -29,6 +29,8 @@ def merge_labels_layers(
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
+    iou_depth: tuple[int, int] | int = 2,
+    iou_threshold: float = 0.7,
 ) -> SpatialData:
     """
     Merges two labels layers within a SpatialData object based on a specified threshold.
@@ -64,6 +66,10 @@ def merge_labels_layers(
         Scale factors to apply for multiscale processing.
     overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
+    iou_depth
+        iou depth used for linking labels.
+    iou_threshold
+        iou threshold used for linking labels.
 
     Returns
     -------
@@ -93,6 +99,8 @@ def merge_labels_layers(
         overwrite=overwrite,
         relabel_chunks=True,
         threshold=threshold,
+        iou_depth=iou_depth,
+        iou_threshold=iou_threshold,
     )
     return sdata
 
@@ -109,6 +117,8 @@ def merge_labels_layers_nuclei(
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
+    iou_depth: tuple[int, int] | int = 2,
+    iou_threshold: float = 0.7,
 ) -> SpatialData:
     """
     Merge labels layers using nuclei segmentation.
@@ -146,6 +156,10 @@ def merge_labels_layers_nuclei(
         Scale factors to apply for multiscale processing.
     overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
+    iou_depth
+        iou depth used for linking labels.
+    iou_threshold
+        iou threshold used for linking labels.
 
     Returns
     -------
@@ -190,6 +204,8 @@ def merge_labels_layers_nuclei(
         overwrite=overwrite,
         relabel_chunks=True,
         threshold=threshold,
+        iou_depth=iou_depth,
+        iou_threshold=iou_threshold,
     )
     return sdata
 
