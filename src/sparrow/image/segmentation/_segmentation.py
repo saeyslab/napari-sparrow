@@ -29,6 +29,7 @@ from sparrow.image.segmentation._utils import (
     _clean_up_masks,
     _clean_up_masks_exact,
     _get_block_position,
+    _link_labels,
     _merge_masks,
     _rechunk_overlap,
     _substract_depth_from_chunks_size,
@@ -53,6 +54,9 @@ def segment(
     chunks: str | int | tuple[int, int] | None = "auto",
     boundary: str = "reflect",
     trim: bool = False,
+    iou: bool = False,
+    iou_depth: tuple[int, int] | int = 2,
+    iou_threshold: float = 0.2,
     crd: tuple[int, int, int, int] | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
@@ -87,6 +91,13 @@ def segment(
         If set to True, overlapping regions will be processed using the `squidpy` algorithm.
         If set to False, the `sparrow` algorithm will be employed instead. For dense cell distributions,
         we recommend setting trim to False.
+    iou
+        If set to True, will try to link labels using a label adjacency graph with an iou threshold (see `sparrow.image.segmentation.utils._link_labels`). If set to False, conflicts will be resolved using an algorithm that only retains masks with the center in the chunk.
+        Setting `iou` to False gives good results if there is reasonable agreement of the predicted labels accross adjacent chunks.
+    iou_depth
+        iou depth used for linking labels. Ignored if `iou` is set to False.
+    iou_threshold
+        iou threshold used for linking labels. Ignored if `iou` is set to False.
     crd
         The coordinates specifying the region of the image to be segmented. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
@@ -116,6 +127,9 @@ def segment(
     kwargs.setdefault("boundary", boundary)
     kwargs.setdefault("chunks", chunks)
     kwargs.setdefault("trim", trim)
+    kwargs.setdefault("iou", iou)
+    kwargs.setdefault("iou_depth", iou_depth)
+    kwargs.setdefault("iou_threshold", iou_threshold)
 
     segmentation_model = SegmentationModelStains(model)
 
@@ -147,6 +161,9 @@ def segment_points(
     chunks: str | int | tuple[int, int] | None = "auto",
     boundary: str = "reflect",
     trim: bool = False,
+    iou: bool = False,
+    iou_depth: tuple[int, int] | int = 2,
+    iou_threshold: float = 0.2,
     crd: tuple[int, int, int, int] | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
@@ -195,6 +212,13 @@ def segment_points(
         If set to True, overlapping regions will be processed using the `squidpy` algorithm.
         If set to False, the `sparrow` algorithm will be employed instead. For dense cell distributions,
         we recommend setting trim to False.
+    iou
+        If set to True, will try to link labels using a label adjacency graph with an iou threshold (see `sparrow.image.segmentation.utils._link_labels`). If set to False, conflicts will be resolved using an algorithm that only retains masks with the center in the chunk.
+        Setting `iou` to False gives good results if there is reasonable agreement of the predicted labels accross adjacent chunks.
+    iou_depth
+        iou depth used for linking labels. Ignored if `iou` is set to False.
+    iou_threshold
+        iou threshold used for linking labels. Ignored if `iou` is set to False.
     crd
         The coordinates specifying the region of the `points_layer` to be segmented. Defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
@@ -234,6 +258,9 @@ def segment_points(
     kwargs.setdefault("boundary", boundary)
     kwargs.setdefault("chunks", chunks)
     kwargs.setdefault("trim", trim)
+    kwargs.setdefault("iou", iou)
+    kwargs.setdefault("iou_depth", iou_depth)
+    kwargs.setdefault("iou_threshold", iou_threshold)
 
     segmentation_model = SegmentationModelPoints(model)
 
@@ -295,15 +322,20 @@ class SegmentationModel(ABC):
         else:
             raise ValueError("Only 3D and 4D arrays are supported, i.e. (c, (z), y, x).")
 
-        if "depth" in kwargs:
-            depth = kwargs["depth"]
-            if isinstance(depth, int):
-                kwargs["depth"] = {0: 0, 1: depth, 2: depth, 3: 0}
-            else:
-                assert len(depth) == x.ndim - 2, "Please (only) provide depth for ( 'y', 'x')."
-                # set depth for every dimension
-                depth2 = {0: 0, 1: depth[0], 2: depth[1], 3: 0}
-                kwargs["depth"] = depth2
+        def _fix_depth(kwargs: dict, key: str) -> dict:
+            if key in kwargs:
+                depth = kwargs[key]
+                if isinstance(depth, int):
+                    kwargs[key] = {0: 0, 1: depth, 2: depth, 3: 0}
+                else:
+                    assert len(depth) == x.ndim - 2, f"Please (only) provide '{key}' for ( 'y', 'x')."
+                    # set depth for every dimension
+                    depth2 = {0: 0, 1: depth[0], 2: depth[1], 3: 0}
+                    kwargs[key] = depth2
+            return kwargs
+
+        kwargs = _fix_depth(kwargs, key="depth")
+        kwargs = _fix_depth(kwargs, key="iou_depth")
 
         if "chunks" in kwargs:
             chunks = kwargs["chunks"]
@@ -364,11 +396,15 @@ class SegmentationModel(ABC):
         assert x.ndim == 4, "Please provide a 4D array (('z', 'y', 'x', 'c'))."
         chunks = kwargs.pop("chunks", None)
         depth = kwargs.pop("depth", {0: 0, 1: 100, 2: 100, 3: 0})
-        assert len(depth) == 4, "Please provide depth for (('z', 'y', 'x', 'c'))"
-        assert depth[0] == 0, "Depth not equal to 0 for 'z' dimension is not supported"
-        assert depth[3] == 0, "Depth not equal to 0 for 'c' dimension is not supported"
+        iou_depth = kwargs.pop("iou_depth", {0: 0, 1: 2, 2: 2, 3: 0})
+        for _depth in [depth, iou_depth]:
+            assert len(_depth) == 4, "Please provide depth for (('z', 'y', 'x', 'c'))"
+            assert _depth[0] == 0, "Depth not equal to 0 for 'z' dimension is not supported"
+            assert _depth[3] == 0, "Depth not equal to 0 for 'c' dimension is not supported"
         boundary = kwargs.pop("boundary", "reflect")
         trim = kwargs.pop("trim", False)
+        iou = kwargs.pop("iou", True)
+        iou_threshold = kwargs.pop("iou_threshold", 0.7)
 
         if not trim and depth[1] == 0 or depth[2] == 0:
             log.warning("Depth equal to zero not supported with trim==False, setting trim to True.")
@@ -386,6 +422,7 @@ class SegmentationModel(ABC):
 
         # remove trivial depth==0 for c dimension
         depth.pop(3)
+        iou_depth.pop(3)
 
         output_chunks = _add_depth_to_chunks_size(x.chunks, depth)
         # only support output chunks (i.e. labels) with channel shape == 1
@@ -420,8 +457,7 @@ class SegmentationModel(ABC):
 
         # For now, only support processing of x_labels with 1 channel dim
         x_labels = x_labels.squeeze(-1)
-
-        # return x_labels.rechunk(x_labels.chunksize)
+        print(iou)
 
         # if trim==True --> use squidpy's way of handling neighbouring blocks
         if trim:
@@ -435,6 +471,25 @@ class SegmentationModel(ABC):
             label_groups = label_adjacency_graph(x_labels, None, x_labels.max())
             new_labeling = connected_components_delayed(label_groups)
             x_labels = relabel_blocks(x_labels, new_labeling)
+            x_labels = x_labels.rechunk(x_labels.chunksize)
+
+        elif iou:
+            iou_depth = da.overlap.coerce_depth(len(depth), iou_depth)
+
+            if any(iou_depth[ax] > depth[ax] for ax in depth.keys()):
+                raise ValueError(f"iou_depth {iou_depth} > depth {depth}")
+
+            trim_depth = {k: depth[k] - iou_depth[k] for k in depth.keys()}
+            x_labels = da.overlap.trim_internal(x_labels, trim_depth, boundary=boundary)
+            x_labels = _link_labels(
+                x_labels,
+                x_labels.max(),
+                iou_depth,
+                iou_threshold=iou_threshold,
+            )
+
+            x_labels = da.overlap.trim_internal(x_labels, iou_depth, boundary=boundary)
+
             x_labels = x_labels.rechunk(x_labels.chunksize)
 
         else:
