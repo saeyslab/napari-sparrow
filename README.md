@@ -44,7 +44,7 @@ cd harpy
 
 Depending on your hardware, you may need to adapt the Conda `environment.yml` file as follows:
 
-- On Windows comment out the lines with `basicpy`, `jax` and `jaxlib`. We will install then manually. 
+- On Windows comment out the lines with `basicpy`, `jax` and `jaxlib`. We will install then manually.
 
 Now create the conda environment
 
@@ -75,6 +75,7 @@ pip install -e .
 ## Additional dependencies
 
 To install everything from source, run
+
 ```bash
 pip install -e '.[plugin,testing,cli,docs,clustering]'
 ```
