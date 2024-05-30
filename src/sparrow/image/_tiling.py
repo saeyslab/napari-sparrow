@@ -31,37 +31,37 @@ def tiling_correction(
     overwrite: bool = False,
 ) -> Tuple[SpatialData, List[np.ndarray]]:
     """
-    Function corrects for the tiling effect that occurs in some image data for example the resolve dataset.
+    Function corrects for the tiling effect that occurs in some image data (e.g. resolve data).
 
     The illumination within the tiles is adjusted, afterwards the tiles are connected as a whole image by inpainting the lines between the tiles.
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the image data to correct.
-    img_layer : Optional[str], default=None
+    img_layer
         The image layer in `sdata` to be corrected for tiling effects. If not provided, the last image layer in `sdata` is used.
-    tile_size : int, default=2144
+    tile_size
         The size of the tiles in the image.
-    crd : Optional[Tuple[int, int, int, int]], default=None
+    crd
         Coordinates defining the region of the image to correct. It defines the bounds (x_min, x_max, y_min, y_max).
     scale_factors
         Scale factors to apply for multiscale.
-    output_layer : str, default="tiling_correction"
+    output_layer
         Name of the image layer where the corrected image will be stored in the `sdata` object.
-    overwrite: bool
+    overwrite
         If True overwrites the element if it already exists.
 
     Returns
     -------
-    Tuple[SpatialData, List[np.ndarray]]
-        Updated `sdata` object containing the corrected image and a list of flatfield arrays with length equal to the number of channels.
+    Updated `sdata` object containing the corrected image and a list of flatfield arrays with length equal to the number of channels.
 
     Raises
     ------
     ValueError
-        - If the image layer does not contain exactly 2 spatial dimensions.
-        - If the dimensions of the image layer are not multiples of the given tile size.
+        If the image layer does not contain exactly 2 spatial dimensions.
+    ValueError
+        If the dimensions of the image layer are not multiples of the given tile size.
 
     Notes
     -----

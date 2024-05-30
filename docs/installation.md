@@ -1,27 +1,8 @@
 # Installation
 
-There are two different installation methods:
+We recommend using Anaconda to install SPArrOW, and we provide an [`environment.yml`](../environment.yml).
 
-1. Using the Python package manager pip (TODO)
-
-```
-pip install sparrow
-```
-
-2. Installation from source
-
-First clone this GitHub repo and set it as the current directory:
-
-```bash
-git clone https://github.com/saeyslab/napari-sparrow.git
-cd napari-sparrow
-```
-
-Depending on your hardware, you may need to adapt the Conda `environment.yml` file as follows:
-
-- On Windows comment out the line `basicpy==1.0.0`. We will install `basicpy` manually, see below.
-
-Now create the conda environment
+## 1. Create the conda environment:
 
 ```bash
 # Use standard Conda environment creation
@@ -32,17 +13,21 @@ mamba env update -f environment.yml --prune
 conda activate napari-sparrow
 ```
 
-On Windows one must manually install `basicpy` and `jax` as follows:
+Depending on your hardware, you may need to adapt the [`environment.yml`](../environment.yml) file as follows:
 
-```
+- On Windows comment out the lines `basicpy==...`, `jax==...` and `jaxlib==...` in the `environment.yml`. We will install `basicpy` and `jax` manually as follows after the environment is build:
+
+```bash
 pip install "jax[cpu]===0.4.10" -f https://whls.blob.core.windows.net/unstable/index.html --use-deprecated legacy-resolver
 pip install basicpy==1.0.0
 ```
 
-Finally, install `sparrow`
+- On Mac comment out the line `mkl=2024.0.0`.
+
+## 2. Install `SPArrOW`:
 
 ```
-pip install -e .
+pip install git+https://github.com/saeyslab/napari-sparrow.git
 ```
 
 ## Additional dependencies
@@ -50,23 +35,15 @@ pip install -e .
 To use the plugin, run
 
 ```bash
-pip install "sparrow[plugin]"
+pip install "git+https://github.com/saeyslab/napari-sparrow.git#egg=sparrow[plugin]"
 ```
 
-or when build from source:
+To run `SPArrOW` from the `cli`:
 
 ```bash
-pip install -e ".[plugin]"
+pip install "git+https://github.com/saeyslab/napari-sparrow.git#egg=sparrow[cli]"
 ```
 
-To run `sparrow` from the `cli`:
+## NVIDIA GPU support
 
-```bash
-pip install "sparrow[cli]"
-```
-
-or when build from source:
-
-```bash
-pip install -e ".[cli]"
-```
+We provide [environment_vib_compute.yml](../environment_vib_compute.yml) that will install `torch` with NVIDIA GPU support on Linux (tested on CentOS). After creation of the environment via `conda env create -f environment_vib_compute.yml`, activate the environment, and install `SPaRROW` via `pip install git+https://github.com/saeyslab/napari-sparrow.git`.

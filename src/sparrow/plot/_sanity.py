@@ -48,48 +48,47 @@ def sanity_plot_transcripts_matrix(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the spatial image and transcripts data.
-    img_layer : Optional[str], default=None
+    img_layer
         The layer of the SpatialData object to be plotted. Defaults to the last layer if not provided.
-    labels_layer : str or None, optional
+    labels_layer
         Labels layer to be plotted.
-    points_layer : str, default="transcripts"
+    points_layer
         The points layer in the SpatialData object representing transcripts.
-    shapes_layer : Optional[str], default=None
+    shapes_layer
         The layer in the SpatialData object representing cell boundaries. If None, no cell boundaries are plotted.
-    channel : int or str or None, optional
+    channel
         Channel to display from the img_layer. If none provided, or if provided channel could not be found, first channel is plot.
-    z_slice: float or None, optional
+    z_slice
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons. For transcripts, if the z_slice is specified,
         the transcripts at index corresponding to the z_slice in the image layer will be plotted.
         If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
         If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
         If no z-slice is specified and `points_layer` is 3D, all transcripts in all z-stacks will be plotted.
-    plot_cell_number : bool, default=False
+    plot_cell_number
         Whether to annotate cells with their numbers on the plot.
-    n_sample : Optional[int], default=None
+    n_sample
         The number of transcripts to sample for plotting. Useful for large datasets.
-    name_x : str, default="x"
+    name_x
         Column name in the points_layer representing x-coordinates of transcripts.
-    name_y : str, default="y"
+    name_y
         Column name in the points_layer representing y-coordinates of transcripts.
-    name_z : str, default="z"
+    name_z
         Column name in the points_layer representing z-coordinates of transcripts.
-    name_gene_column : str, default="gene"
+    name_gene_column
         Column name in the points_layer representing gene information.
-    gene : Optional[str], default=None
+    gene
         Specific gene to filter and plot. If None, all genes are plotted.
-    crd : Optional[Tuple[int, int, int, int]], default=None
+    crd
         Coordinates to define a rectangular region for plotting as (xmin, xmax, ymin, ymax).
         If None, the entire image boundary is used.
-    output : Optional[Union[Path, str]], default=None
+    output
         Filepath to save the generated plot. If not provided, the plot will be displayed using plt.show().
 
     Returns
     -------
-    None
-        Either displays the plot or saves it to the specified output location.
+    Either displays the plot or saves it to the specified output location.
 
     Raises
     ------
@@ -98,7 +97,8 @@ def sanity_plot_transcripts_matrix(
     AttributeError
         If `sdata` does not contain a `points_layer`.
     Warning
-        If provided coordinates (crd) and image_boundary do not have overlap.
+        If provided coordinates (crd) and image boundary do not have overlap.
+    Warning
         If provided shapes_layer is not present in the SpatialData object.
 
     Notes

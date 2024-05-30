@@ -18,8 +18,8 @@ sys.path.insert(0, str(HERE / "extensions"))
 
 info = metadata("sparrow")
 project_name = info["Name"]
-author = "dabmi"
-copyright = f"{datetime.now():%Y}, {author}."
+author = "SaeysLab"
+copyright = f"{datetime.now():%Y}, {author}"
 version = info["Version"]
 # repository_url = f"https://github.com/saeyslab/{project_name}"
 
@@ -56,7 +56,7 @@ extensions = [
     "sphinx.ext.mathjax",
     "IPython.sphinxext.ipython_console_highlighting",
     "sphinx_design",
-    # *[p.stem for p in (HERE / "extensions").glob("*.py")],
+    *[p.stem for p in (HERE / "extensions").glob("*.py")],
 ]
 
 autosummary_generate = True

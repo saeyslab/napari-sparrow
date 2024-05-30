@@ -40,13 +40,13 @@ def allocate_intensity(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing spatial information about cells.
-    img_layer : str, optional
+    img_layer
         The name of the layer in `sdata` that contains the image data from which to extract intensity information.
         Both the `img_layer` and `labels_layer` should have the same shape and alignment. If not provided,
         will use last img_layer.
-    labels_layer : str, optional
+    labels_layer
         The name of the layer in `sdata` containing the labels (segmentation) used to define the boundaries of cells.
         These labels correspond with regions in the `img_layer`. If not provided, will use last labels_layer.
     output_layer: str, optional

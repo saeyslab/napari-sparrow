@@ -32,7 +32,7 @@ def _cellpose(
     model_type: str = "nuclei",
     pretrained_model: str | Path | None = None,
     channels: list[int] | None = None,
-    device: str = "cpu",
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
     z_axis: int = 0,
     channel_axis: int = 3,
     do_3D: bool = False,

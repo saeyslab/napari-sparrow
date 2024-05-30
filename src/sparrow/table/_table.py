@@ -192,7 +192,7 @@ def filter_on_size(
     max_size: int = 100000,
     update_shapes_layers=True,
     overwrite: bool = False,
-):
+) -> SpatialData:
     """Returns the updated SpatialData object.
 
     All cells with a size outside of the min and max size range are removed.

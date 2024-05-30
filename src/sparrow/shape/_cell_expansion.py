@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import geopandas
 from longsgis import voronoiDiagram4plg
 from shapely.geometry import Polygon
@@ -21,25 +23,24 @@ def create_voronoi_boundaries(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The spatial data object on which Voronoi boundaries will be created.
-    shapes_layer : str, optional
+    shapes_layer
         The name of the layer in `sdata` representing shapes used to derive
         Voronoi boundaries. Default is "segmentation_mask_boundaries".
-    output_layer: str, optional
+    output_layer
         Name of the resulting shapes layer that will be added to `sdata`.
-    radius : int, optional
+    radius
         The expansion radius for the Voronoi boundaries, by default 0.
         If provided, Voronoi boundaries will be expanded by this radius.
         Must be non-negative.
-    overwrite : bool, default=False
+    overwrite
         If True, overwrites the `output_layer` if it already exists in `sdata`.
 
     Returns
     -------
-    SpatialData
-        Modified `sdata` object with the Voronoi boundaries created and
-        possibly expanded.
+    Modified `sdata` object with the Voronoi boundaries created and
+    possibly expanded.
 
     Raises
     ------

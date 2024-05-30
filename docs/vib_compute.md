@@ -59,7 +59,7 @@ Now on [https://compute.vib.be](https://compute.vib.be), start a JupyterLab (che
 
 We should now be able to run the notebook [example_spatial_vib_compute.ipynb](../experiments/example_spatial_vib_compute.ipynb) in an interactive session on the VIB compute cluster.
 
-Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.irc.ugent.be/public/index.php/s/HrXG9WKqjqHBEzS). The dataset used in the examples is mouse liver A1-1. Please download the DAPI-stained image and the .txt file, and adopt the paths accordingly in the notebook.
+Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.irc.ugent.be/public/index.php/s/HrXG9WKqjqHBEzS). The dataset used in the examples is mouse liver A1-1. Please download the DAPI-stained image and the .txt file, and adopt the paths accordingly in the notebook. The marker gene list can be found [here](../experiments/markerGeneListMartinNoLow.csv).
 
 ## Usage of private S3 buckets.
 

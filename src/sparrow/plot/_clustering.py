@@ -1,11 +1,11 @@
-from typing import Optional
+from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import scanpy as sc
 from spatialdata import SpatialData
 
 
-def cluster(sdata: SpatialData, table_layer: str, key_added: str = "leiden", output: Optional[str] = None) -> None:
+def cluster(sdata: SpatialData, table_layer: str, key_added: str = "leiden", output: str | None = None) -> None:
     """
     Visualize clusters.
 
@@ -14,7 +14,7 @@ def cluster(sdata: SpatialData, table_layer: str, key_added: str = "leiden", out
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         The SpatialData object containing the analyzed data.
     table_layer: str
         The table layer in `sdata` to visualize.
@@ -29,6 +29,10 @@ def cluster(sdata: SpatialData, table_layer: str, key_added: str = "leiden", out
     Returns
     -------
     None
+
+    See Also
+    --------
+    sparrow.tb.cluster
     """
     # Plot clusters on a UMAP
     sc.pl.umap(sdata.tables[table_layer], color=[key_added], show=not output)

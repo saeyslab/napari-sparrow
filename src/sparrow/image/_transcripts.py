@@ -37,45 +37,44 @@ def transcript_density(
 
     Parameters
     ----------
-    sdata : SpatialData
+    sdata
         Data containing spatial information.
-    img_layer : Optional[str], default="raw_image"
+    img_layer
         The layer of the SpatialData object used for determining image boundary.
-        Defaults to the 'last' image layer in `sdata` if set to None.
-    points_layer : str, optional
+        Defaults to the last layer if set to None.
+    points_layer
         The layer name that contains the transcript data points, by default "transcripts".
-    n_sample : Optional[int], default=15000000
+    n_sample
         The number of transcripts to sample for calculation of transcript density.
-    name_x : str, optional
+    name_x
         Column name for x-coordinates of the transcripts in the points layer, by default "x".
-    name_y : str, optional
+    name_y
         Column name for y-coordinates of the transcripts in the points layer, by default "y".
-    name_z : str or None, optional
+    name_z
         Column name for z-coordinates of the transcripts in the points layer, by default None.
-    name_gene_column : str, optional
+    name_gene_column
         Column name in the points_layer representing gene information, by default "gene".
-    z_index: int or None, optional
+    z_index
         The z index in the points layer for which to calculate transcript density. If set to None for a 3D points layer
         (and `name_z` is not equal to None), an y-x transcript density projection will be calculated.
-    scaling_factor : float, optional
+    scaling_factor
         Factor to scale the transcript density image, by default 100.
-    chunks: int.
+    chunks
         Chunksize for calculation of density using gaussian filter.
-    crd : tuple of int, optional
+    crd
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
         If provided, the density is computed only for this region, by default None.
     scale_factors
         Scale factors to apply for multiscale.
-    output_layer : str, optional
+    output_layer
         The name of the output image layer in the SpatialData where the transcript density will be added,
         by default "transcript_density".
-    overwrite: bool
+    overwrite
         If True overwrites the element if it already exists.
 
     Returns
     -------
-    SpatialData
-        Updated spatial data object with the added transcript density layer as an image layer.
+    Updated spatial data object with the added transcript density layer as an image layer.
 
     Examples
     --------
