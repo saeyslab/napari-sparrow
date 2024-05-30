@@ -20,11 +20,8 @@ from sparrow.image.segmentation._utils import (
     _SEG_DTYPE,
     _add_depth_to_chunks_size,
     _check_boundary,
-    _clean_up_masks,
-    _clean_up_masks_exact,
-    _merge_masks,
+    _link_labels,
     _rechunk_overlap,
-    _substract_depth_from_chunks_size,
 )
 from sparrow.shape._shape import _add_shapes_layer
 from sparrow.utils.pylogger import get_pylogger
@@ -44,6 +41,8 @@ def apply_labels_layers(
     overwrite: bool = False,
     relabel_chunks: bool = True,
     trim: bool = False,  # set to True if you do not expect chunking effects from func, e.g. func is a filter on size, or on shape of individual labels.
+    iou_depth: tuple[int, int] | int = 2,
+    iou_threshold: float = 0.7,
     **kwargs: Any,  # keyword arguments to be passed to func
 ) -> SpatialData:
     """
@@ -72,12 +71,16 @@ def apply_labels_layers(
         Scale factors to apply for multiscale.
     overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
-    relabel_chunks: bool, default=True.
+    relabel_chunks
         Whether to relabel the labels of each chunk after being processed by func. If set to True, a bit shift will be applied, ensuring no collisions.
     trim
         Whether to trim overlap added by map_overlap, or postprocess the chunks to avoid chunking effects.
         Set to true if you do not expect chunking effects from `func`, e.g. `func` is a filter on size or shape of individual labels, and is designed carefully
         to prevent chunking effects.
+    iou_depth
+        iou depth used for linking labels. Ignored if `trim` is set to True.
+    iou_threshold
+        iou threshold used for linking labels. Ignored if `trim` is set to True.
     **kwargs
         Keyword arguments to be passed to func.
 
@@ -94,6 +97,8 @@ def apply_labels_layers(
         If `chunks` is a Tuple, and does not match (y,x).
     ValueError
         If `depth` is a Tuple, and does not match (y,x).
+    ValueError
+        If `iou_depth` is a Tuple, and does not match (y,x).
     ValueError
         If a label layer in `labels_layer` can not be found.
     ValueError
@@ -163,6 +168,8 @@ def apply_labels_layers(
     kwargs = {}
     kwargs.setdefault("depth", depth)
     kwargs.setdefault("chunks", chunks)
+    kwargs.setdefault("iou_depth", iou_depth)
+    kwargs.setdefault("iou_threshold", iou_threshold)
 
     # labels_arrays is a list of dask arrays
     # do some processing on the labels
@@ -221,6 +228,8 @@ def _combine_dask_arrays(
 
     chunks = kwargs.pop("chunks", None)
     depth = kwargs.pop("depth", 100)
+    iou_depth = kwargs.pop("iou_depth", 2)
+    iou_threshold = kwargs.pop("iou_threshold", 0.7)
     boundary = kwargs.pop("boundary", "reflect")
 
     # First make dimension uniform (z,y,x).
@@ -234,13 +243,19 @@ def _combine_dask_arrays(
             _labels_arrays.append(x_label)
 
     _x_label = _labels_arrays[0]
-    if isinstance(depth, int):
-        depth = {0: 0, 1: depth, 2: depth}
-    else:
-        assert len(depth) == _x_label.ndim - 1, "Please (only) provide depth for ( 'y', 'x')."
-        # set depth for every dimension
-        depth2 = {0: 0, 1: depth[0], 2: depth[1]}
-        depth = depth2
+
+    def _fix_depth(_depth):
+        if isinstance(_depth, int):
+            _depth = {0: 0, 1: _depth, 2: _depth}
+        else:
+            assert len(_depth) == _x_label.ndim - 1, "Please (only) provide depth for ( 'y', 'x')."
+            # set depth for every dimension
+            _depth = {0: 0, 1: _depth[0], 2: _depth[1]}
+        return _depth
+
+    depth = _fix_depth(depth)
+    if not trim:
+        iou_depth = _fix_depth(iou_depth)
 
     if chunks is not None:
         if not isinstance(chunks, (int, str)):
@@ -292,50 +307,21 @@ def _combine_dask_arrays(
     # return x_labels.squeeze(0)
 
     if not trim:
-        exact = False
-        if exact:
-            depth_1 = depth
-            depth_2 = {
-                0: 0,
-                1: depth_1[1] * 2,
-                2: depth_1[2] * 2,
-            }  # we will search in prediction of neighbouring chunks to resolve conflicts on borders
-            boundary = 0
-            x_labels = da.map_overlap(
-                _clean_up_masks_exact,
-                x_labels,
-                dtype=_SEG_DTYPE,
-                trim=False,  # we trim depth_2 inside _clean_up_masks
-                allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-                depth=depth_2,
-                boundary=boundary,
-                _depth_1=depth_1,
-                _depth_2=depth_2,
-            )
-        else:
-            x_labels = da.map_blocks(
-                _clean_up_masks,
-                x_labels,
-                dtype=_SEG_DTYPE,
-                depth=depth,
-                **kwargs,
-            )
+        iou_depth = da.overlap.coerce_depth(len(depth), iou_depth)
 
-        output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
+        if any(iou_depth[ax] > depth[ax] for ax in depth.keys()):
+            raise ValueError(f"iou_depth {iou_depth} > depth {depth}")
 
-        # now clean up depth_1
-        x_labels = da.map_overlap(
-            _merge_masks,
+        trim_depth = {k: depth[k] - iou_depth[k] for k in depth.keys()}
+        x_labels = da.overlap.trim_internal(x_labels, trim_depth, boundary=boundary)
+        x_labels = _link_labels(
             x_labels,
-            dtype=_SEG_DTYPE,
-            num_blocks=x_labels.numblocks,
-            trim=False,
-            allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-            chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
-            depth=depth,
-            boundary=boundary,
-            _depth=depth,
+            x_labels.max(),
+            iou_depth,
+            iou_threshold=iou_threshold,
         )
+
+        x_labels = da.overlap.trim_internal(x_labels, iou_depth, boundary=boundary)
 
     x_labels = x_labels.rechunk(x_labels.chunksize)
 
