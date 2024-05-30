@@ -298,6 +298,7 @@ class Preprocess(ProcessTable):
         )
 
         if update_shapes_layers:
+            # TODO: for multiple fov case, this will filter corresponding shapes layers for all fovs with same indexes, which is unwanted behaviour
             mask = self.sdata.tables[output_layer].obs[_REGION_KEY].isin(self.labels_layer)
             indexes_to_keep = self.sdata.tables[output_layer].obs[mask][_INSTANCE_KEY].values.astype(int)
             self.sdata = _filter_shapes_layer(
