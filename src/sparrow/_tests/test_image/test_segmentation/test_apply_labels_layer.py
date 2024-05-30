@@ -3,7 +3,7 @@ from spatialdata import SpatialData
 from sparrow.image import apply_labels_layers
 
 
-def test_align_labels_layers(sdata_multi_c: SpatialData):
+def test_apply_labels_layers(sdata_multi_c: SpatialData):
     def _copy(img):
         return img
 

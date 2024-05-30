@@ -6,7 +6,7 @@ from sparrow.image.segmentation._filter_masks import (
 )
 
 
-def test_merge_labels_layers(sdata_multi_c: SpatialData):
+def test_filter_labels_layers(sdata_multi_c: SpatialData):
     sdata_multi_c = filter_labels_layer(
         sdata_multi_c,
         labels_layer="masks_whole",

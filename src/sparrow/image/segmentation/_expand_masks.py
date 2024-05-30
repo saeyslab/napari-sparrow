@@ -21,6 +21,8 @@ def expand_labels_layer(
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
+    iou_depth: tuple[int, int] | int = 2,
+    iou_threshold: float = 0.7,
 ) -> SpatialData:
     """
     Expaned cells in labels layer `labels_layer` of Spatialdata object with `distance`, using `skimage.segmentation.expand_labels`.
@@ -49,6 +51,10 @@ def expand_labels_layer(
         Scale factors to apply for multiscale.
     overwrite
         If True, overwrites the output layers if they already exist in `sdata`.
+    iou_depth
+        iou depth used for linking labels.
+    iou_threshold
+        iou threshold used for linking labels.
 
     Returns
     -------
@@ -83,6 +89,8 @@ def expand_labels_layer(
         scale_factors=scale_factors,
         overwrite=overwrite,
         relabel_chunks=False,
+        iou_depth=iou_depth,
+        iou_threshold=iou_threshold,
         distance=distance,
     )
 
