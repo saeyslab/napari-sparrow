@@ -31,7 +31,6 @@ from sparrow.image.segmentation._utils import (
     _add_depth_to_chunks_size,
     _check_boundary,
     _clean_up_masks,
-    _clean_up_masks_exact,
     _get_block_position,
     _link_labels,
     _merge_masks,
@@ -96,7 +95,7 @@ def segment(
         If set to False, the `sparrow` algorithm will be employed instead. For dense cell distributions,
         we recommend setting trim to False.
     iou
-        If set to True, will try to link labels using a label adjacency graph with an iou threshold (see `sparrow.image.segmentation.utils._link_labels`). If set to False, conflicts will be resolved using an algorithm that only retains masks with the center in the chunk.
+        If set to True, will try to link labels across chunks using a label adjacency graph with an iou threshold (see `sparrow.image.segmentation.utils._link_labels`). If set to False, conflicts will be resolved using an algorithm that only retains masks with the center in the chunk.
         Setting `iou` to False gives good results if there is reasonable agreement of the predicted labels accross adjacent chunks.
     iou_depth
         iou depth used for linking labels. Ignored if `iou` is set to False.
@@ -217,8 +216,8 @@ def segment_points(
         If set to False, the `sparrow` algorithm will be employed instead. For dense cell distributions,
         we recommend setting trim to False.
     iou
-        If set to True, will try to link labels using a label adjacency graph with an iou threshold (see `sparrow.image.segmentation.utils._link_labels`). If set to False, conflicts will be resolved using an algorithm that only retains masks with the center in the chunk.
-        Setting `iou` to False gives good results if there is reasonable agreement of the predicted labels accross adjacent chunks.
+        If set to True, will try to link labels across chunks using a label adjacency graph with an iou threshold (see `sparrow.image.segmentation.utils._link_labels`). If set to False, conflicts will be resolved using an algorithm that only retains masks with the center in the chunk.
+        Setting `iou` to False gives good results if there is reasonable agreement of the predicted labels across adjacent chunks.
     iou_depth
         iou depth used for linking labels. Ignored if `iou` is set to False.
     iou_threshold
@@ -393,7 +392,7 @@ class SegmentationModel(ABC):
     def _segment(
         self,
         x: Array,  # array with dimension z,y,x,c
-        output_path: str | Path,
+        temp_path: str | Path,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
     ) -> Array:  # array with dimension z,y,x
@@ -462,13 +461,13 @@ class SegmentationModel(ABC):
         # For now, only support processing of x_labels with 1 channel dim
         x_labels = x_labels.squeeze(-1)
         # write to intermediate zarr store if sdata is backed to reduce ram memory.
-        if output_path is not None:
+        if temp_path is not None:
             _chunks = x_labels.chunks
             x_labels.rechunk(x_labels.chunksize).to_zarr(
-                output_path,
+                temp_path,
                 overwrite=True,
             )
-            x_labels = da.from_zarr(output_path)
+            x_labels = da.from_zarr(temp_path)
             x_labels = x_labels.rechunk(_chunks)
 
         # if trim==True --> use squidpy's way of handling neighbouring blocks
@@ -505,37 +504,13 @@ class SegmentationModel(ABC):
             x_labels = x_labels.rechunk(x_labels.chunksize)
 
         else:
-            # TODO. Although _clean_up_masks_exact is preventing some chunking artifacts,
-            # it is somewhat slower (1u17 vs 1u for segmentation of full DAPI 90k*95k pixels using 4 threads on GPU).
-            # should be updated so it fixes more artefacts. Probably _utils._get_center_and_area could be improved, i.e. the matching of conflicting cells from different chunks
-            exact = False
-            if exact:
-                depth_1 = depth
-                depth_2 = {
-                    0: 0,
-                    1: depth_1[1] * 2,
-                    2: depth_1[2] * 2,
-                }  # we will search in prediction of neighbouring chunks to resolve conflicts on borders
-                boundary = 0
-                x_labels = da.map_overlap(
-                    _clean_up_masks_exact,
-                    x_labels,
-                    dtype=_SEG_DTYPE,
-                    trim=False,  # we trim depth_2 inside _clean_up_masks
-                    allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-                    depth=depth_2,
-                    boundary=boundary,
-                    _depth_1=depth_1,
-                    _depth_2=depth_2,
-                )
-            else:
-                x_labels = da.map_blocks(
-                    _clean_up_masks,
-                    x_labels,
-                    dtype=_SEG_DTYPE,
-                    depth=depth,
-                    **kwargs,
-                )
+            x_labels = da.map_blocks(
+                _clean_up_masks,
+                x_labels,
+                dtype=_SEG_DTYPE,
+                depth=depth,
+                **kwargs,
+            )
 
             output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
 
@@ -646,13 +621,13 @@ class SegmentationModelStains(SegmentationModel):
                 x = x.rechunk(x.chunksize)
 
         if sdata.is_backed():
-            _output_intermediate_path = UPath(sdata.path).parent / f"{uuid.uuid4()}.zarr"
+            _temp_path = UPath(sdata.path).parent / f"{uuid.uuid4()}.zarr"
         else:
-            _output_intermediate_path = None
+            _temp_path = None
 
         x_labels = self._segment(
             x,
-            output_path=_output_intermediate_path,
+            temp_path=_temp_path,
             fn_kwargs=fn_kwargs,
             **kwargs,
         )
@@ -675,9 +650,9 @@ class SegmentationModelStains(SegmentationModel):
             overwrite=overwrite,
         )
 
-        if _output_intermediate_path is not None:
-            # TODO this will not work if sdata in s3 bucket.
-            shutil.rmtree(_output_intermediate_path)
+        if _temp_path is not None:
+            # TODO this will not work if sdata is remote (e.g. s3 bucket).
+            shutil.rmtree(_temp_path)
 
         return sdata
 
@@ -781,13 +756,13 @@ class SegmentationModelPoints(SegmentationModel):
         self._crd_points = _crd_points
 
         if sdata.is_backed():
-            _output_intermediate_path = UPath(sdata.path).parent / f"{uuid.uuid4()}.zarr"
+            _temp_path = UPath(sdata.path).parent / f"{uuid.uuid4()}.zarr"
         else:
-            _output_intermediate_path = None
+            _temp_path = None
 
         x_labels = self._segment(
             x,
-            output_path=_output_intermediate_path,
+            temp_path=_temp_path,
             fn_kwargs=fn_kwargs,
             **kwargs,
         )
@@ -810,8 +785,9 @@ class SegmentationModelPoints(SegmentationModel):
             overwrite=overwrite,
         )
 
-        if _output_intermediate_path is not None:
-            shutil.rmtree(_output_intermediate_path)
+        if _temp_path is not None:
+            # TODO this will not work if sdata is remote (e.g. s3 bucket).
+            shutil.rmtree(_temp_path)
 
         return sdata
 
