@@ -10,6 +10,7 @@ from omegaconf import DictConfig
 from spatialdata import read_zarr
 
 from sparrow.datasets.cluster_blobs import cluster_blobs
+from sparrow.datasets.pixie_example import pixie_example
 
 
 @pytest.fixture(scope="function")
@@ -83,6 +84,12 @@ def sdata_blobs():
     sdata = cluster_blobs(
         shape=(512, 512), n_cell_types=10, n_cells=100, noise_level_channels=1.2, noise_level_nuclei=1.2, seed=10
     )
+    yield sdata
+
+
+@pytest.fixture
+def sdata_pixie():
+    sdata = pixie_example()
     yield sdata
 
 
