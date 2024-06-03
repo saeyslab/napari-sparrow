@@ -1,5 +1,8 @@
+import importlib.util
+
 import dask.dataframe as dd
 import pandas as pd
+import pytest
 import spatialdata
 from dask.dataframe import DataFrame
 from spatialdata import SpatialData
@@ -9,6 +12,7 @@ from sparrow.image.segmentation.segmentation_models._baysor import _dummy
 from sparrow.image.segmentation.segmentation_models._cellpose import _cellpose
 
 
+@pytest.mark.skipif(not importlib.util.find_spec("cellpose"), reason="requires the cellpose library")
 def test_segment(sdata_multi_c: SpatialData):
     sdata_multi_c = segment(
         sdata_multi_c,
@@ -35,6 +39,7 @@ def test_segment(sdata_multi_c: SpatialData):
     assert isinstance(sdata_multi_c, SpatialData)
 
 
+@pytest.mark.skipif(not importlib.util.find_spec("cellpose"), reason="requires the cellpose library")
 def test_segment_3D(sdata_multi_c: SpatialData):
     sdata_multi_c = segment(
         sdata_multi_c,
