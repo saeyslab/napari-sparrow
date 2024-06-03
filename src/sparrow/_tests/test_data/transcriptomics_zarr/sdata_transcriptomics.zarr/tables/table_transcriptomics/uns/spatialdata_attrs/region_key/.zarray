@@ -1,7 +1,6 @@
 {
     "chunks": [],
     "compressor": null,
-    "dimension_separator": "/",
     "dtype": "<U10",
     "fill_value": "",
     "filters": null,
