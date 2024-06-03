@@ -39,6 +39,12 @@ class ShapesLayerManager:
 
         polygons = self.get_polygons_from_input(input)
 
+        if polygons.empty:
+            log.warning(
+                f"GeoDataFrame contains no polygons. Skipping addition of shapes layer '{output_layer}' to sdata."
+            )
+            return sdata
+
         if transformation is not None:
             polygons = self.set_transformation(polygons, transformation)
 
@@ -99,7 +105,7 @@ class ShapesLayerManager:
                 f"Adding new shapes layer '{output_filtered_shapes_layer}' containing these filtered out polygons."
             )
 
-            self.add_to_sdata(
+            sdata = self.add_to_sdata(
                 sdata,
                 output_layer=output_filtered_shapes_layer,
                 spatial_element=self.create_spatial_element(filtered_polygons),
@@ -108,7 +114,7 @@ class ShapesLayerManager:
 
             updated_polygons = self.retrieve_data_from_sdata(sdata, name=_shapes_layer)[bool_to_keep]
 
-            self.add_to_sdata(
+            sdata = self.add_to_sdata(
                 sdata,
                 output_layer=_shapes_layer,
                 spatial_element=self.create_spatial_element(updated_polygons),
