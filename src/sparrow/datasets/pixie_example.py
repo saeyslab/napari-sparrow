@@ -93,7 +93,7 @@ def pixie_example(fovs: list | None = None, with_pixel_output=True, with_cells_o
         sdata = sp.im._add_image_layer(
             sdata,
             arr=da.stack(results, axis=0).squeeze(),
-            output_layer=f"{fov}",
+            output_layer=f"raw_image_{fov}",
             c_coords=channels,
             overwrite=True,
             # transformation={
