@@ -34,22 +34,22 @@ def analyse_genes_left_out(
     ----------
     sdata
         Data containing spatial information for plotting.
-    labels_layer : str
-        The layer in `sdata` that contains the segmentation masks, by default "segmentation_mask".
+    labels_layer
+        The layer in `sdata` that contains the segmentation masks.
         This layer is used to calculate the crd (region of interest) that was used in the segmentation step,
         otherwise transcript counts in `points_layer` of `sdata` (containing all transcripts)
         and the counts obtained via `sdata.tables[ table_layer ]` are not comparable.
         It is also used to select the cells in `sdata.tables[table_layer]` that are linked to this `labels_layer` via the _REGION_KEY.
-    table_layer: str
+    table_layer
         The table layer in `sdata` on which to perform analysis.
-    points_layer : str, optional
-        The layer in `sdata` containing transcript information, by default "transcripts".
-    name_x : str, optional
-        The column name representing the x-coordinate in `points_layer`, by default "x".
+    points_layer
+        The layer in `sdata` containing transcript information.
+    name_x
+        The column name representing the x-coordinate in `points_layer`.
     name_y
-        The column name representing the y-coordinate in `points_layer`, by default "y".
+        The column name representing the y-coordinate in `points_layer`.
     name_gene_column
-        The column name representing the gene name in `points_layer`, by default "gene".
+        The column name representing the gene name in `points_layer`.
     output
         The path to save the generated plots. If None, plots will be shown directly using plt.show().
 
@@ -90,7 +90,7 @@ def analyse_genes_left_out(
 
     if sdata.tables[table_layer].raw is not None:
         log.warning(
-            "It seems that analysis is being run on AnnData object (sdata.tables[ table_layer ]) containing normalized counts, "
+            f"'sdata.tables[{table_layer}].raw' is not None. It seems that analysis is being run on an AnnData object containing normalized counts, "
             "please consider running this analysis before the counts in the AnnData object "
             "are normalized (i.e. on the raw counts)."
         )
@@ -109,7 +109,16 @@ def analyse_genes_left_out(
 
     ddf = ddf.query(f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}")
 
-    raw_counts = ddf.groupby(name_gene_column).size().compute()[adata.var.index]
+    _raw_counts = ddf.groupby(name_gene_column).size().compute()
+
+    missing_indices = adata.var.index.difference(_raw_counts.index)
+
+    if not missing_indices.empty:
+        raise ValueError(
+            f"There are genes found in '.var' of table layer '{table_layer}' that are not found in the points layer '{points_layer}'. Please verify that allocation '(sp.tb.allocation)' is performed using the correct points layer."
+        )
+
+    raw_counts = _raw_counts[adata.var.index]
 
     filtered = pd.DataFrame(adata.X.sum(axis=0) / raw_counts)
 

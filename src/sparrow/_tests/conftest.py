@@ -9,6 +9,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 from spatialdata import read_zarr
 
+import sparrow as sp
 from sparrow.datasets.cluster_blobs import cluster_blobs
 from sparrow.datasets.pixie_example import pixie_example
 
@@ -76,6 +77,14 @@ def sdata_transcripts(tmpdir):
     # backing store for specific unit test
     sdata.write(os.path.join(tmpdir, "sdata_transcriptomics.zarr"))
     sdata = read_zarr(os.path.join(tmpdir, "sdata_transcriptomics.zarr"))
+    # allocate in the fixture, because var_names do not seem to be retained when cloning from repo (mac <-> linux?)
+    sdata = sp.tb.allocate(
+        sdata,
+        labels_layer="segmentation_mask",
+        points_layer="transcripts",
+        output_layer="table_transcriptomics",
+        overwrite=True,
+    )
     yield sdata
 
 

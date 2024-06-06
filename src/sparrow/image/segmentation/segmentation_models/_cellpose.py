@@ -6,21 +6,29 @@ from numpy.typing import NDArray
 
 from sparrow.utils.pylogger import get_pylogger
 
+log = get_pylogger(__name__)
+
 try:
     import torch
 
     TORCH_AVAILABLE = True
+    CUDA = torch.cuda.is_available()
 except ImportError:
+    log.warning(
+        "Module 'torch' not installed, please install 'torch' if you want to use the callable 'sparrow.image.segmentation.segmentation_models._cellpose' as model for 'sp.im.segment'."
+    )
     TORCH_AVAILABLE = False
+    CUDA = False
 
 try:
     from cellpose import models
 
     CELLPOSE_AVAILABLE = True
 except ImportError:
+    log.warning(
+        "Module 'cellpose' not installed, please install 'cellpose' if you want to use the callable 'sparrow.image.segmentation.segmentation_models._cellpose' as model for 'sp.im.segment'."
+    )
     CELLPOSE_AVAILABLE = False
-
-log = get_pylogger(__name__)
 
 
 def _cellpose(
@@ -32,7 +40,7 @@ def _cellpose(
     model_type: str = "nuclei",
     pretrained_model: str | Path | None = None,
     channels: list[int] | None = None,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    device: str = "cuda" if CUDA else "cpu",
     z_axis: int = 0,
     channel_axis: int = 3,
     do_3D: bool = False,
@@ -41,10 +49,10 @@ def _cellpose(
     if channels is None:
         channels = [0, 0]
     if not TORCH_AVAILABLE:
-        raise RuntimeError("The torch module is not available. Please install it to use this function.")
+        raise RuntimeError("Module 'torch' is not available. Please install it to use this function.")
 
     if not CELLPOSE_AVAILABLE:
-        raise RuntimeError("The cellpose module is not available. Please install it to use this function.")
+        raise RuntimeError("Module 'cellpose' is not available. Please install it to use this function.")
     gpu = torch.cuda.is_available() or torch.backends.mps.is_available()
     if pretrained_model is not None:
         model = models.CellposeModel(gpu=gpu, pretrained_model=pretrained_model, device=torch.device(device))
