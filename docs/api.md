@@ -90,6 +90,7 @@ Operations on table (`AnnData` object) layers.
     tb.filter_on_size
     tb.cluster
     tb.score_genes
+    tb.score_genes_iter
     tb.correct_marker_genes
     tb.cluster_cleanliness
     tb.nhood_enrichment
