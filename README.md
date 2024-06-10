@@ -1,4 +1,4 @@
-# SPArrOW
+![alt text](https://github.com/saeyslab/napari-sparrow/blob/main/docs/_static/img/logo.png)
 
 <!-- These badges won't work while the GitHub repo is private:
 [![License BSD-3](https://img.shields.io/pypi/l/napari-sparrow.svg?color=green)](https://github.com/saeyslab/napari-sparrow/raw/main/LICENSE)
@@ -9,9 +9,9 @@
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-sparrow)](https://napari-hub.org/plugins/napari-sparrow)
 -->
 
-A library for spatial transcriptomics data analysis.
-This package is still under very active development. 
+**A library for Spatial Transcriptomics Data Analysis.**
 
+Note: This package is still under very active development. 
 # Installation
 
 Check out the docs for [installation instructions](docs/installation.md).
