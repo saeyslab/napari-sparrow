@@ -33,8 +33,8 @@ See [here](docs/contributing.md) for info on how to contribute to SPArrOW.
 
 ## License
 
-Distributed under the terms of the [BSD-3] license,
-"sparrow" is free and open source software
+Check license under licesne. SPArrOW is free for academic usage.
+For commercial usage, please contact Saeyslab.
 
 ## Issues
 
