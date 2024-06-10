@@ -10,6 +10,7 @@
 -->
 
 A library for spatial transcriptomics data analysis.
+This package is still under very active development. 
 
 # Installation
 
