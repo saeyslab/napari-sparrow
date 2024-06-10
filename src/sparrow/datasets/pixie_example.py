@@ -3,13 +3,13 @@ import pandas as pd
 from spatialdata import SpatialData
 
 
-def get_df(path):
+def _get_df(path):
     df = pd.read_csv(path, index_col=0).reset_index()
     return df
 
 
-def get_adata(path, label_prefix="label_whole_"):
-    df = get_df(path)
+def _get_adata(path, label_prefix="label_whole_"):
+    df = _get_df(path)
     df["fov"] = label_prefix + df["fov"]
     obs_columns: list[str] = ["index", "cell_size"] + df.columns[24:].to_list()
     obs = df.loc[:, df.columns.isin(obs_columns)]
@@ -122,7 +122,7 @@ def pixie_example(fovs: list | None = None, with_pixel_output=True, with_cells_o
         )
     if with_cells_output:
         prefix = "label_whole_"
-        adata = get_adata(path_post_data / "updated_cell_table.csv", label_prefix=prefix)
+        adata = _get_adata(path_post_data / "updated_cell_table.csv", label_prefix=prefix)
         adata = adata[adata.obs["fov"].isin([prefix + fov for fov in fovs])]
         stable = sd.models.TableModel.parse(
             adata, region_key="fov", region=[prefix + fov for fov in fovs], instance_key="label"

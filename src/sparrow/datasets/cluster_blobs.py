@@ -4,7 +4,6 @@ import pandas as pd
 import skimage as ski
 from dask.array.random import Generator
 from dask_image import ndfilters
-from loguru import logger
 from numpy.random import default_rng
 from scipy import ndimage as ndi
 from scipy.stats import qmc
@@ -14,6 +13,9 @@ from spatialdata._types import ArrayLike
 from spatialdata.models import Image2DModel, Labels2DModel, PointsModel, TableModel
 
 from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
+from sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def cluster_blobs(
@@ -32,21 +34,21 @@ def cluster_blobs(
     if seed is None:
         seed = 42
     nuclei_centers = _generate_points(shape, n_points=n_cells, seed=seed)
-    logger.debug(f"{nuclei_centers.shape=}")
-    logger.debug(f"{nuclei_centers[0]=}")
+    log.debug(f"{nuclei_centers.shape=}")
+    log.debug(f"{nuclei_centers[0]=}")
     markers = _generate_markers(nuclei_centers, shape)
-    logger.debug(f"{markers.shape=}")
+    log.debug(f"{markers.shape=}")
     nuclei_channel = _generate_blobs(nuclei_centers, shape)
     # assign each cell a random cell type
     assigned_cell_types = np.random.randint(0, n_cell_types, size=nuclei_centers.shape[0])
-    logger.debug(f"{assigned_cell_types.shape=}")
+    log.debug(f"{assigned_cell_types.shape=}")
     lineage_channels = []
     for i in range(n_cell_types):
         selected_nuclei_centers = nuclei_centers[assigned_cell_types == i]
         channel = _generate_blobs(selected_nuclei_centers, shape)
         noisy_channel = _add_noise(channel, noise_scale=noise_level_channels)
         lineage_channels.append(noisy_channel)
-    logger.debug(f"{lineage_channels[0].shape}")
+    log.debug(f"{lineage_channels[0].shape}")
     channel_names = ["nucleus"] + [f"lineage_{i}" for i in range(n_cell_types)]
     noisy_nuclei_channel = _add_noise(nuclei_channel, noise_scale=noise_level_nuclei)
     img = Image2DModel.parse(
@@ -91,7 +93,7 @@ def _generate_points(shape, n_points: int | None = None, seed: int | None = None
     rng = da.random.default_rng(seed)
     # TODO: make high depending on shape
     arr = rng.integers(0, high=shape[0], size=(n_points, len(shape)))
-    logger.debug(f"{arr.shape=}")
+    log.debug(f"{arr.shape=}")
     return arr.compute()
 
 
@@ -112,7 +114,7 @@ def _generate_points_qmc(shape, n_points: int | None = None, seed: int | None = 
 def _generate_markers(points: np.ndarray, shape: tuple[int]):
     """Generate markers from points for initialising watershed segmentation."""
     m = points.shape[0]
-    logger.debug(f"{m=}")
+    log.debug(f"{m=}")
     markers = np.zeros(shape)
     values = np.arange(m, dtype=int) + 1
     # generate image with values at coordinates of points
