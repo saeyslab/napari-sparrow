@@ -16,6 +16,6 @@ Notebooks to showcase the use of SPArrOW for analyzing spatial transcriptomics d
             .. toctree::
                 :maxdepth: 1
 
-                tutorials/dummy.ipynb
+                tutorials/SPArrOW_how_to_start.ipynb
 
 ```
