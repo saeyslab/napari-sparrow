@@ -33,7 +33,7 @@ See [here](docs/contributing.md) for info on how to contribute to SPArrOW.
 
 ## License
 
-Check license under licesne. SPArrOW is free for academic usage.
+Check license under license. SPArrOW is free for academic usage.
 For commercial usage, please contact Saeyslab.
 
 ## Issues
