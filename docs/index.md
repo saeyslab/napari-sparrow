@@ -1,5 +1,5 @@
 ```{eval-rst}
-.. image:: _static/img/logo-no-background.png
+.. image:: _static/img/logo.png
   :class: dark-light p-2
   :alt: Dambi banner
 ```
