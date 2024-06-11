@@ -12,7 +12,6 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
 from sparrow.image._image import _add_label_layer, _get_spatial_element, _get_transformation
-from sparrow.utils._flowsom import _flowsom
 from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY, ClusteringKey
 from sparrow.utils.pylogger import get_pylogger
 
@@ -20,6 +19,8 @@ log = get_pylogger(__name__)
 
 try:
     import flowsom as fs
+
+    from sparrow.utils._flowsom import _flowsom
 except ImportError:
     log.warning("'flowsom' not installed, 'sp.im.flowsom' will not be available.")
 

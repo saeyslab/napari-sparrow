@@ -10,7 +10,6 @@ from spatialdata import SpatialData
 from sparrow.table._table import ProcessTable, _add_table_layer
 from sparrow.table.cell_clustering._preprocess import cell_clustering_preprocess
 from sparrow.table.cell_clustering._utils import _get_mapping
-from sparrow.utils._flowsom import _flowsom
 from sparrow.utils._keys import ClusteringKey
 from sparrow.utils.pylogger import get_pylogger
 
@@ -18,6 +17,9 @@ log = get_pylogger(__name__)
 
 try:
     import flowsom as fs
+
+    from sparrow.utils._flowsom import _flowsom
+
 except ImportError:
     log.warning("'flowsom' not installed, 'sp.tb.flowsom' will not be available.")
 
