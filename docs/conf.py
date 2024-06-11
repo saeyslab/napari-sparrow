@@ -120,7 +120,7 @@ html_theme = "sphinx_book_theme"
 # html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
 html_title = project_name
-html_logo = "_static/img/logo-no-background.png"
+html_logo = "_static/img/logo-white.png"
 
 # html_theme_options = {
 # "repository_url": repository_url,

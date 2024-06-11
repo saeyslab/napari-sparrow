@@ -12,7 +12,7 @@ It is best to start working on an interactive debugging cluster and submit large
 hpc$ ml switch cluster/slaking
 hpc$ ml load CUDA
 hpc$ mamba env update -f environment.yml
-hpc$ conda activate napari-sparrow
+hpc$ conda activate harpy
 hpc$ pip install -e ".[cli]"
 ```
 

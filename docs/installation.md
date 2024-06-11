@@ -1,6 +1,6 @@
 # Installation
 
-We recommend using Anaconda to install SPArrOW, and we provide an [`environment.yml`](../environment.yml).
+We recommend using Anaconda to install Harpy, and we provide an [`environment.yml`](../environment.yml).
 
 ## 1. Create the conda environment:
 
@@ -10,7 +10,7 @@ conda env create -f environment.yml
 # Or use Mamba as alternative
 mamba env update -f environment.yml --prune
 
-conda activate napari-sparrow
+conda activate harpy
 ```
 
 Depending on your hardware, you may need to adapt the [`environment.yml`](../environment.yml) file as follows:
@@ -24,12 +24,12 @@ pip install basicpy==1.0.0
 
 - On Mac comment out the line `mkl=2024.0.0`.
 
-Note that `basicpy==...`, `jax==...` and `jaxlib==...` can be commented in the `environment.yml` if you do not plan to use the `SPArrOW` function `sp.im.tiling_correction`, you will still be able to use SPArrOW. For a mimimal list of requirements for `SPArrOW`, we refer to the [setup.cfg](../setup.cfg).
+Note that `basicpy==...`, `jax==...` and `jaxlib==...` can be commented in the `environment.yml` if you do not plan to use the `Harpy` function `sp.im.tiling_correction`, you will still be able to use Harpy. For a mimimal list of requirements for `Harpy`, we refer to the [setup.cfg](../setup.cfg).
 
-## 2. Install `SPArrOW`:
+## 2. Install `Harpy`:
 
 ```
-pip install git+https://github.com/saeyslab/napari-sparrow.git
+pip install git+https://github.com/saeyslab/harpy.git
 ```
 
 ## Additional dependencies
@@ -37,15 +37,15 @@ pip install git+https://github.com/saeyslab/napari-sparrow.git
 To use the plugin, run
 
 ```bash
-pip install "git+https://github.com/saeyslab/napari-sparrow.git#egg=sparrow[plugin]"
+pip install "git+https://github.com/saeyslab/harpy.git#egg=sparrow[plugin]"
 ```
 
-To run `SPArrOW` from the `cli`:
+To run `Harpy` from the `cli`:
 
 ```bash
-pip install "git+https://github.com/saeyslab/napari-sparrow.git#egg=sparrow[cli]"
+pip install "git+https://github.com/saeyslab/harpy.git#egg=sparrow[cli]"
 ```
 
 ## NVIDIA GPU support
 
-We provide [environment_vib_compute.yml](../environment_vib_compute.yml) that will install `torch` with NVIDIA GPU support on Linux (tested on CentOS). After creation of the environment via `conda env create -f environment_vib_compute.yml`, activate the environment, and install `SPaRROW` via `pip install git+https://github.com/saeyslab/napari-sparrow.git`.
+We provide [environment_vib_compute.yml](../environment_vib_compute.yml) that will install `torch` with NVIDIA GPU support on Linux (tested on CentOS). After creation of the environment via `conda env create -f environment_vib_compute.yml`, activate the environment, and install `Harpy` via `pip install git+https://github.com/saeyslab/harpy.git`.

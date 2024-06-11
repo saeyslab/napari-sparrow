@@ -5,14 +5,14 @@
 First clone the GitHub repo and set it as the current directory:
 
 ```bash
-git clone https://github.com/saeyslab/napari-sparrow.git
-cd napari-sparrow
+git clone https://github.com/saeyslab/harpy.git
+cd harpy
 ```
 
-Create a conda virtual environment as explained [here](./installation.md) and install `SPArrOW`.
+Create a conda virtual environment as explained [here](./installation.md) and install `Harpy`.
 
 ```bash
-conda activate napari-sparrow
+conda activate harpy
 pip install -e '.[testing,docs]'
 ```
 

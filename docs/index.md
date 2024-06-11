@@ -1,14 +1,14 @@
 ```{eval-rst}
-.. image:: _static/img/logo-no-background.png
+.. image:: _static/img/logo-white.png
   :class: dark-light p-2
   :alt: Dambi banner
 ```
 
 <br><br>
 
-# A library for spatial transcriptomics data analysis.
+# A library for single-cell Spatial Proteomics data analysis Spatial.
 
-SPArrOW is a library for spatial transcriptomics data analysis.
+Harpy is a library for single-cell Spatial Proteomics data analysis Spatial
 
 Please see our preprint ... for citation and to learn more.
 
@@ -22,39 +22,39 @@ Please see our preprint ... for citation and to learn more.
     :link: installation
     :link-type: doc
 
-    Learn how to install ``SPArrOW``.
+    Learn how to install ``Harpy``.
 
 .. card:: Tutorials
     :link: notebooks
     :link-type: doc
 
-    Tutorials to help you get up to speed with ``SPArrOW``.
+    Tutorials to help you get up to speed with ``Harpy``.
 
 .. card:: Usage
     :link: usage
     :link-type: doc
 
-    Learn how SPArrOW can be integrated into your workflow in different ways.
+    Learn how Harpy can be integrated into your workflow in different ways.
 
 .. card:: API
     :link: api
     :link-type: doc
 
-    Find a detailed documentation of ``SPArrOW``.
+    Find a detailed documentation of ``Harpy``.
 
 
 .. card:: HPC
     :link: hpc
     :link-type: doc
 
-    Learn how to run ``SPArrOW`` in a High-Performance Computing (HPC) environment.
+    Learn how to run ``Harpy`` in a High-Performance Computing (HPC) environment.
 
 
 .. card:: Contributing
     :link: contributing
     :link-type: doc
 
-    Learn how to contribute to ``SPArrOW``.
+    Learn how to contribute to ``Harpy``.
 
 ```
 

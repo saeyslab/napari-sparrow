@@ -2,7 +2,7 @@
 
 ```{eval-rst}
 
-Import SPArrOW as::
+Import Harpy as::
 
     import sparrow as sp
 
