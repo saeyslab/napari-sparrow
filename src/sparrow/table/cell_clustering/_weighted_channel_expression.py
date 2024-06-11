@@ -36,7 +36,7 @@ def weighted_channel_expression(
     sdata
         The input SpatialData object containing the necessary data tables.
     table_layer_cell_clustering
-        The name of the table layer in `sdata` where FlowSOM cell clustering results are stored (obtained via ``).
+        The name of the table layer in `sdata` where FlowSOM cell clustering results are stored (obtained via 'sp.tb.flowsom').
         This layer should contain the cell cluster labels derived from the FlowSOM clustering algorithm and the non-normalized pixel cluster counts in `.layers[ _RAW_COUNTS_KEY ]`, as obtained after running `sp.tb.flowsom`.
     table_layer_pixel_cluster_intensity
         The name of the table layer in `sdata` containing pixel cluster intensity values as obtained by running `sp.tb.cluster_intensity`.
