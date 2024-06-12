@@ -12,6 +12,9 @@
 **A library for Spatial Transcriptomics Data Analysis.**
 
 Note: This package is still under very active development. 
+For more information, please check out the read-the-docs:
+https://sparrow-pipeline.readthedocs.io/en/latest/
+
 # Installation
 
 Check out the docs for [installation instructions](docs/installation.md).
@@ -19,6 +22,7 @@ Check out the docs for [installation instructions](docs/installation.md).
 # Tutorials
 
 See [here](docs/tutorials/) for tutorials.
+Tutorials are available at https://sparrow-pipeline.readthedocs.io/en/latest/
 
 # Usage
 
