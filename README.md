@@ -11,8 +11,8 @@
 
 **A library for single-cell Spatial Proteomics data analysis Spatial.**
 
+Note: This package is still under very active development.
 
-Note: This package is still under very active development. 
 # Installation
 
 Check out the docs for [installation instructions](docs/installation.md).
