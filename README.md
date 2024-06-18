@@ -9,7 +9,7 @@
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-sparrow)](https://napari-hub.org/plugins/napari-sparrow)
 -->
 
-**A library for single-cell Spatial Proteomics data analysis Spatial.**
+**A library for single-cell Spatial Proteomics data analysis.**
 
 Note: This package is still under very active development.
 
@@ -19,15 +19,15 @@ Check out the docs for [installation instructions](docs/installation.md).
 
 # Tutorials
 
-See [here](docs/tutorials/) for tutorials.
+Tutorials are available [here](https://harpy.readthedocs.io/en/latest/).
 
 # Usage
 
-[Learn](docs/usage.md) how SPArrOW can be integrated into your workflow in different ways.
+[Learn](docs/usage.md) how Harpy can be integrated into your workflow in different ways.
 
 ## Contributing
 
-See [here](docs/contributing.md) for info on how to contribute to SPArrOW.
+See [here](docs/contributing.md) for info on how to contribute to Harpy.
 
 ## References
 

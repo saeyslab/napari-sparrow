@@ -6,9 +6,9 @@
 
 <br><br>
 
-# A library for single-cell Spatial Proteomics data analysis Spatial.
+# A library for single-cell Spatial Proteomics data analysis.
 
-Harpy is a library for single-cell Spatial Proteomics data analysis Spatial
+Harpy is a library for single-cell Spatial Proteomics data analysis.
 
 Please see our preprint ... for citation and to learn more.
 

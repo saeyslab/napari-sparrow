@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from itertools import chain
+from pathlib import Path
+from typing import Any
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -22,13 +24,15 @@ def score_genes(
     labels_layer: list[str],
     table_layer: str,
     output_layer: str,
-    path_marker_genes: str,
+    path_marker_genes: str | Path | pd.DataFrame,
     delimiter=",",
     row_norm: bool = False,
     repl_columns: dict[str, str] | None = None,
     del_celltypes: dict[str] | None = None,
     input_dict: bool = False,
     overwrite: bool = False,
+    # TODO add annotation key here, let user pass it
+    **kwargs: Any,
 ) -> tuple[SpatialData, list[str], list[str]]:
     """
     The function loads marker genes from a CSV file and scores cells for each cell type using those markers using scanpy's `sc.tl.score_genes` function.
@@ -50,8 +54,8 @@ def score_genes(
     output_layer
         The output table layer in `sdata` to which table layer with results of annotation will be written.
     path_marker_genes
-        Path to the CSV file containing the marker genes.
-        CSV file should be a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column.
+        Path to the CSV file containing the marker genes or a pandas dataframe.
+        It should be a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column.
     delimiter
         Delimiter used in the CSV file, default is ','.
     row_norm
@@ -67,6 +71,8 @@ def score_genes(
         the cell type names and the subsequent columns being the marker genes for those cell types. Default is False.
     overwrite
         If True, overwrites the `output_layer` if it already exists in `sdata`.
+    **kwargs
+        Additional keyword arguments passed to `scanpy.tl.score_genes`.
 
     Returns
     -------
@@ -87,6 +93,12 @@ def score_genes(
     adata = process_table_instance._get_adata()
     # Load marker genes from csv
     if input_dict:
+        log.warning(
+            "'input_dict' is deprecated and will be removed in future versions. "
+            "Please pass a pandas DataFrame or a path to a .csv file to 'path_marker_genes'. "
+            "It should be a one-hot encoded matrix with cell types listed in the first row "
+            "and marker genes in the first column."
+        )
         df_markers = pd.read_csv(path_marker_genes, header=None, index_col=0, delimiter=delimiter)
         df_markers = df_markers.T
         genes_dict = df_markers.to_dict("list")
@@ -94,7 +106,10 @@ def score_genes(
             genes_dict[i] = [x for x in genes_dict[i] if str(x) != "nan"]
     # Replace column names in marker genes
     else:
-        df_markers = pd.read_csv(path_marker_genes, index_col=0, delimiter=delimiter)
+        if isinstance(path_marker_genes, pd.DataFrame):
+            df_markers = path_marker_genes
+        else:
+            df_markers = pd.read_csv(path_marker_genes, index_col=0, delimiter=delimiter)
         if repl_columns:
             for column, replace in repl_columns.items():
                 df_markers.columns = df_markers.columns.str.replace(column, replace)
@@ -122,7 +137,7 @@ def score_genes(
     # Score all cells for all celltypes
     for key, value in genes_dict.items():
         try:
-            sc.tl.score_genes(adata, value, score_name=key)
+            sc.tl.score_genes(adata, value, score_name=key, copy=False, **kwargs)
         except ValueError:
             log.warning(f"Markergenes '{value}' not present in region, celltype '{key}' not found.")
 
