@@ -101,7 +101,7 @@ def analyse_genes_left_out(
 
     raw_counts = ddf.groupby(name_gene_column).size().compute()[sdata.table.var.index]
 
-    filtered = pd.DataFrame(sdata.table.X.sum(axis=0) / raw_counts)
+    filtered = pd.DataFrame(np.array(sdata.table.X.sum(axis=0)).flatten() / raw_counts)
 
     filtered = filtered.rename(columns={0: "proportion_kept"})
     filtered["raw_counts"] = raw_counts
