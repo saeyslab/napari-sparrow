@@ -7,8 +7,10 @@ from collections import namedtuple
 import anndata as ad
 import dask
 import dask.dataframe as dd
+import numpy as np
 import pandas as pd
 from anndata import AnnData
+from scipy import sparse
 from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element, _get_translation
@@ -147,7 +149,9 @@ def allocate(
 
     cell_counts = combined_partitions.groupby([_CELL_INDEX, "gene"]).size()
 
-    coordinates, cell_counts = dask.compute(coordinates, cell_counts, scheduler="threads")
+    cell_counts = cell_counts.map_partitions(lambda x: x.astype(np.int32))
+
+    coordinates, cell_counts = dask.compute(coordinates, cell_counts)
 
     cell_counts = cell_counts.unstack(fill_value=0)
     # convert dtype of columns to "object", otherwise error writing to zarr.

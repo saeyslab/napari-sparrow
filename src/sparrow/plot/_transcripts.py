@@ -120,7 +120,7 @@ def analyse_genes_left_out(
 
     raw_counts = _raw_counts[adata.var.index]
 
-    filtered = pd.DataFrame(adata.X.sum(axis=0) / raw_counts)
+    filtered = pd.DataFrame(np.array(adata.X.sum(axis=0)).flatten() / raw_counts)
 
     filtered = filtered.rename(columns={0: "proportion_kept"})
     filtered[_RAW_COUNTS_KEY] = raw_counts
