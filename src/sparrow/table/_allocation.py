@@ -6,12 +6,14 @@ from collections import namedtuple
 import dask
 import dask.array as da
 import dask.dataframe as dd
+import numpy as np
 import pandas as pd
 import rasterio
 import rasterio.features
 import spatialdata
 from affine import Affine
 from anndata import AnnData
+from scipy import sparse
 from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element, _get_translation
@@ -187,25 +189,49 @@ def allocate(
 
     cell_counts = combined_partitions.groupby([_CELL_INDEX, "gene"]).size()
 
-    coordinates, cell_counts = dask.compute(coordinates, cell_counts, scheduler="threads")
+    cell_counts = cell_counts.map_partitions(lambda x: x.astype(np.int32))
 
-    cell_counts = cell_counts.unstack(fill_value=0)
-    # convert dtype of columns to "object", otherwise error writing to zarr.
-    cell_counts.columns = cell_counts.columns.astype(str)
+    coordinates, cell_counts = dask.compute(coordinates, cell_counts)
 
-    log.info("Finished calculating cell counts.")
+    cell_counts = cell_counts.to_frame(name="values")
+    cell_counts = cell_counts.reset_index()
 
-    # make sure coordinates are sorted in same order as cell_counts
-    index_order = cell_counts.index.argsort()
-    coordinates = coordinates.loc[cell_counts.index[index_order]]
-    cell_counts = cell_counts.sort_index()
+    cell_counts["gene"] = cell_counts["gene"].astype("object")
+    cell_counts["gene"] = pd.Categorical(cell_counts["gene"])
 
-    log.info("Creating AnnData object.")
+    columns_categories = cell_counts["gene"].cat.categories.to_list()
+    columns_nodes = pd.Categorical(cell_counts["gene"], categories=columns_categories, ordered=True)
 
-    # Create the anndata object
-    cell_counts.index = cell_counts.index.map(str)
-    adata = AnnData(cell_counts[cell_counts.index != "0"])
+    indices_of_aggregated_rows = np.array(cell_counts[_CELL_INDEX])
+    rows_categories = np.unique(indices_of_aggregated_rows)
+
+    rows_nodes = pd.Categorical(indices_of_aggregated_rows, categories=rows_categories, ordered=True)
+
+    X = sparse.coo_matrix(
+        (
+            cell_counts["values"].values.ravel(),
+            (rows_nodes.codes, columns_nodes.codes),
+        ),
+        shape=(len(rows_categories), len(columns_categories)),
+    ).tocsr()
+
+    adata = AnnData(
+        X,
+        obs=pd.DataFrame(index=rows_categories),
+        var=pd.DataFrame(index=columns_categories),
+        dtype=X.dtype,
+    )
+
     coordinates.index = coordinates.index.map(str)
+
+    # sanity check
+    assert np.array_equal(np.unique(coordinates.index), np.unique(adata.obs.index))
+
+    # make sure coordinates is in same order as adata
+    coordinates = coordinates.reindex(adata.obs.index)
+
+    adata = adata[adata.obs.index != "0"]
+
     adata.obsm["spatial"] = coordinates[coordinates.index != "0"].values
     adata.obs[_INSTANCE_KEY] = adata.obs.index.astype(int)
 
