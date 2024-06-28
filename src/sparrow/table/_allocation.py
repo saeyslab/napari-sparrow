@@ -15,7 +15,7 @@ from spatialdata import SpatialData
 from sparrow.image._image import _get_spatial_element, _get_translation
 from sparrow.shape._shape import _filter_shapes_layer
 from sparrow.table._table import _add_table_layer
-from sparrow.utils._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY
+from sparrow.utils._keys import _CELL_INDEX, _GENES_KEY, _INSTANCE_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -27,6 +27,7 @@ def allocate(
     points_layer: str = "transcripts",
     output_layer: str = "table_transcriptomics",
     chunks: str | tuple[int, ...] | int | None = 10000,
+    name_gene_column: str = _GENES_KEY,
     append: bool = False,
     overwrite: bool = False,
 ) -> SpatialData:
@@ -49,6 +50,8 @@ def allocate(
         Consider setting the chunks to a relatively high value to speed up processing
         (>10000, or only chunk in z-dimension if data is 3D, and one z-slice fits in memory),
         taking into account the available memory of your system.
+    name_gene_column
+        Column name in the `points_layer` representing gene information.
     append
         If set to True, and the `labels_layer` does not yet exist as a `_REGION_KEY` in `sdata.tables[output_layer].obs`,
         the transcripts counts obtained during the current function call will be appended (along axis=0) to any existing transcript count values.
@@ -146,7 +149,7 @@ def allocate(
     else:
         coordinates = combined_partitions.groupby(_CELL_INDEX)["x", "y"].mean()
 
-    cell_counts = combined_partitions.groupby([_CELL_INDEX, "gene"]).size()
+    cell_counts = combined_partitions.groupby([_CELL_INDEX, name_gene_column]).size()
 
     cell_counts = cell_counts.map_partitions(lambda x: x.astype(np.uint32))
 
@@ -155,11 +158,11 @@ def allocate(
     cell_counts = cell_counts.to_frame(name="values")
     cell_counts = cell_counts.reset_index()
 
-    cell_counts["gene"] = cell_counts["gene"].astype("object")
-    cell_counts["gene"] = pd.Categorical(cell_counts["gene"])
+    cell_counts[name_gene_column] = cell_counts[name_gene_column].astype("object")
+    cell_counts[name_gene_column] = pd.Categorical(cell_counts[name_gene_column])
 
-    columns_categories = cell_counts["gene"].cat.categories.to_list()
-    columns_nodes = pd.Categorical(cell_counts["gene"], categories=columns_categories, ordered=True)
+    columns_categories = cell_counts[name_gene_column].cat.categories.to_list()
+    columns_nodes = pd.Categorical(cell_counts[name_gene_column], categories=columns_categories, ordered=True)
 
     indices_of_aggregated_rows = np.array(cell_counts[_CELL_INDEX])
     rows_categories = np.unique(indices_of_aggregated_rows)
