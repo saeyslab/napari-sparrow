@@ -32,7 +32,7 @@ def allocate(
 ) -> SpatialData:
     # TODO: add update_shapes_layer as a parameter
     """
-    Allocates transcripts to cells via provided `labels_layer` and `points_layer` and returns updated SpatialData augmented with a table layer (`sdata.tables[output_layer]`) holding the AnnData object with cell counts.
+    Allocates transcripts to cells via provided `labels_layer` and `points_layer` and returns updated SpatialData object with a table layer (`sdata.tables[output_layer]`) holding the AnnData object with cell counts.
 
     Parameters
     ----------
