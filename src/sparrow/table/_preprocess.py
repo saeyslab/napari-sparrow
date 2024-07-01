@@ -34,7 +34,8 @@ def preprocess_transcriptomics(
     """
     Preprocess a table (AnnData) attribute of a SpatialData object for transcriptomics data.
 
-    Performs filtering (via `scanpy.pp.filter_cells` and `scanpy.pp.filter_genes` ) and optional normalization (on size or via `scanpy.sc.pp.normalize_total`), log transformation, scaling, and PCA calculation for transcriptomics data
+    Performs filtering (via `scanpy.pp.filter_cells` and `scanpy.pp.filter_genes` ) and optional normalization (on size or via `scanpy.sc.pp.normalize_total`),
+    log transformation (`scanpy.pp.log1p`), scaling (`scanpy.pp.scale`), and PCA calculation (`scanpy.tl.pca`) for transcriptomics data
     contained in the `sdata`. qc metrics are added to `sdata.tables[output_layer].obs` using `scanpy.pp.calculate_qc_metrics`.
 
     Parameters
@@ -57,7 +58,7 @@ def preprocess_transcriptomics(
     size_norm
         If True, normalization is based on the size of the nucleus/cell. If False, `scanpy.sc.pp.normalize_total` is used for normalization.
     max_value_scale
-        The maximum value to which data will be scaled.
+        The maximum value to which data will be scaled, using `scanpy.pp.scale`.
     n_comps
         Number of principal components to calculate.
     overwrite
@@ -128,8 +129,9 @@ def preprocess_proteomics(
     """
     Preprocess a table (AnnData) attribute of a SpatialData object for proteomics data.
 
-    Performs optional normalization (on size or via `scanpy.sc.pp.normalize_total`), log transformation, scaling/quantile normalization, and PCA calculation for proteomics data
-    contained in the `sdata`.
+    Performs optional normalization (on size or via `scanpy.sc.pp.normalize_total`), log transformation
+    (`scanpy.pp.log1p`), scaling (`scanpy.pp.scale`)/ quantile normalization and PCA calculation (`scanpy.tl.pca`)
+    for proteomics data contained in `sdata`.
 
     Parameters
     ----------
