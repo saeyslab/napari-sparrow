@@ -1,4 +1,6 @@
 from collections import defaultdict
+from types import MappingProxyType
+from typing import Any, Mapping
 
 import dask
 import numpy as np
@@ -23,6 +25,8 @@ def preprocess_anndata(
     min_counts: int = 10,
     min_cells: int = 5,
     size_norm: bool = True,
+    highly_variable_genes: bool = False,
+    highly_variable_genes_kwargs: Mapping[str, Any] = MappingProxyType({}),
     n_comps: int = 50,
 ) -> SpatialData:
     """
@@ -49,7 +53,11 @@ def preprocess_anndata(
     min_cells
         Minimum number of cells a gene should be in to be kept.
     size_norm
-        If True, normalization is based on the size of the nucleus/cell. Else the normalize_total function of scanpy is used.
+        If `True`, normalization is based on the size of the nucleus/cell. Else the normalize_total function of scanpy is used.
+    highly_variable_genes
+        If `True`, will only retain highly variable genes, as calculated by `scanpy.pp.highly_variable_genes`.
+    highly_variable_genes_kwargs
+        Keyword arguments passed to `scanpy.pp.highly_variable_genes`. Ignored if `highly_variable_genes` is `False`.
     n_comps
         Number of principal components to calculate.
 
@@ -105,15 +113,20 @@ def preprocess_anndata(
 
     if size_norm:
         sdata.table.X = (sdata.table.X.T * 100 / sdata.table.obs.shapeSize.values).T
-        sc.pp.log1p(sdata.table)
-        # need to do .copy() here to set .raw value, because .scale still overwrites this .raw, which is unexpected behaviour
-        sdata.table.raw = sdata.table.copy()
-        sc.pp.scale(sdata.table, max_value=10)
-
     else:
         sc.pp.normalize_total(sdata.table)
-        sc.pp.log1p(sdata.table)
-        sdata.table.raw = sdata.table.copy()
+
+    sc.pp.log1p(sdata.table)
+    if highly_variable_genes:
+        sc.pp.highly_variable_genes(sdata.table, inplace=True, **highly_variable_genes_kwargs)
+    # need to do .copy() here to set .raw value, because .scale still overwrites this .raw, which is unexpected behaviour
+    sdata.table.raw = sdata.table.copy()
+    if highly_variable_genes:
+        _adata = sdata.table[:, sdata.table.var.highly_variable].copy()
+        if sdata.table:
+            del sdata.table
+        sdata.table = _adata
+    sc.pp.scale(sdata.table, max_value=10)
 
     # calculate the max amount of pc's possible
     if min(sdata.table.shape) < n_comps:
