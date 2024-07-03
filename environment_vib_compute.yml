@@ -28,7 +28,6 @@ dependencies:
       - spatial-image==0.3.0
       - multiscale-spatial-image==0.11.2
       - spatialdata==0.0.15
-      - squidpy==1.3.1
       - voronoi-diagram-for-polygons==0.1.6
       - dask==2023.9.3
       - distributed==2023.9.3
