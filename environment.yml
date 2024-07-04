@@ -9,6 +9,7 @@ dependencies:
   - opencv
   - pip
   - pytorch
+  - rasterio
   - mkl=2024.0.0 # temp workaround, see https://github.com/pytorch/pytorch/issues/123097
   - fsspec=2023.6.0
   - pip:
