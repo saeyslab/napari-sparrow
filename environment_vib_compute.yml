@@ -1,4 +1,4 @@
-name: napari-sparrow
+name: harpy
 channels:
   - pytorch
   - conda-forge
@@ -7,29 +7,14 @@ channels:
   - defaults
 dependencies:
   - python=3.10.8
-  - leidenalg
-  - napari=0.4.18
-  - pyqt
   - opencv
-  - pip=22.2.2
-  - rasterio=1.3.2
-  - scanpy=1.9.4
-  - seaborn=0.13.0
+  - pip
   - fsspec=2023.6.0
   - pip:
-      - anndata==0.10.3
       - basicpy==1.0.0
       - torch
-      - cellpose==2.2.3
+      - cellpose
       - jax==0.4.6
       - jaxlib==0.4.6
-      - shapely==2.0.1
-      - spatial-image==0.3.0
-      - multiscale-spatial-image==0.11.2
-      - spatialdata==0.0.15
-      - voronoi-diagram-for-polygons==0.1.6
-      - dask==2023.9.3
-      - distributed==2023.9.3
-      - nptyping==2.5.0
       - ipython
       - ipykernel
