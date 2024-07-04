@@ -1,0 +1,25 @@
+name: harpy
+channels:
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.10.8
+  - leidenalg
+  - opencv
+  - pip=22.2.2
+  - pytorch
+  - mkl=2024.0.0 # temp workaround, see https://github.com/pytorch/pytorch/issues/123097
+  - rasterio=1.3.2
+  - scanpy=1.9.4
+  - seaborn=0.13.0
+  - fsspec=2023.6.0
+  - pip:
+      - anndata==0.10.3
+      - basicpy==1.0.0
+      - cellpose==2.2.3
+      - jax==0.4.6
+      - jaxlib==0.4.6
+      - shapely==2.0.1
+      - voronoi-diagram-for-polygons==0.1.6
+      - ipython
+      - ipykernel
