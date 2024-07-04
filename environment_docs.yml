@@ -4,7 +4,7 @@ channels:
   - conda-forge
 dependencies:
   - python=3.10.8
-  - leidenalg
+  #- leidenalg
   - opencv
   - pip=22.2.2
   - pytorch
