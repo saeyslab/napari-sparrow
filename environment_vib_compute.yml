@@ -9,12 +9,13 @@ dependencies:
   - python=3.10.8
   - opencv
   - pip
+  - mkl=2024.0.0 # temp workaround, see https://github.com/pytorch/pytorch/issues/123097
   - fsspec=2023.6.0
   - pip:
-      - basicpy==1.0.0
+      #- basicpy==1.0.0
       - torch
       - cellpose
-      - jax==0.4.6
-      - jaxlib==0.4.6
+      #- jax==0.4.6
+      #- jaxlib==0.4.6
       - ipython
       - ipykernel
