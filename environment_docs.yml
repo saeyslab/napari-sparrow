@@ -5,11 +5,10 @@ channels:
 dependencies:
   - python=3.10.8
   - opencv
-  - pip=22.2.2
+  - pip
   - pytorch
   - mkl=2024.0.0 # temp workaround, see https://github.com/pytorch/pytorch/issues/123097
   - rasterio==1.3.2
-  - scanpy
   - fsspec=2023.6.0
   - pip:
       - basicpy==1.0.0
