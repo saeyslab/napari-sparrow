@@ -1,15 +1,11 @@
 name: harpy
 channels:
-  - pytorch
   - conda-forge
-  - conda
-  - nvidia
-  - defaults
 dependencies:
   - python=3.10.8
   - opencv
   - pip
-  - fsspec=2023.6.0
+  - rasterio
   - pip:
       - basicpy==1.0.0
       - torch

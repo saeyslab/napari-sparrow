@@ -11,6 +11,8 @@
 
 **A library for single-cell Spatial Proteomics data analysis.**
 
+[![documentation badge](https://readthedocs.org/projects/harpy/badge/?version=latest)](https://harpy.readthedocs.io/en/latest/)
+
 Note: This package is still under very active development.
 
 # Installation
