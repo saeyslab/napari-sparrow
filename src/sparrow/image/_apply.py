@@ -11,8 +11,8 @@ from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import get_transformation
 
 from sparrow.image._image import (
-    _add_image_layer,
     _get_spatial_element,
+    add_image_layer,
 )
 from sparrow.utils.pylogger import get_pylogger
 
@@ -29,6 +29,7 @@ def map_channels_zstacks(
     depth: tuple[int, int] | dict[int, int] | int | None = None,
     blockwise: bool = True,
     crd: tuple[int, int, int, int] | None = None,
+    to_coordinate_system: str = "global",
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
@@ -65,6 +66,8 @@ def map_channels_zstacks(
         otherwise `func` is applied to the full data. If `False`, `depth` is ignored.
     crd
         The coordinates specifying the region of the image to be processed. Defines the bounds (x_min, x_max, y_min, y_max).
+    to_coordinate_system
+        The coordinate system to which the `crd` is specified. Ignored if `crd` is None.
     scale_factors
         Scale factors to apply for multiscale.
     overwrite
@@ -125,7 +128,7 @@ def map_channels_zstacks(
             axes=["x", "y"],
             min_coordinate=[crd[0], crd[2]],
             max_coordinate=[crd[1], crd[3]],
-            target_coordinate_system="global",
+            target_coordinate_system=to_coordinate_system,
         )
         if se_crop is not None:
             se = se_crop
@@ -199,7 +202,7 @@ def map_channels_zstacks(
     # rechunk, otherwise could have issues with irregular chunking when saving to zarr
     se_result = se_result.chunk(se_result.data.chunksize)
 
-    sdata = _add_image_layer(
+    sdata = add_image_layer(
         sdata,
         arr=se_result.data,
         output_layer=output_layer,

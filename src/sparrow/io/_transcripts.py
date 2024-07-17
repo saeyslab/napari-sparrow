@@ -4,11 +4,10 @@ from pathlib import Path
 
 import dask.dataframe as dd
 import numpy as np
-import spatialdata
-from dask.dataframe.core import DataFrame as DaskDataFrame
-from spatialdata import SpatialData, read_zarr
+from spatialdata import SpatialData
+from spatialdata.transformations import Identity
 
-from sparrow.utils._io import _incremental_io_on_disk
+from sparrow.points._points import add_points_layer
 from sparrow.utils._keys import _GENES_KEY
 from sparrow.utils.pylogger import get_pylogger
 
@@ -18,6 +17,8 @@ log = get_pylogger(__name__)
 def read_resolve_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -30,6 +31,10 @@ def read_resolve_transcripts(
     path_count_matrix
         Path to the file containing the transcripts information specific to Resolve.
         Expected to contain x, y coordinates and a gene name.
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
     overwrite
         If True overwrites the `output_layer` (a points layer) if it already exists.
 
@@ -45,6 +50,8 @@ def read_resolve_transcripts(
         "delimiter": "\t",
         "header": None,
         "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -55,6 +62,8 @@ def read_vizgen_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
     path_transform_matrix: str | Path,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -67,6 +76,10 @@ def read_vizgen_transcripts(
     path_count_matrix
         Path to the file containing the transcripts information specific to Vizgen.
         Expected to contain x, y coordinates and a gene name.
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
     path_transform_matrix
         Path to the transformation matrix for the affine transformation.
     overwrite: bool, default=False
@@ -84,6 +97,8 @@ def read_vizgen_transcripts(
         "delimiter": ",",
         "header": 0,
         "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -93,6 +108,8 @@ def read_vizgen_transcripts(
 def read_stereoseq_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -105,6 +122,10 @@ def read_stereoseq_transcripts(
     path_count_matrix
         Path to the file containing the transcripts information specific to Stereoseq.
         Expected to contain x, y coordinates, gene name, and a midcount column.
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
     overwrite: bool, default=False
         If True overwrites the `output_layer` (a points layer) if it already exists.
 
@@ -121,6 +142,8 @@ def read_stereoseq_transcripts(
         "delimiter": ",",
         "header": 0,
         "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -143,6 +166,7 @@ def read_transcripts(
     header: int | None = None,
     comment: str | None = None,
     crd: tuple[int, int, int, int] | None = None,
+    to_coordinate_system: str = "global",
     filter_gene_names: str | list | None = None,
     blocksize: str = "64MB",
 ) -> SpatialData:
@@ -150,7 +174,8 @@ def read_transcripts(
     Reads transcript information from a file with each row listing the x and y coordinates, along with the gene name.
 
     If a transform matrix is provided a linear transformation is applied to the coordinates of the transcripts.
-    The SpatialData object is augmented with a points layer named 'transcripts' that contains the transcripts.
+    The transformation is applied to the dask dataframe before adding it to `sdata`.
+    The SpatialData object is augmented with a points layer named `output_layer` that contains the transcripts.
 
     Parameters
     ----------
@@ -190,6 +215,8 @@ def read_transcripts(
     crd
         The coordinates (in pixels) for the region of interest in the format (xmin, xmax, ymin, ymax).
         If None, all transcripts are considered.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
     filter_gene_names
         Regular expression(s) of gene names that need to be filtered out (via str.contains), mostly control genes that were added, and which you don't want to use.
         If list of strings, all items in the list are seen as regular expressions. Filtering is case insensitive.
@@ -284,48 +311,13 @@ def read_transcripts(
     if crd is not None:
         transformed_ddf = transformed_ddf.query(f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}")
 
-    sdata = _add_transcripts_to_sdata(
+    sdata = add_points_layer(
         sdata,
         ddf=transformed_ddf,
         output_layer=output_layer,
         coordinates=coordinates,
+        transformations={to_coordinate_system: Identity()},
         overwrite=overwrite,
     )
-
-    return sdata
-
-
-def _add_transcripts_to_sdata(
-    sdata: SpatialData,
-    ddf: DaskDataFrame,
-    output_layer: str,
-    coordinates: dict[str, str],
-    overwrite: bool = True,
-):
-    points = spatialdata.models.PointsModel.parse(
-        ddf,
-        coordinates=coordinates,
-    )
-
-    # we persist points if sdata is not backed.
-    if not sdata.is_backed():
-        points = points.persist()
-
-    if output_layer in [*sdata.points]:
-        if sdata.is_backed():
-            if overwrite:
-                sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=points)
-            else:
-                raise ValueError(
-                    f"Attempting to overwrite 'sdata.points[\"{output_layer}\"]', but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
-                )
-        else:
-            sdata[output_layer] = points
-
-    else:
-        sdata[output_layer] = points
-        if sdata.is_backed():
-            sdata.write_element(output_layer)
-            sdata = read_zarr(sdata.path)
 
     return sdata

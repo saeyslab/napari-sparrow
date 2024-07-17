@@ -24,8 +24,9 @@ log = get_pylogger(__name__)
 def _substract_translation_crd(
     spatial_image: DataArray,
     crd=Tuple[int, int, int, int],
+    to_coordinate_system: str = "global",
 ) -> tuple[int, int, int, int] | None:
-    tx, ty = _get_translation(spatial_image)
+    tx, ty = _get_translation(spatial_image, to_coordinate_system=to_coordinate_system)
 
     _crd = crd
     crd = [
@@ -46,26 +47,37 @@ def _substract_translation_crd(
     return crd
 
 
-def _get_boundary(spatial_image: DataArray) -> tuple[int, int, int, int]:
-    tx, ty = _get_translation(spatial_image)
+def _get_boundary(spatial_image: DataArray, to_coordinate_system: str = "global") -> tuple[int, int, int, int]:
+    tx, ty = _get_translation(spatial_image, to_coordinate_system=to_coordinate_system)
     width = spatial_image.sizes["x"]
     height = spatial_image.sizes["y"]
     return (int(tx), int(tx + width), int(ty), int(ty + height))
 
 
-def _get_translation(spatial_image: DataArray) -> tuple[float, float]:
-    translation = get_transformation(spatial_image)
+def _get_translation(spatial_image: DataArray, to_coordinate_system: str = "global") -> tuple[float, float]:
+    transformations = get_transformation(spatial_image, get_all=True)
+    if len(transformations) > 1:
+        log.info(
+            f"There seems to be more than one coordinate system defined on the provided spatial element ('{[*transformations]}'). "
+            f"We only consider the coordinate sytem specified via parameter 'to_coordinate_system': '{to_coordinate_system}'."
+        )
+    if to_coordinate_system not in [*transformations]:
+        raise ValueError(
+            f"Coordinate system '{to_coordinate_system}' does not appear to be a coordinate system of the spatial element. "
+            f"Please choose a coordinate system from this list: {[*transformations]}."
+        )
+    translation = transformations[to_coordinate_system]
 
     if not isinstance(translation, (Sequence | Translation, Identity)):
         raise ValueError(
             f"Currently only transformations of type Translation are supported, "
-            f"while transformation associated with {spatial_image} is of type {type(translation)}."
+            f"while transformation associated with {spatial_image} in coordinate system '{to_coordinate_system}' is of type {type(translation)}."
         )
 
     return _get_translation_values(translation)
 
 
-def _apply_transform(se: DataArray) -> tuple[DataArray, np.ndarray, np.ndarray]:
+def _apply_transform(se: DataArray, to_coordinate_system: str = "global") -> tuple[DataArray, np.ndarray, np.ndarray]:
     """
     Apply the translation (if any) of the given DataArray to its x- and y-coordinates array.
 
@@ -79,7 +91,7 @@ def _apply_transform(se: DataArray) -> tuple[DataArray, np.ndarray, np.ndarray]:
     y_orig_coords = se.y.data
 
     # Translate
-    tx, ty = _get_translation(se)
+    tx, ty = _get_translation(se, to_coordinate_system=to_coordinate_system)
     x_coords = xr.DataArray(tx + np.arange(se.sizes["x"], dtype="float64"), dims="x")
     y_coords = xr.DataArray(ty + np.arange(se.sizes["y"], dtype="float64"), dims="y")
     se = se.assign_coords({"x": x_coords, "y": y_coords})
@@ -157,17 +169,49 @@ def _fix_dimensions(
     return array
 
 
-def _add_image_layer(
+def add_image_layer(
     sdata: SpatialData,
     arr: Array,
     output_layer: str,
     dims: tuple[str, ...] | None = None,
-    chunks: str | tuple[int, int, int] | int | None = None,
+    chunks: str | tuple[int, ...] | int | None = None,
     transformations: MappingToCoordinateSystem_t | None = None,
     scale_factors: ScaleFactors_t | None = None,
     c_coords: list[str] | None = None,
     overwrite: bool = False,
-):
+) -> SpatialData:
+    """
+    Add an image layer to a SpatialData object.
+
+    This function allows you to add an image layer to `sdata`.
+    If `sdata` is backed by a zarr store, the resulting image layer will be backed to the zarr store, otherwise `arr` will be persisted in memory.
+    All layers of the Dask graph associated with `arr` will therefore be materialized upon calling `add_image_layer`.
+
+    Parameters
+    ----------
+    sdata
+        The SpatialData object to which the new image layer will be added.
+    arr
+        The array containing the image data to be added.
+    output_layer
+        The name of the output layer where the image data will be stored.
+    dims
+        A tuple specifying the dimensions of the image data (e.g., ("c", "z", "y", "x")). If None, defaults will be inferred.
+    chunks
+        Specification for chunking the data.
+    transformations
+        Transformations that will be added to resulting `output_layer`.
+    scale_factors
+        Scale factors to apply for multiscale data. If specified `output_layer` will be multiscale.
+    c_coords
+        Names of the channels. If None, channel names will be named sequentially as 0,1,...
+    overwrite
+        If True, overwrites the output layer if it already exists in `sdata`.
+
+    Returns
+    -------
+    The `sdata` object with the image layer added.
+    """
     manager = ImageLayerManager()
     sdata = manager.add_layer(
         sdata,
@@ -184,16 +228,46 @@ def _add_image_layer(
     return sdata
 
 
-def _add_label_layer(
+def add_labels_layer(
     sdata: SpatialData,
     arr: Array,
     output_layer: str,
     dims: tuple[str, ...] | None = None,
-    chunks: str | tuple[int, int] | int | None = None,
+    chunks: str | tuple[int, ...] | int | None = None,
     transformations: MappingToCoordinateSystem_t | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
-):
+) -> SpatialData:
+    """
+    Add a labels layer to a SpatialData object.
+
+    This function allows you to add a labels layer to `sdata`.
+    If `sdata` is backed by a zarr store, the resulting labels layer will be backed to the zarr store, otherwise `arr` will be persisted in memory.
+    All layers of the Dask graph associated with `arr` will therefore be materialized upon calling `add_labels_layer`.
+
+    Parameters
+    ----------
+    sdata
+        The SpatialData object to which the new labels layer will be added.
+    arr
+        The array containing the labels data to be added. Should be of type int.
+    output_layer
+        The name of the output layer where the labels data will be stored.
+    dims
+        A tuple specifying the dimensions of the labels data (e.g., (""z", "y", "x")). If None, defaults will be inferred.
+    chunks
+        Specification for chunking the data.
+    transformations
+        Transformations that will be added to resulting `output_layer`.
+    scale_factors
+        Scale factors to apply for multiscale data. If specified `output_layer` will be multiscale
+    overwrite
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
+
+    Returns
+    -------
+    The `sdata` object with the labels layer added.
+    """
     manager = LabelLayerManager()
     sdata = manager.add_layer(
         sdata,
