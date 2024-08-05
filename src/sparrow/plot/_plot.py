@@ -129,6 +129,7 @@ def plot_shapes(
     column: str | None = None,
     region: str | None = None,
     cmap: str | None = "magma",
+    linewidth: float = 1.0,
     channel: int | str | Iterable[int] | Iterable[str] | None = None,
     z_slice: float | None = None,
     alpha: float = 0.5,
@@ -201,6 +202,8 @@ def plot_shapes(
         If `table_layer` and `column` is specified, this specifies the region in `sdata.tables[table_layer]` to be plotted (via `sdata.tables[table_layer].obs[_REGION_KEY]`).
     cmap
         Colormap for column. Ignored if column is None, or if column + "_colors" is in `sdata.tables[table_layer].uns`.
+    linewidth
+        linewidth of the shapes layer to be plotted.
     channel
         Channel(s) to be displayed from the image. Displayed as rows in the plot.
         If channel is None, get the number of channels from the first img_layer given as input.
@@ -349,6 +352,7 @@ def plot_shapes(
                 column=column,
                 region=region,
                 cmap=cmap,
+                linewidth=linewidth,
                 channel=_channel,
                 z_slice=z_slice,
                 alpha=alpha,
@@ -385,6 +389,7 @@ def _plot(
     column: str | None = None,
     region: str | None = None,
     cmap: str | None = "magma",
+    linewidth: float = 1.0,
     channel: int | str | None = None,
     z_slice: float | None = None,
     alpha: float = 0.5,
@@ -423,6 +428,8 @@ def _plot(
         If `table_layer` and `column` is specified, this specifies the region in `sdata.tables[table_layer]` to be plotted (via `sdata.tables[table_layer].obs[_REGION_KEY]`).
     cmap
         Colormap for column. Ignored if column is None, or if column + "_colors" is in `sdata.tables[table_layer].uns`.
+    linewidth
+        linewidth of the shapes layer to be plotted.
     channel
         Channel to display from the image. If none provided, or if provided channel could not be found, first channel is plot.
         Ignored if img_layer is None and labels_layer is specified.
@@ -537,7 +544,6 @@ def _plot(
             return
     else:
         crd = image_boundary
-    size_im = (crd[1] - crd[0]) * (crd[3] - crd[2])
 
     z_index = None
     if z_slice is not None:
@@ -687,7 +693,7 @@ def _plot(
                 ax=ax,
                 edgecolor="white",
                 column=column,
-                linewidth=1 if size_im < 5000 * 10000 else 0,
+                linewidth=linewidth,
                 alpha=alpha,
                 legend=True,
                 aspect=1,
@@ -708,7 +714,7 @@ def _plot(
                         polygons.plot(
                             ax=ax,
                             edgecolor="red",
-                            linewidth=1,
+                            linewidth=linewidth,
                             alpha=alpha,
                             legend=True,
                             aspect=1,
