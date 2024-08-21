@@ -5,13 +5,14 @@
 There are some built-in datasets. For example to get data from a [Resolve](https://resolvebiosciences.com/) experiment on mouse liver:
 
 ```
-from sparrow.datasets.registry import registry
+from sparrow.datasets.registry import get_registry
 
+registry=get_registry()
 path_image = registry.fetch( "transcriptomics/resolve/mouse/20272_slide1_A1-1_DAPI.tiff" )
 path_coordinates = registry.fetch("transcriptomics/resolve/mouse/20272_slide1_A1-1_results.txt")
 ```
 
-And to download an example SpatialData object resuling from running the `Harpy` pipeline:
+And to download an example SpatialData object resulting from running the `Harpy` pipeline:
 
 ```
 import sparrow as sp

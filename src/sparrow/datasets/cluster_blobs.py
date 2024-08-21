@@ -27,7 +27,7 @@ def cluster_blobs(
     instance_key=_INSTANCE_KEY,
     seed: int | None = None,
 ):
-    """Differs from spatialdata.datasets.make_blobs in that it generates a cells with multiple image channels and known ground truth cell types."""
+    """Differs from spatialdata.datasets.make_blobs in that it generates cells with multiple image channels and known ground truth cell types."""
     if shape is None:
         shape = (512, 512)
     if seed is None:

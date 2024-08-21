@@ -11,7 +11,7 @@ from spatialdata import read_zarr
 from sparrow.datasets.cluster_blobs import cluster_blobs
 from sparrow.datasets.pixie_example import pixie_example
 from sparrow.datasets.proteomics import mibi_example
-from sparrow.datasets.registry import registry
+from sparrow.datasets.registry import get_registry
 from sparrow.datasets.transcriptomics import resolve_example, resolve_example_multiple_coordinate_systems
 
 
@@ -22,6 +22,7 @@ def cfg_pipeline_global(path_dataset_markers) -> DictConfig:
 
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
+    registry = get_registry()
     dataset_image = registry.fetch("transcriptomics/resolve/mouse/20272_slide1_A1-1_DAPI_4288_2144.tiff")
     dataset_coords = registry.fetch("transcriptomics/resolve/mouse/20272_slide1_A1-1_results_4288_2144.txt")
 
@@ -103,4 +104,5 @@ def sdata_pixie():
 
 @pytest.fixture
 def path_dataset_markers():
+    registry = get_registry()
     return registry.fetch("transcriptomics/resolve/mouse/dummy_markers.csv")

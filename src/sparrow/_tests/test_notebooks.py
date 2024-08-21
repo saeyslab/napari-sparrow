@@ -17,7 +17,7 @@ def run_notebook(notebook_path, timeout=600):
         raise RuntimeError(f"Error executing the notebook '{notebook_path}': {e}") from e
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 @pytest.mark.skipif(
     not importlib.util.find_spec("cellpose"),
     reason="requires the cellpose library",
@@ -34,7 +34,7 @@ def test_notebooks_harpy_quickstart(notebook):
     run_notebook(os.path.join(root, "docs/tutorials", notebook))
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 @pytest.mark.parametrize(
     "notebook",
     [
@@ -47,7 +47,7 @@ def test_notebooks_coordinate_systems(notebook):
     run_notebook(os.path.join(root, "docs/tutorials", notebook))
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 @pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
 @pytest.mark.parametrize(
     "notebook",
@@ -61,7 +61,7 @@ def test_notebooks_flowsom(notebook):
     run_notebook(os.path.join(root, "docs/tutorials", notebook))
 
 
-@pytest.mark.skip
+# @pytest.mark.skip
 @pytest.mark.skipif(
     not importlib.util.find_spec("cellpose") or not importlib.util.find_spec("basicpy"),
     reason="requires the cellpose and basicpy libraries",
