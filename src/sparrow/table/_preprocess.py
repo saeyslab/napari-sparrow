@@ -365,7 +365,7 @@ def _get_mask_area(mask: Array) -> pd.DataFrame:
 
     delayed_results = [calculate_area(chunk) for chunk in mask.to_delayed().flatten()]
 
-    results = dask.compute(*delayed_results, scheduler="threads")
+    results = dask.compute(*delayed_results)
 
     combined_counts = defaultdict(int)
 

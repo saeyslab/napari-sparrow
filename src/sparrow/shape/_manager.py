@@ -134,6 +134,7 @@ class ShapesLayerManager:
 
     @get_polygons_from_input.register(Array)
     def _get_polygons_from_array(self, input: Array) -> GeoDataFrame:
+        assert np.issubdtype(input.dtype, np.integer), "Only integer arrays are supported."
         dimension = self.get_dims(input)
         if dimension == 3:
             all_polygons = []
@@ -293,7 +294,7 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
         extract_polygons(chunk, coord) for chunk, coord in zip(mask.to_delayed().flatten(), chunk_coords)
     ]
     # Compute the results
-    results = dask.compute(*delayed_results, scheduler="threads")
+    results = dask.compute(*delayed_results)
 
     # Combine the results into a single list of polygons and values
     all_polygons = []
