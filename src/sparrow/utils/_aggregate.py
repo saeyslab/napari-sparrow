@@ -1,6 +1,6 @@
-# write general functions to do an aggregation between an image layer or points layer and a labels layer.
 from functools import partial
-from typing import Callable
+from types import MappingProxyType
+from typing import Any, Callable, Mapping
 
 import dask.array as da
 import numpy as np
@@ -15,19 +15,21 @@ from sparrow.utils._keys import _CELLSIZE_KEY, _INSTANCE_KEY
 class Aggregator:
     """Helper class to calulate aggregated 'sum', 'mean', 'var', 'area', 'min' or 'max' of image and labels using Dask."""
 
-    def __init__(self, mask_dask_array: da.Array, image_dask_array: da.Array):
+    def __init__(self, mask_dask_array: da.Array, image_dask_array: da.Array | None):
         if not np.issubdtype(mask_dask_array.dtype, np.integer):
             raise ValueError(f"'mask_dask_array' should contains chunks of type {np.integer}.")
         self._labels = (
             da.unique(mask_dask_array).compute()
         )  # calculate this one time during initialization, otherwise we would need to calculate this multiple times.
-        assert image_dask_array.ndim == 4, "Currently only 4D image arrays are supported ('c', 'z', 'y', 'x')."
+        if image_dask_array is not None:
+            assert image_dask_array.ndim == 4, "Currently only 4D image arrays are supported ('c', 'z', 'y', 'x')."
+            assert (
+                image_dask_array.shape[1:] == mask_dask_array.shape
+            ), "The mask and the image should have the same spatial dimensions ('z', 'y', 'x')."
+            self._image = image_dask_array
         assert mask_dask_array.ndim == 3, "Currently only 3D masks are supported ('z', 'y', 'x')."
-        assert (
-            image_dask_array.shape[1:] == mask_dask_array.shape
-        ), "The mask and the image should have the same spatial dimensions ('z', 'y', 'x')."
+
         self._mask = mask_dask_array
-        self._image = image_dask_array
 
     def aggregate_sum(
         self,
@@ -242,6 +244,88 @@ class Aggregator:
 
         return min_max_func(dask_array, axis=1).compute().reshape(-1, 1)
 
+    def _aggregate_custom_channel(
+        self,
+        image: da.Array | None,
+        mask: da.Array,
+        depth: int,  # choose depth > estimated diameter of largest cell
+        fn: Callable[[NDArray[np.int_], NDArray[np.int_ | np.float_] | None], NDArray[np.float_]],
+        fn_kwargs: Mapping[str, Any] = MappingProxyType(
+            {}
+        ),  # fn is a callable that returns a 1D array with len == nr of unique labels in the mask passed to fn excluding 0
+        dtype: np.dtype = np.float32,  # output dtype
+    ) -> NDArray:
+        """
+        Aggregates a custom operation over a masked region of an image, with the option to pass additional parameters to a custom function.
+
+        Parameters
+        ----------
+        image
+            The input image array. If None, the function will only process the `mask`. The array is expected
+            to be a dask array (da.Array). If not None, the function will apply the operation to the image
+            based on the mask regions.
+        mask
+            A dask array representing the mask. Each unique non-zero value in the mask identifies
+            a separate region of interest (ROI), typically a cell. The mask array must have integer values corresponding to
+            different cells in the image.
+        depth
+            depth is passed as `depth` to `dask.array.map_overlap`, where `depth` must be greater than the estimated
+            diameter of the largest region of interest in the `mask`. This value ensures the appropriate
+            neighborhood is considered when applying the function `fn`.
+        fn
+            A custom function that performs operations on a mask and an optional image array. The function should accept
+            one or two NumPy arrays depending whether image is None or not: the first is the mask as an integer array,
+            and the second is the image as a float or integer array. It must return a 1D NumPy array of type `np.float_`, where
+            the length of the returned array matches the number of unique labels in the mask passed to `fn` (excluding label `0`),
+            ordered by its correponding label number.
+            User warning: the number of unique labels in the mask passed to `fn` is not equal to the number of
+            unique labels in `mask` due to the use of `dask.array.map_overlap`.
+        fn_kwargs
+            Additional keyword arguments to be passed to the function `fn`. The default is an empty `MappingProxyType`.
+        dtype : np.dtype, optional
+            The data type of the output array. By default, this is `np.float32`. It can be changed to any valid
+            NumPy data type if necessary.
+
+        Returns
+        -------
+        A 1D NumPy array containing the aggregated results of the custom operation `fn`, applied to the regions defined by the `mask`.
+        The array has the same number of elements as the unique labels in the `mask` excluding `0`, and the results are ordered based on the ordered labels.
+        """
+        assert mask.numblocks[0] == 1, "mask can not be chunked in z-dimension. Please rechunk."
+        depth = (0, depth, depth)
+        _labels = self._labels[self._labels != 0]
+        if image is not None:
+            assert image.numblocks[0] == 1, "image can not be chunked in z-dimension. Please rechunk."
+            arrays = [mask, image]
+        else:
+            arrays = [mask]
+        dask_chunks = da.map_overlap(
+            lambda *arrays, block_info=None, **kw: _aggregate_custom_block(*arrays, block_info=block_info, **kw),
+            *arrays,
+            dtype=dtype,
+            chunks=(len(_labels), 1),
+            trim=False,
+            drop_axis=0,
+            boundary=0,
+            depth=depth,
+            index=_labels,
+            _depth=depth,
+            fn=fn,  # callable.
+            fn_kwargs=fn_kwargs,  # keywords of the callable
+        )
+
+        dask_chunks = [
+            da.from_delayed(_chunk, shape=(len(_labels), 1), dtype=dtype)
+            for _chunk in dask_chunks.to_delayed().flatten()
+        ]
+
+        # dask_array is an array of shape (len(_labels), nr_of_chunks in image/mask )
+        dask_array = da.concatenate(dask_chunks, axis=1)
+
+        return (
+            da.nansum(dask_array, axis=1).compute().reshape(-1, 1)
+        )  # da.nansum ignores np.nan added by _aggregate_custom_block
+
 
 def _get_mask_area(mask: da.Array, index: NDArray | None = None) -> pd.DataFrame:
     if index is None:
@@ -295,3 +379,102 @@ def _get_min_max_dtype(array):
         return np.finfo(dtype).min, np.finfo(dtype).max
     else:
         raise TypeError("Unsupported dtype")
+
+
+def _aggregate_custom_block(
+    *arrays,
+    index: NDArray,
+    block_info,
+    _depth,
+    fn: Callable,
+    fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
+) -> NDArray:
+    mask_block = arrays[0]
+    if len(arrays) == 2:
+        image_block = arrays[1]
+        assert mask_block.shape == image_block.shape
+    if len(arrays) > 2:
+        raise ValueError("Only accepts one or two arrays.")
+    assert 0 not in index
+    total_nr_of_blocks = block_info[0]["num-chunks"]
+    block_location = block_info[0]["chunk-location"]
+    # check if chunk is on border of larger dask array
+    y_upper_border = block_location[1] + 1 == total_nr_of_blocks[1]
+    x_upper_border = block_location[2] + 1 == total_nr_of_blocks[2]
+    y_lower_border = block_location[1] == 0
+    x_lower_border = block_location[2] == 0
+
+    border_labels = set()
+    if not y_upper_border:
+        # you do not only extract the ones on border, but in the overlap region that is in the current block,
+        # e.g. you go from _depth[1] : _depth[1] * 2
+        # otherwise you could miss masks that are crossing the border, but are non continuous and do not overlap with the border.
+        # we still assume diameter < depth
+        border_labels.update(set(np.unique(mask_block[:, -(_depth[1] * 2) : -(_depth[1]), _depth[2] : -_depth[2]])))
+    if not x_upper_border:
+        border_labels.update(set(np.unique(mask_block[:, _depth[1] : -_depth[1], -(_depth[2] * 2) : -(_depth[2])])))
+    if not y_lower_border:
+        border_labels.update(set(np.unique(mask_block[:, _depth[1] : _depth[1] * 2, _depth[2] : -_depth[2]])))
+    if not x_lower_border:
+        border_labels.update(set(np.unique(mask_block[:, _depth[1] : -_depth[1], _depth[2] : _depth[2] * 2])))
+    if 0 in border_labels:
+        border_labels.remove(0)
+
+    border_labels = list(border_labels)
+    center_of_mass_border_labels = ndimage.center_of_mass(input=mask_block, labels=mask_block, index=border_labels)
+
+    def _isin_original(center: tuple[float, float, float]):
+        return (
+            center[1] >= _depth[1]
+            and center[1] < (mask_block.shape[1] - _depth[1])
+            and center[2] >= _depth[2]
+            and center[2] < (mask_block.shape[2] - _depth[2])
+        )
+
+    border_labels_in_original_block = []
+    for _center in center_of_mass_border_labels:
+        if _isin_original(_center):
+            border_labels_in_original_block.append(True)
+        else:
+            border_labels_in_original_block.append(False)
+
+    # get the border labels not to consider
+    if border_labels:
+        border_labels_not_to_consider = np.array(border_labels)[~np.array(border_labels_in_original_block)]
+
+    # Set all masks that are fully outside the region to zero, they will be covered by other chunks
+    subset = mask_block[:, _depth[1] : -_depth[1], _depth[2] : -_depth[2]]
+    # Unique masks gives you all masks that are at least partially in 'original' array (i.e. without depth added)
+    unique_masks = np.unique(subset)
+    # remove masks that are on border, but are covered by other chunks, because center of mass is in other chunk
+    if border_labels:
+        unique_masks = unique_masks[~np.isin(unique_masks, border_labels_not_to_consider)]
+
+    # Create a mask for labels that are NOT in unique_masks
+    mask = ~np.isin(mask_block, unique_masks)
+    mask_block[mask] = 0
+
+    unique_masks = unique_masks[unique_masks != 0]
+    index = index[index != 0]
+
+    # if no labels in the block, there is nothing to calculate,
+    # so return 1D array containing nan at each position.
+    if len(unique_masks) == 0:
+        result = np.full(index.shape, np.nan)
+        return result.reshape(-1, 1)
+
+    idxs = np.searchsorted(unique_masks, index)
+    idxs[idxs >= unique_masks.size] = 0
+    found = unique_masks[idxs] == index
+
+    result = fn(*arrays, **fn_kwargs)  # fn can either take in a mask + image, or only a mask
+    result = result.flatten()
+    assert (
+        result.shape == unique_masks.shape
+    ), "Callable 'fn' should return an array with length equal to the number of non zero labels in the provided mask."
+    assert np.issubdtype(result.dtype, np.floating), "Callable 'fn' should return an array of dtype 'float'."
+    if any(np.isnan(result)):
+        raise AssertionError("Result of callable 'fn' is not allowed to contain NaN.")
+    result = result[idxs]
+    result[~found] = np.nan
+    return result.reshape(-1, 1)
