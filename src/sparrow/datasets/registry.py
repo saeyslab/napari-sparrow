@@ -44,6 +44,7 @@ def get_registry(path: str | Path | None = None) -> Pooch:
             "transcriptomics/visium_hd/mouse/binned_outputs/square_002um/spatial/tissue_positions.parquet": "e5744349d3b1d72d89c926aad099eda5d09bd59f3128da5c3562d50225161911",
             "transcriptomics/visium_hd/mouse/binned_outputs/square_002um/filtered_feature_bc_matrix.h5": "7e5f205a05d6b985a8c365554f6d428ca7fd22065eb89cd277806231528ddaae",
             "proteomics/mibi_tof/sdata_multi_channel.zarr.zip": "930fd2574666b90d5d6660ad8b52d47afffc9522704b9e6fef39d11c9cfff06e",
+            "proteomics/macsima/sdata_multi_channel.zarr.zip": "26187fe62b75c3411f948cbcea52abd24b318992509e768c2ed2f55ddcb99f28",
         },
     )
     return registry

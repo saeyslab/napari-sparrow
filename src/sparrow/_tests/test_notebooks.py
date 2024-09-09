@@ -25,10 +25,26 @@ def run_notebook(notebook_path, timeout=600):
 @pytest.mark.parametrize(
     "notebook",
     [
-        "Harpy_quickstart.ipynb",
+        "Harpy_transcriptomics.ipynb",
     ],
 )
-def test_notebooks_harpy_quickstart(notebook):
+def test_notebooks_harpy_transcriptomics(notebook):
+    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
+
+    run_notebook(os.path.join(root, "docs/tutorials", notebook))
+
+
+@pytest.mark.skipif(
+    not importlib.util.find_spec("cellpose"),
+    reason="requires the cellpose library",
+)
+@pytest.mark.parametrize(
+    "notebook",
+    [
+        "Harpy_feature_calculation.ipynb",
+    ],
+)
+def test_notebooks_harpy_feature_calculation(notebook):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
     run_notebook(os.path.join(root, "docs/tutorials", notebook))

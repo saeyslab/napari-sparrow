@@ -11,4 +11,16 @@ def mibi_example() -> SpatialData:
     # Fetch and unzip the file
     registry = get_registry()
     unzip_path = registry.fetch("proteomics/mibi_tof/sdata_multi_channel.zarr.zip", processor=pooch.Unzip())
-    return read_zarr(os.path.commonpath(unzip_path))
+    sdata = read_zarr(os.path.commonpath(unzip_path))
+    sdata.path = None
+    return sdata
+
+
+def macsima_example() -> SpatialData:
+    """Example proteomics dataset"""
+    # Fetch and unzip the file
+    registry = get_registry()
+    unzip_path = registry.fetch("proteomics/macsima/sdata_multi_channel.zarr.zip", processor=pooch.Unzip())
+    sdata = read_zarr(os.path.commonpath(unzip_path))
+    sdata.path = None
+    return sdata
