@@ -52,8 +52,7 @@ def bounding_box_query(
 
     Returns
     -------
-    SpatialData
-        A new SpatialData object containing the extracted bounding box region and associated data layers.
+    A new SpatialData object containing the extracted bounding box region and associated data layers.
 
     Raises
     ------
@@ -71,8 +70,6 @@ def bounding_box_query(
     assert (
         len(labels_layer) == len(crd) == len(to_coordinate_system)
     ), "The number of 'labels_layer', 'crd' and 'to_coordinate_system' specified should all be equal."
-
-    region = []
 
     sdata_queried = SpatialData()
     # back resulting sdata to zarr store if output is specified
@@ -118,6 +115,7 @@ def bounding_box_query(
 
     # now query the associated table layer
     for _table_layer in [*sdata.tables]:
+        region = []
         adata = sdata.tables[_table_layer]
         remove = np.ones(len(adata), dtype=bool)
 
