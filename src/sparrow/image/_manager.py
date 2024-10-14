@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-import os
-import shutil
 import uuid
 from abc import ABC, abstractmethod
 from typing import Any
 
 import spatialdata
 from dask.array import Array
-from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
-from spatial_image import SpatialImage
-from spatialdata import SpatialData
+from datatree import DataTree
+from spatialdata import SpatialData, read_zarr
+from spatialdata.models._utils import MappingToCoordinateSystem_t
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import BaseTransformation, set_transformation
+from xarray import DataArray
 
+from sparrow.utils._io import _incremental_io_on_disk
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -27,14 +26,16 @@ class LayerManager(ABC):
         output_layer: str,
         dims: tuple[str, ...] | None = None,
         chunks: str | tuple[int, ...] | int | None = None,
-        transformation: BaseTransformation | dict[str, BaseTransformation] = None,
+        transformations: MappingToCoordinateSystem_t | None = None,
         scale_factors: ScaleFactors_t | None = None,
         overwrite: bool = False,
         **kwargs: Any,  # kwargs passed to create_spatial_element
     ) -> SpatialData:
         chunks = chunks or arr.chunksize
         if dims is None:
-            log.warning("No dims parameter specified. Assuming order of dimension of provided array is (c, (z), y, x)")
+            log.warning(
+                "No dims parameter specified. Assuming order of dimension of provided array is ((c), (z), y, x)"
+            )
             dims = self.get_dims(arr)
 
         intermediate_output_layer = None
@@ -45,10 +46,9 @@ class LayerManager(ABC):
                     dims=dims,
                     scale_factors=None,
                     chunks=chunks,
+                    transformations=transformations,
                     **kwargs,
                 )
-                if transformation is not None:
-                    set_transformation(spatial_element, transformation)
 
                 intermediate_output_layer = f"{uuid.uuid4()}_{output_layer}"
                 log.info(f"Writing intermediate non-multiscale results to layer '{intermediate_output_layer}'")
@@ -72,11 +72,9 @@ class LayerManager(ABC):
             dims=dims,
             scale_factors=scale_factors,
             chunks=chunks,
+            transformations=transformations,
             **kwargs,
         )
-
-        if transformation is not None:
-            set_transformation(spatial_element, transformation)
 
         log.info(f"Writing results to layer '{output_layer}'")
 
@@ -91,11 +89,9 @@ class LayerManager(ABC):
             log.info(
                 f"Removing intermediate output layer '{intermediate_output_layer}' from .zarr store at path {sdata.path}."
             )
-            if os.path.isdir(sdata.path) and sdata.path.endswith(".zarr"):
-                location = sdata._locate_spatial_element(sdata[intermediate_output_layer])
-
-                shutil.rmtree(os.path.join(sdata.path, location[1], location[0]))
-                sdata = self.remove_from_sdata(sdata, intermediate_output_layer)
+            del sdata[intermediate_output_layer]
+            if sdata.is_backed():
+                sdata.delete_element_from_disk(intermediate_output_layer)
 
         return sdata
 
@@ -107,7 +103,7 @@ class LayerManager(ABC):
         scale_factors: ScaleFactors_t | None = None,
         chunks: str | tuple[int, ...] | int | None = None,
         **kwargs: Any,
-    ) -> SpatialImage | MultiscaleSpatialImage:
+    ) -> DataArray | DataTree:
         pass
 
     @abstractmethod
@@ -119,7 +115,7 @@ class LayerManager(ABC):
         self,
         sdata: SpatialData,
         output_layer: str,
-        spatial_element: SpatialImage | MultiscaleSpatialImage,
+        spatial_element: DataArray | DataTree,
         overwrite: bool = False,
     ) -> SpatialData:
         pass
@@ -128,29 +124,17 @@ class LayerManager(ABC):
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
         pass
 
-    def remove_intermediate_layer(self, sdata: SpatialData, intermediate_output_layer: str) -> SpatialData:
-        log.info(
-            f"Removing intermediate output layer '{intermediate_output_layer}' from .zarr store at path {sdata.path}."
-        )
-        if os.path.isdir(sdata.path) and sdata.path.endswith(".zarr"):
-            shutil.rmtree(os.path.join(sdata.path, "images", intermediate_output_layer))
-            sdata = self.remove_from_sdata(sdata, intermediate_output_layer)
-        return sdata
-
-    @abstractmethod
-    def remove_from_sdata(self, sdata, name):
-        pass
-
 
 class ImageLayerManager(LayerManager):
     def create_spatial_element(
         self,
         arr: Array,
-        dims: tuple[str, str, str],
+        dims: tuple[str, ...],
         scale_factors: ScaleFactors_t | None = None,
         chunks: str | tuple[int, int, int] | int | None = None,
+        transformations: MappingToCoordinateSystem_t | None = None,
         c_coords: list[str] | None = None,
-    ) -> SpatialImage | MultiscaleSpatialImage:
+    ) -> DataArray | DataTree:
         if len(dims) == 3:
             return spatialdata.models.Image2DModel.parse(
                 arr,
@@ -158,6 +142,7 @@ class ImageLayerManager(LayerManager):
                 scale_factors=scale_factors,
                 chunks=chunks,
                 c_coords=c_coords,
+                transformations=transformations,
             )
         elif len(dims) == 4:
             return spatialdata.models.Image3DModel.parse(
@@ -166,6 +151,7 @@ class ImageLayerManager(LayerManager):
                 scale_factors=scale_factors,
                 chunks=chunks,
                 c_coords=c_coords,
+                transformations=transformations,
             )
         else:
             raise ValueError(
@@ -185,18 +171,31 @@ class ImageLayerManager(LayerManager):
         self,
         sdata: SpatialData,
         output_layer: str,
-        spatial_element: SpatialImage | MultiscaleSpatialImage,
+        spatial_element: DataArray | DataTree,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.add_image(name=output_layer, image=spatial_element, overwrite=overwrite)
+        # given a spatial_element with some graph defined on it.
+        if output_layer in [*sdata.images]:
+            if sdata.is_backed():
+                if overwrite:
+                    sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=spatial_element)
+                else:
+                    raise ValueError(
+                        f"Attempting to overwrite 'sdata.images[\"{output_layer}\"]', but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
+                    )
+            else:
+                sdata[output_layer] = spatial_element
+
+        else:
+            sdata[output_layer] = spatial_element
+            if sdata.is_backed():
+                sdata.write_element(output_layer)
+                sdata = read_zarr(sdata.path)
+
         return sdata
 
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> Array:
         return sdata.images[name].data
-
-    def remove_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
-        del sdata.images[name]
-        return sdata
 
 
 class LabelLayerManager(LayerManager):
@@ -206,20 +205,19 @@ class LabelLayerManager(LayerManager):
         dims: tuple[str, str],
         scale_factors: ScaleFactors_t | None = None,
         chunks: str | tuple[int, int] | int | None = None,
-    ) -> SpatialImage | MultiscaleSpatialImage:
+        transformations: MappingToCoordinateSystem_t | None = None,
+    ) -> DataArray | DataTree:
         if len(dims) == 2:
             return spatialdata.models.Labels2DModel.parse(
                 arr,
                 dims=dims,
                 scale_factors=scale_factors,
                 chunks=chunks,
+                transformations=transformations,
             )
         elif len(dims) == 3:
             return spatialdata.models.Labels3DModel.parse(
-                arr,
-                dims=dims,
-                scale_factors=scale_factors,
-                chunks=chunks,
+                arr, dims=dims, scale_factors=scale_factors, chunks=chunks, transformations=transformations
             )
         else:
             raise ValueError(
@@ -239,15 +237,27 @@ class LabelLayerManager(LayerManager):
         self,
         sdata: SpatialData,
         output_layer: str,
-        spatial_element: SpatialImage | MultiscaleSpatialImage,
+        spatial_element: DataArray | DataTree,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.add_labels(name=output_layer, labels=spatial_element, overwrite=overwrite)
+        # given a spatial_element with some graph defined on it.
+        if output_layer in [*sdata.labels]:
+            if sdata.is_backed():
+                if overwrite:
+                    sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=spatial_element)
+                else:
+                    raise ValueError(
+                        f"Attempting to overwrite 'sdata.labels[\"{output_layer}\"]', but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
+                    )
+            else:
+                sdata[output_layer] = spatial_element
+        else:
+            sdata[output_layer] = spatial_element
+            if sdata.is_backed():
+                sdata.write_element(output_layer)
+                sdata = read_zarr(sdata.path)
+
         return sdata
 
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> Array:
         return sdata.labels[name].data
-
-    def remove_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
-        del sdata.labels[name]
-        return sdata

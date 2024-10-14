@@ -15,6 +15,7 @@ from spatialdata import SpatialData, read_zarr
 
 import sparrow.utils as utils
 from sparrow.pipeline import SparrowPipeline
+from sparrow.plot._plot import _translate_polygons
 
 log = utils.get_pylogger(__name__)
 
@@ -60,7 +61,7 @@ def segment_widget(
     cellprob_threshold: int = -2,
     model_type: ModelOption = ModelOption.nuclei,
     channels: List[int] = [1, 0],  # noqa: B006 # magicgui does not accept None
-    voronoi_radius: int = 0,
+    expand_radius: int = 0,
     chunks: int = 2048,
     depth: int = 100,
 ):
@@ -126,7 +127,7 @@ def segment_widget(
     pipeline.cfg.segmentation.channels = channels
     pipeline.cfg.segmentation.chunks = chunks
     pipeline.cfg.segmentation.depth = depth
-    pipeline.cfg.segmentation.voronoi_radius = voronoi_radius
+    pipeline.cfg.segmentation.expand_radius = expand_radius
 
     # Bug in spatialdata. We can not pass overwrite==True if the labels layer is not yet available.
     if [*sdata.labels]:
@@ -150,12 +151,14 @@ def segment_widget(
             # otherwise add it to the viewer
             log.info(f"Adding {layer_name}")
 
-        if pipeline.cfg.segmentation.voronoi_radius:
-            shapes_layer = f"expanded_cells{ pipeline.cfg.segmentation.voronoi_radius}"
+        if pipeline.cfg.segmentation.expand_radius:
+            shapes_layer = f"expanded_cells_shapes_{pipeline.cfg.segmentation.expand_radius}"
         else:
             shapes_layer = pipeline.cfg.segmentation.output_shapes_layer
 
-        polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[shapes_layer])
+        polygons = _translate_polygons(sdata.shapes[shapes_layer].copy(), to_coordinate_system="global")
+
+        polygons = utils._get_polygons_in_napari_format(df=polygons)
 
         show_info("Adding segmentation shapes, this can be slow on large images...")
         viewer.add_shapes(
@@ -169,7 +172,10 @@ def segment_widget(
         )
 
         # we need the original shapes, in order for next step (allocation) to be able to run allocation step multiple times
-        viewer.layers[layer_name].metadata["shapes"] = sdata.shapes.copy()
+        shapes = {}
+        for shapes_name, polygons in sdata.shapes.items():
+            shapes[shapes_name] = polygons.copy()
+        viewer.layers[layer_name].metadata["shapes"] = shapes
         viewer.layers[layer_name].metadata["pipeline"] = pipeline
 
         log.info(f"Added {utils.SEGMENT} layer")

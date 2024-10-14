@@ -7,8 +7,8 @@ from typing import Any
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from datatree import DataTree
 from geopandas import GeoDataFrame
-from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
 from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
 from shapely.geometry import LineString, MultiLineString
@@ -62,8 +62,8 @@ def _swap_coordinates(data: list[Any]) -> list[Any]:
     return [[(y, x) for x, y in sublist] for sublist in data]
 
 
-def _get_raster_multiscale(element: MultiscaleSpatialImage) -> list[DataArray]:
-    if not isinstance(element, MultiscaleSpatialImage):
+def _get_raster_multiscale(element: DataTree) -> list[DataArray]:
+    if not isinstance(element, DataTree):
         raise TypeError(f"Unsupported type for images or labels: {type(element)}")
 
     axes = get_axes_names(element)
@@ -107,3 +107,19 @@ def _export_config(cfg: DictConfig, output_yaml: str | Path):
     os.makedirs(output_dir, exist_ok=True)
     with open(output_yaml, "w") as f:
         f.write(yaml_config)
+
+
+def _get_uint_dtype(value: int) -> str:
+    max_uint64 = np.iinfo(np.uint64).max
+    max_uint32 = np.iinfo(np.uint32).max
+    max_uint16 = np.iinfo(np.uint16).max
+
+    if max_uint16 >= value:
+        dtype = "uint16"
+    elif max_uint32 >= value:
+        dtype = "uint32"
+    elif max_uint64 >= value:
+        dtype = "uint64"
+    else:
+        raise ValueError(f"Maximum cell number is {value}. Values higher than {max_uint64} are not supported.")
+    return dtype

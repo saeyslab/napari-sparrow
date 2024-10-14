@@ -1,4 +1,4 @@
-![alt text](https://github.com/saeyslab/napari-sparrow/blob/main/docs/_static/img/logo.png)
+![alt text](https://github.com/saeyslab/harpy/blob/main/docs/_static/img/logo-white.png)
 
 <!-- These badges won't work while the GitHub repo is private:
 [![License BSD-3](https://img.shields.io/pypi/l/napari-sparrow.svg?color=green)](https://github.com/saeyslab/napari-sparrow/raw/main/LICENSE)
@@ -9,28 +9,27 @@
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-sparrow)](https://napari-hub.org/plugins/napari-sparrow)
 -->
 
-**A library for Spatial Transcriptomics Data Analysis.**
+# **Harpy: A library for single-cell Spatial Proteomics data analysis.**
 
-Note: This package is still under very active development. 
-For more information, please check out the read-the-docs:
-https://sparrow-pipeline.readthedocs.io/en/latest/
+[![documentation badge](https://readthedocs.org/projects/harpy/badge/?version=latest)](https://harpy.readthedocs.io/en/latest/)
 
-# Installation
+Note: This package is still under very active development.
+
+## Installation
 
 Check out the docs for [installation instructions](docs/installation.md).
 
-# Tutorials
+## Tutorials
 
-See [here](docs/tutorials/) for tutorials.
-Tutorials are available at https://sparrow-pipeline.readthedocs.io/en/latest/
+Tutorials are available [here](https://harpy.readthedocs.io/en/latest/).
 
-# Usage
+## Usage
 
-[Learn](docs/usage.md) how SPArrOW can be integrated into your workflow in different ways.
+[Learn](docs/usage.md) how Harpy can be integrated into your workflow in different ways.
 
 ## Contributing
 
-See [here](docs/contributing.md) for info on how to contribute to SPArrOW.
+See [here](docs/contributing.md) for info on how to contribute to Harpy.
 
 ## References
 
@@ -38,7 +37,7 @@ See [here](docs/contributing.md) for info on how to contribute to SPArrOW.
 
 ## License
 
-Check license under license. SPArrOW is free for academic usage.
+Check license under license. Harpy is free for academic usage.
 For commercial usage, please contact Saeyslab.
 
 ## Issues
