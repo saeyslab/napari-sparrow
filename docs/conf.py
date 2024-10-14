@@ -120,10 +120,10 @@ html_theme = "sphinx_book_theme"
 # html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
 html_title = project_name
-html_logo = "_static/img/logo-white.png"
+html_logo = "_static/img/logo.png"
 
 html_theme_options = {
-    "repository_url": "https://github.com/saeyslab/harpy",
+    "repository_url": "https://github.com/saeyslab/napari-sparrow",
     "use_repository_button": True,
     "use_edit_page_button": True,
     "use_source_button": True,

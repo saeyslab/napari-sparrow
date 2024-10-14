@@ -25,13 +25,13 @@ def run_notebook(notebook_path, timeout=600):
 @pytest.mark.parametrize(
     "notebook",
     [
-        "Harpy_transcriptomics.ipynb",
+        "SPArrOW_quickstart.ipynb",
     ],
 )
 def test_notebooks_harpy_transcriptomics(notebook):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
-    run_notebook(os.path.join(root, "docs/tutorials/advanced", notebook))
+    run_notebook(os.path.join(root, "docs/tutorials/general", notebook))
 
 
 @pytest.mark.skip
@@ -147,4 +147,4 @@ def test_notebooks_instanseg(notebook):
 def test_notebook_sparrow_pipeline(notebook):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
-    run_notebook(os.path.join(root, "docs/tutorials", notebook))
+    run_notebook(os.path.join(root, "docs/tutorials/general", notebook))

@@ -1,4 +1,4 @@
-name: harpy
+name: napari-sparrow
 channels:
   - conda-forge
 dependencies:

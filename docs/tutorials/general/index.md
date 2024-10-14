@@ -1,13 +1,11 @@
 # General tutorials
 
-These tutorials are intended for users who are new to Harpy and want to learn the basics of working with spatial proteomics data.
+These tutorials are intended for users who are new to `SPArrOW` and want to learn the basics of working with spatial transcriptomics data.
 
 ```{eval-rst}
 .. toctree::
     :maxdepth: 1
 
-    Harpy_feature_calculation.ipynb
-    Harpy_QC_IMC.ipynb
-    FlowSOM_for_pixel_and_cell_clustering.ipynb
-    Visualizing_napari.ipynb
+    SPArrOW_quickstart.ipynb
+    SPArrOW_how_to_start.ipynb
 ```
