@@ -1,6 +1,6 @@
 # Installation
 
-We recommend using Anaconda to install SPArrOW, and we provide an [`environment.yml`](../environment.yml).
+We recommend using Anaconda to install `SPArrOW`, and we provide an [`environment.yml`](../environment.yml).
 
 ## 1. Create the conda environment:
 
@@ -24,7 +24,7 @@ pip install basicpy==1.0.0
 
 - On Mac comment out the line `mkl=2024.0.0`.
 
-Note that `basicpy==...`, `jax==...` and `jaxlib==...` can be commented in the `environment.yml` if you do not plan to use the `SPArrOW` function `sp.im.tiling_correction`, you will still be able to use SPArrOW. For a mimimal list of requirements for `SPArrOW`, we refer to the [setup.cfg](../setup.cfg).
+Note that `basicpy==...`, `jax==...` and `jaxlib==...` can be commented in the `environment.yml` if you do not plan to use the `SPArrOW` function `sp.im.tiling_correction`, you will still be able to use `SPArrOW`. For a mimimal list of requirements for `SPArrOW`, we refer to the [setup.cfg](../setup.cfg).
 
 ## 2. Install `SPArrOW`:
 
@@ -48,4 +48,6 @@ pip install "git+https://github.com/saeyslab/napari-sparrow.git#egg=sparrow[cli]
 
 ## NVIDIA GPU support
 
-We provide [environment_vib_compute.yml](../environment_vib_compute.yml) that will install `torch` with NVIDIA GPU support on Linux (tested on CentOS). After creation of the environment via `conda env create -f environment_vib_compute.yml`, activate the environment, and install `SPaRROW` via `pip install git+https://github.com/saeyslab/napari-sparrow.git`.
+We provide [environment_vib_compute.yml](../environment_vib_compute.yml) that will install `torch` with NVIDIA GPU support on Linux (tested on CentOS). After creation of the environment via `conda env create -f environment_vib_compute.yml`, activate the environment, and install `SPArrOW` via `pip install git+https://github.com/saeyslab/napari-sparrow.git`.
+
+For VIB members we also refer to [this document](./tutorials/hpc/vib_compute.md), for an example on how to use the VIB compute cluster with GPU support.

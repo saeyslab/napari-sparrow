@@ -13,9 +13,11 @@ from sparrow.image._image import (
     _get_spatial_element,
     _unapply_transform,
 )
-from sparrow.plot._plot import _get_z_slice_polygons
+from sparrow.plot._plot import _get_z_slice_polygons, _translate_polygons
 from sparrow.shape import intersect_rectangles
 from sparrow.shape._shape import _extract_boundaries_from_geometry_collection
+from sparrow.utils._keys import _GENES_KEY
+from sparrow.utils._transformations import _identity_check_transformations_points
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -34,9 +36,11 @@ def sanity_plot_transcripts_matrix(
     name_x: str = "x",
     name_y: str = "y",
     name_z: str = "z",
-    name_gene_column: str = "gene",
+    name_gene_column: str = _GENES_KEY,
     gene: str | None = None,
     crd: tuple[int, int, int, int] | None = None,
+    to_coordinate_system: str = "global",
+    figsize: tuple[int, int] | None = None,
     output: Path | str | None = None,
 ) -> None:
     """
@@ -69,7 +73,7 @@ def sanity_plot_transcripts_matrix(
     plot_cell_number
         Whether to annotate cells with their numbers on the plot.
     n_sample
-        The number of transcripts to sample for plotting. Useful for large datasets.
+        The number of transcripts to sample for plotting. Useful for large datasets. Ignored if `gene` is specified.
     name_x
         Column name in the points_layer representing x-coordinates of transcripts.
     name_y
@@ -83,6 +87,10 @@ def sanity_plot_transcripts_matrix(
     crd
         Coordinates to define a rectangular region for plotting as (xmin, xmax, ymin, ymax).
         If None, the entire image boundary is used.
+    to_coordinate_system
+        Coordinate system to plot.
+    figsize
+        Size of the figure for plotting.
     output
         Filepath to save the generated plot. If not provided, the plot will be displayed using plt.show().
 
@@ -94,6 +102,8 @@ def sanity_plot_transcripts_matrix(
     ------
     ValueError
         If both `img_layer` and `labels_layer` are specified.
+    ValueError
+        If `img_layer` or `labels_layer` is specified, and they are not found in `sdata.images` respectively `sdata.labels`.
     AttributeError
         If `sdata` does not contain a `points_layer`.
     Warning
@@ -115,9 +125,13 @@ def sanity_plot_transcripts_matrix(
     # Choose the appropriate layer or default to the last image layer if none is specified.
     if img_layer is not None:
         layer = img_layer
+        if layer not in sdata.images:
+            raise ValueError(f"Provided layer '{layer}' is not an image layer in 'sdata'.")
         img_layer_type = True
     elif labels_layer is not None:
         layer = labels_layer
+        if layer not in sdata.labels:
+            raise ValueError(f"Provided layer '{layer}' is not a labels layer in 'sdata'.")
         img_layer_type = False
     else:
         layer = [*sdata.images][-1]
@@ -129,9 +143,9 @@ def sanity_plot_transcripts_matrix(
 
     se = _get_spatial_element(sdata, layer=layer)
 
-    _, ax = plt.subplots(figsize=(10, 10))
+    _, ax = plt.subplots(figsize=(10, 10) if figsize is None else figsize)
 
-    image_boundary = _get_boundary(se)
+    image_boundary = _get_boundary(se, to_coordinate_system=to_coordinate_system)
 
     if crd is not None:
         _crd = crd
@@ -139,15 +153,14 @@ def sanity_plot_transcripts_matrix(
         if crd is None:
             log.warning(
                 f"Provided crd '{_crd}' and image_boundary '{image_boundary}' do not have any overlap. "
-                f"Please provide a crd that has some overlap with the image. "
-                f"Setting crd to image_boundary '{image_boundary}'."
+                f"Please provide a crd that has some overlap with the image. Skipping."
             )
-            crd = image_boundary
+            return
     # if crd is None, set crd equal to image_boundary
     else:
         crd = image_boundary
 
-    se, x_coords_orig, y_coords_orig = _apply_transform(se)
+    se, x_coords_orig, y_coords_orig = _apply_transform(se, to_coordinate_system=to_coordinate_system)
 
     z_index = None
     if z_slice is not None:
@@ -207,6 +220,8 @@ def sanity_plot_transcripts_matrix(
     if not hasattr(sdata, "points"):
         raise AttributeError("Please first read transcripts in SpatialData object.")
 
+    _identity_check_transformations_points(sdata.points[points_layer], to_coordinate_system=to_coordinate_system)
+
     in_df = sdata.points[points_layer]
 
     # query first and then slicing gene is faster than vice versa
@@ -248,10 +263,12 @@ def sanity_plot_transcripts_matrix(
     if polygons is not None:
         log.info("Selecting boundaries")
 
-        polygons = polygons.cx[crd[0] : crd[1], crd[2] : crd[3]]
-
-        if z_index is not None:
-            polygons = _get_z_slice_polygons(polygons, z_index=z_index)
+        if not polygons.empty:
+            # copy is necessary, otherwise, in memory shapes layer altered by performing a plot.
+            polygons = _translate_polygons(sdata.shapes[shapes_layer].copy(), to_coordinate_system=to_coordinate_system)
+            polygons = polygons.cx[crd[0] : crd[1], crd[2] : crd[3]]
+            if z_index is not None:
+                polygons = _get_z_slice_polygons(polygons, z_index=z_index)
 
         if not polygons.empty:
             polygons["boundaries"] = polygons["geometry"].apply(_extract_boundaries_from_geometry_collection)

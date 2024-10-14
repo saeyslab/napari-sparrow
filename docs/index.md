@@ -6,11 +6,11 @@
 
 <br><br>
 
-# A library for spatial transcriptomics data analysis.
+# A library for Spatial Transcriptomics Data Analysis.
 
-SPArrOW is a library for spatial transcriptomics data analysis.
+SPArrOW is a library for single-cell Spatial Transcriptomics data analysis.
 
-Please see our preprint ... for citation and to learn more.
+Please see our [preprint](https://www.biorxiv.org/content/10.1101/2024.07.04.601829v1) for citation and to learn more.
 
 ```{eval-rst}
 .. note::
@@ -25,7 +25,7 @@ Please see our preprint ... for citation and to learn more.
     Learn how to install ``SPArrOW``.
 
 .. card:: Tutorials
-    :link: notebooks
+    :link: tutorials/index
     :link-type: doc
 
     Tutorials to help you get up to speed with ``SPArrOW``.
@@ -34,7 +34,7 @@ Please see our preprint ... for citation and to learn more.
     :link: usage
     :link-type: doc
 
-    Learn how SPArrOW can be integrated into your workflow in different ways.
+    Learn how ``SPArrOW`` can be integrated into your workflow in different ways.
 
 .. card:: API
     :link: api
@@ -44,7 +44,7 @@ Please see our preprint ... for citation and to learn more.
 
 
 .. card:: HPC
-    :link: hpc
+    :link: tutorials/hpc/index
     :link-type: doc
 
     Learn how to run ``SPArrOW`` in a High-Performance Computing (HPC) environment.
@@ -60,12 +60,11 @@ Please see our preprint ... for citation and to learn more.
 
 ```{toctree}
 :hidden: true
-:maxdepth: 1
+:maxdepth: 2
 
 installation.md
-notebooks.md
 usage.md
+tutorials/index.md
 api.md
-hpc.md
 contributing.md
 ```

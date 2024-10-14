@@ -9,12 +9,11 @@ from dask.array import Array
 from numpy.typing import NDArray
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import Translation
+from spatialdata.transformations import Translation, get_transformation
 
 from sparrow.image._image import (
-    _add_label_layer,
     _get_spatial_element,
-    _get_translation,
+    add_labels_layer,
 )
 from sparrow.image.segmentation._utils import (
     _SEG_DTYPE,
@@ -23,7 +22,7 @@ from sparrow.image.segmentation._utils import (
     _link_labels,
     _rechunk_overlap,
 )
-from sparrow.shape._shape import _add_shapes_layer
+from sparrow.shape._shape import add_shapes_layer
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -61,6 +60,8 @@ def apply_labels_layers(
     output_shapes_layer
         The name of the output shapes layer where results will be stored.
     depth
+        The overlapping depth used in `dask.array.map_overlap`.
+        If specified as a tuple or dict, it contains the depth used in 'y' and 'x' dimension.
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Default is 100. Please set depth>cell diameter to avoid chunking effects.
@@ -137,12 +138,12 @@ def apply_labels_layers(
         # Initial checks for the first layer to set a reference for comparison
         first_se = _get_spatial_element(sdata, layer=labels_layers[0])
         first_x_label = first_se.data
-        first_translation = _get_translation(first_se)
+        first_transformations = get_transformation(first_se, get_all=True)
 
         for layer in labels_layers:
             se = _get_spatial_element(sdata, layer=layer)
             x_label = se.data
-            translation = _get_translation(se)
+            transformations = get_transformation(se, get_all=True)
 
             # Ensure the shape is the same as the first label layer
             assert x_label.shape == first_x_label.shape, (
@@ -152,17 +153,15 @@ def apply_labels_layers(
             )
 
             # Ensure the translation is the same as the first label layer
-            assert translation == first_translation, (
-                f"Labels layer with name {layer} should " f"have the same translation as the first labels layer."
-            )
+            assert (
+                transformations == first_transformations
+            ), f"Provided labels layers '{labels_layers}' should all have the same transformations defined on them."
 
             labels_data.append(x_label)
 
-        translation = Translation([first_translation[0], first_translation[1]], axes=("x", "y"))
+        return labels_data, first_transformations
 
-        return labels_data, translation
-
-    labels_arrays, translation = _get_layers(sdata, labels_layers=labels_layers)
+    labels_arrays, transformations = _get_layers(sdata, labels_layers=labels_layers)
 
     # kwargs to be passed to map_overlap/map_blocks
     kwargs = {}
@@ -182,12 +181,12 @@ def apply_labels_layers(
         **kwargs,
     )
 
-    sdata = _add_label_layer(
+    sdata = add_labels_layer(
         sdata,
         array,
         output_layer=output_labels_layer,
         chunks=chunks,
-        transformation=translation,
+        transformations=transformations,
         scale_factors=scale_factors,
         overwrite=overwrite,
     )
@@ -197,11 +196,11 @@ def apply_labels_layers(
         se_labels = _get_spatial_element(sdata, layer=output_labels_layer)
 
         # convert the labels to polygons and add them as shapes layer to sdata
-        sdata = _add_shapes_layer(
+        sdata = add_shapes_layer(
             sdata,
             input=se_labels.data,
             output_layer=output_shapes_layer,
-            transformation=translation,
+            transformations=transformations,
             overwrite=overwrite,
         )
 
@@ -356,9 +355,10 @@ def _process_masks(
         x_label[mask] = (x_label[mask] << shift) | block_num
 
     else:
-        log.warning(
-            f"Chunks are not relabeled. "
-            f"Please make sure that provided Callable {_func} returns unique labels across chunks, otherwise collisions can be expected."
-        )
+        pass
+        # log.warning(
+        #    f"Chunks are not relabeled. "
+        #    f"Please make sure that provided Callable {_func} returns unique labels across chunks, otherwise collisions can be expected."
+        # )
 
     return x_label

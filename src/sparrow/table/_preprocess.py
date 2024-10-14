@@ -1,177 +1,352 @@
-from collections import defaultdict
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping, Optional
 
-import dask
 import numpy as np
 import pandas as pd
 import scanpy as sc
-from dask.array import Array
+from scipy.sparse import issparse
 from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element
-from sparrow.shape._shape import _filter_shapes_layer
-from sparrow.table._keys import _CELL_INDEX
-from sparrow.table._table import _back_sdata_table_to_zarr
+from sparrow.shape._shape import filter_shapes_layer
+from sparrow.table._table import ProcessTable, add_table_layer
+from sparrow.utils._aggregate import _get_mask_area
+from sparrow.utils._keys import _CELL_INDEX, _CELLSIZE_KEY, _INSTANCE_KEY, _RAW_COUNTS_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
 
-def preprocess_anndata(
+def preprocess_transcriptomics(
     sdata: SpatialData,
-    shapes_layer: str = None,
-    labels_layer: str = None,
+    labels_layer: str | Iterable[str],
+    table_layer: str,
+    output_layer: str,
     min_counts: int = 10,
     min_cells: int = 5,
     size_norm: bool = True,
     highly_variable_genes: bool = False,
     highly_variable_genes_kwargs: Mapping[str, Any] = MappingProxyType({}),
+    max_value_scale: int = 10,
     n_comps: int = 50,
+    update_shapes_layers: bool = True,
+    overwrite: bool = False,
 ) -> SpatialData:
     """
-    Preprocess the table (`AnnData` object) attribute of a SpatialData object.
+    Preprocess a table (AnnData) attribute of a SpatialData object for transcriptomics data.
 
-    Calculates nucleus/cell size from either shapes_layer or labels_layer, and adds it
-    to sdata.table.obs as column "shapeSize".
-    Filters cells and genes, normalizes based on nucleus/cell size, calculates QC metrics and principal components.
+    Performs filtering (via `scanpy.pp.filter_cells` and `scanpy.pp.filter_genes` ) and optional normalization (on size or via `scanpy.sc.pp.normalize_total`),
+    log transformation (`scanpy.pp.log1p`), highly variable genes selection (`scanpy.pp.highly_variable_genes`),
+    scaling (`scanpy.pp.scale`), and PCA calculation (`scanpy.tl.pca`) for transcriptomics data
+    contained in the `sdata`. QC metrics are added to `sdata.tables[output_layer].obs` using `scanpy.pp.calculate_qc_metrics`.
 
     Parameters
     ----------
     sdata
         The input SpatialData object.
-    shapes_layer
-        The shapes_layer of `sdata` that will be used to calculate nucleus size for normalization
-        (or cell size if shapes_layer holds cell shapes).
-        This should be None if labels_layer is specified.
     labels_layer
-        The labels_layer of `sdata` that will be used to calculate nucleus size for normalization
-        (or cell size if labels_layer holds cell labels).
-        This should be None if shapes_layer is specified.
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY  in `sdata.tables[table_layer].obs`.
+        Note that if `output_layer` is equal to `table_layer` and overwrite is True,
+        cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`
+        (also from the backing zarr store if it is backed).
+    table_layer
+        The table layer in `sdata` on which to perform preprocessing on.
+    output_layer
+        The output table layer in `sdata` to which preprocessed table layer will be written.
     min_counts
-        Minimum number of genes a cell should contain to be kept.
+        Minimum number of genes a cell should contain to be kept (passed to `scanpy.pp.filter_cells`).
     min_cells
-        Minimum number of cells a gene should be in to be kept.
+        Minimum number of cells a gene should be in to be kept (passed to `scanpy.pp.filter_genes`).
     size_norm
-        If `True`, normalization is based on the size of the nucleus/cell. Else the normalize_total function of scanpy is used.
+        If `True`, normalization is based on the size of the nucleus/cell. If `False`, `scanpy.sc.pp.normalize_total` is used for normalization.
     highly_variable_genes
         If `True`, will only retain highly variable genes, as calculated by `scanpy.pp.highly_variable_genes`.
     highly_variable_genes_kwargs
         Keyword arguments passed to `scanpy.pp.highly_variable_genes`. Ignored if `highly_variable_genes` is `False`.
+    max_value_scale
+        The maximum value to which data will be scaled, using `scanpy.pp.scale`.
     n_comps
         Number of principal components to calculate.
+    update_shapes_layers
+        Whether to filter the shapes layers associated with `labels_layer`.
+        If set to `True`, cells that do not appear in resulting `output_layer` (with `_REGION_KEY` equal to `labels_layer`) will be removed from the shapes layers (via `_INSTANCE_KEY`) in the `sdata` object.
+        Filtered shapes will be added to `sdata` with prefix 'filtered_low_counts'.
+    overwrite
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
 
     Returns
     -------
-    The preprocessed `sdata` containg the preprocessed `AnnData` object as an attribute (`sdata.table`).
+    The `sdata` containing the preprocessed AnnData object as an attribute (`sdata.tables[output_layer]`).
 
     Raises
     ------
     ValueError
-        If both `shapes_layer` and `labels_layer` are specified.
+        If `sdata` does not have labels attribute.
     ValueError
-        If `shapes_layer` contains 3D polygons.
+        If `sdata` does not have tables attribute.
+    ValueError
+        If `labels_layer`, or one of the element of `labels_layer` is not a labels layer in `sdata`.
+    ValueError
+        If `table_layer` is not a table layer in `sdata`.
 
-    Notes
-    -----
-    - All cells with less than `min_counts` genes and all genes with less than `min_cells` cells are removed.
-    - The QC metrics are calculated using scanpy's `calculate_qc_metrics` function.
 
     Warnings
     --------
-    If the dimensionality of the table attribute is smaller than the desired number of principal components, `n_comps` is set to the minimum dimensionality and a message is printed.
+    - If `max_value_scale` is set too low, it may overly constrain the variability of the data,
+      potentially impacting downstream analyses.
+    - If the dimensionality of `sdata.tables[table_layer]` is smaller than the desired number of principal components, `n_comps` is set to the minimum dimensionality, and a message is printed.
+
+    See Also
+    --------
+    sparrow.tb.allocate : create an AnnData table in `sdata` using a `points_layer` and a `labels_layer`.
     """
-    # Calculate QC Metrics
-
-    sc.pp.calculate_qc_metrics(sdata.table, inplace=True, percent_top=[2, 5])
-
-    # Filter cells and genes
-    sc.pp.filter_cells(sdata.table, min_counts=min_counts)
-    sc.pp.filter_genes(sdata.table, min_cells=min_cells)
-
-    if shapes_layer is not None and labels_layer is not None:
-        raise ValueError("Either specify shapes_layer or labels_layer, not both.")
-
-    if shapes_layer is not None:
-        has_z = sdata.shapes[shapes_layer]["geometry"].apply(lambda geom: geom.has_z)
-        if any(has_z):
-            raise ValueError(
-                f"The shapes layer {shapes_layer} contains 3D polygons for calculation of nucleus/cell size. "
-                "At present, support for computing the size of nuclei or cells in 3D is confined to a labels layer. "
-                "It is advisable to designate a labels layer for this purpose."
-            )
-
-        sdata.table.obs["shapeSize"] = sdata[shapes_layer].area
-
-    elif labels_layer is not None:
-        se = _get_spatial_element(sdata, layer=labels_layer)
-        sdata.table.obs["shapeSize"] = _get_mask_area(se.data)
-    else:
-        raise ValueError("Either specify a shapes layer or a labels layer.")
-
-    sdata.table.layers["raw_counts"] = sdata.table.X
-
-    if size_norm:
-        sdata.table.X = (sdata.table.X.T * 100 / sdata.table.obs.shapeSize.values).T
-    else:
-        sc.pp.normalize_total(sdata.table)
-
-    sc.pp.log1p(sdata.table)
-    if highly_variable_genes:
-        sc.pp.highly_variable_genes(sdata.table, inplace=True, **highly_variable_genes_kwargs)
-    # need to do .copy() here to set .raw value, because .scale still overwrites this .raw, which is unexpected behaviour
-    sdata.table.raw = sdata.table.copy()
-    if highly_variable_genes:
-        _adata = sdata.table[:, sdata.table.var.highly_variable].copy()
-        if sdata.table:
-            del sdata.table
-        sdata.table = _adata
-    sc.pp.scale(sdata.table, max_value=10)
-
-    # calculate the max amount of pc's possible
-    if min(sdata.table.shape) < n_comps:
-        n_comps = min(sdata.table.shape)
-        log.warning(
-            f"amount of pc's was set to {min( sdata.table.shape)} because of the dimensionality of the AnnData object."
-        )
-    sc.tl.pca(sdata.table, svd_solver="arpack", n_comps=n_comps)
-
-    # Is this the best way of doing it? Every time you subset your data, the polygons should be subsetted too!
-    indexes_to_keep = sdata.table.obs.index.values.astype(int)
-    sdata = _filter_shapes_layer(
-        sdata,
-        indexes_to_keep=indexes_to_keep,
-        prefix_filtered_shapes_layer="filtered_low_counts",
+    preprocess_instance = Preprocess(sdata, labels_layer=labels_layer, table_layer=table_layer)
+    sdata = preprocess_instance.preprocess(
+        output_layer=output_layer,
+        calculate_qc_metrics=True,
+        filter_cells=True,
+        filter_genes=True,
+        calculate_cell_size=True,
+        size_norm=size_norm,
+        log1p=True,
+        highly_variable_genes=highly_variable_genes,
+        highly_variable_genes_kwargs=highly_variable_genes_kwargs,
+        scale=True,
+        max_value_scale=max_value_scale,
+        calculate_pca=True,
+        update_shapes_layers=update_shapes_layers,
+        qc_kwargs={"percent_top": [2, 5]},
+        filter_cells_kwargs={"min_counts": min_counts},
+        filter_genes_kwargs={"min_cells": min_cells},
+        pca_kwargs={"n_comps": n_comps},
+        overwrite=overwrite,
     )
-
-    # need to update sdata.table via .parse, otherwise it will not be backed by zarr store
-    _back_sdata_table_to_zarr(sdata)
-
     return sdata
 
 
-def _get_mask_area(mask: Array) -> pd.Series:
-    """Calculate area of each label in mask. Return as pd.Series."""
+def preprocess_proteomics(
+    sdata: SpatialData,
+    labels_layer: str | Iterable[str],
+    table_layer: str,
+    output_layer: str,
+    size_norm: bool = True,
+    log1p: bool = True,
+    scale: bool = False,
+    max_value_scale: float = 10,
+    q: float | None = None,
+    calculate_pca: bool = False,
+    n_comps: int = 50,
+    overwrite: bool = False,
+) -> SpatialData:
+    """
+    Preprocess a table (AnnData) attribute of a SpatialData object for proteomics data.
 
-    @dask.delayed
-    def calculate_area(mask_chunk: np.ndarray) -> tuple:
-        unique, counts = np.unique(mask_chunk, return_counts=True)
+    Performs optional normalization (on size or via `scanpy.sc.pp.normalize_total`), log transformation
+    (`scanpy.pp.log1p`), scaling (`scanpy.pp.scale`)/ quantile normalization and PCA calculation (`scanpy.tl.pca`)
+    for proteomics data contained in `sdata`.
 
-        return unique, counts
+    Parameters
+    ----------
+    sdata
+        The input SpatialData object.
+    labels_layer
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY  in `sdata.tables[table_layer].obs`.
+        Note that if `output_layer` is equal to `table_layer` and overwrite is True,
+        cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
+        If a list of labels layers is provided, they will therefore be preprocessed together (e.g. multiple samples).
+    table_layer
+        The table layer in `sdata` on which to perform preprocessing on.
+    output_layer
+        The output table layer in `sdata` to which preprocessed table layer will be written.
+    size_norm
+        If `True`, normalization is based on the size of the nucleus/cell. If False, `scanpy.sc.pp.normalize_total` is used for normalization.
+    log1p
+        If `True`, applies log1p transformation to the data.
+    scale
+        If `True`, scales the data to have zero mean and a variance of one. The scaling is capped at `max_value_scale`.
+    max_value_scale
+        The maximum value to which data will be scaled. Ignored if `scale` is `False`.
+    q
+        Quantile used for normalization. If specified, values are normalized by this quantile calculated for each `adata.var`. Values are multiplied by 100 after normalization. Typical value used is 0.999,
+    calculate_pca
+        If `True`, calculates principal component analysis (PCA) on the data.
+    n_comps
+        Number of principal components to calculate. Ignored if `calculate_pca` is False.
+    overwrite
+        If `True`, overwrites the `output_layer` if it already exists in `sdata`.
 
-    delayed_results = [calculate_area(chunk) for chunk in mask.to_delayed().flatten()]
+    Returns
+    -------
+    The `sdata` containing the preprocessed AnnData object as an attribute (`sdata.tables[output_layer]`).
 
-    results = dask.compute(*delayed_results, scheduler="threads")
+    Raises
+    ------
+    ValueError
+        - If `sdata` does not contains any labels layers.
+        - If `sdata` does not contain any table layers.
+        - If `labels_layer`, or one of the element of `labels_layer` is not a labels layer in `sdata`.
+        - If `table_layer` is not a table layer in `sdata`.
+        - If both `scale` is set to True and `q` is not None.
 
-    combined_counts = defaultdict(int)
+    Warnings
+    --------
+    - If `scale` is True and `max_value_scale` is set too low, it may overly constrain the variability of the data,
+      potentially impacting downstream analyses.
+    - If the dimensionality of `sdata.tables[table_layer]` is smaller than the desired number of principal components
+      when `calculate_pca` is True, `n_comps` is set to the minimum dimensionality, and a message is printed.
 
-    # aggregate
-    for unique, counts in results:
-        for label, count in zip(unique, counts):
-            if label > 0:
-                combined_counts[str(label)] += count
+    See Also
+    --------
+    sparrow.tb.allocate_intensity : create an AnnData table in `sdata` using an `image_layer` and a `labels_layer`.
+    """
+    preprocess_instance = Preprocess(sdata, labels_layer=labels_layer, table_layer=table_layer)
+    sdata = preprocess_instance.preprocess(
+        output_layer=output_layer,
+        calculate_qc_metrics=False,
+        filter_cells=False,
+        filter_genes=False,
+        calculate_cell_size=True,
+        size_norm=size_norm,
+        log1p=log1p,
+        scale=scale,
+        q=q,
+        max_value_scale=max_value_scale,
+        highly_variable_genes=False,
+        calculate_pca=calculate_pca,
+        update_shapes_layers=False,
+        pca_kwargs={"n_comps": n_comps},
+        overwrite=overwrite,
+    )
+    return sdata
 
-    combined_counts = pd.Series(combined_counts)
-    combined_counts.index.name = _CELL_INDEX
 
-    return combined_counts
+class Preprocess(ProcessTable):
+    def preprocess(
+        self,
+        output_layer: str,
+        calculate_qc_metrics: bool = True,
+        filter_cells: bool = True,
+        filter_genes: bool = True,
+        calculate_cell_size: bool = True,
+        size_norm: bool = True,
+        log1p: bool = True,
+        scale: bool = True,
+        max_value_scale: Optional[float] = 10,  # ignored if scale is False,
+        q: float | None = None,  # quantile for normalization, typically 0.999
+        highly_variable_genes: bool = False,
+        calculate_pca: bool = True,
+        update_shapes_layers: bool = True,  # whether to update the shapes layer based on the items filtered out in sdata.tables[self.table_layer].
+        qc_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.pp.calculate_qc_metrics
+        filter_cells_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.pp.filter_cells
+        filter_genes_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.pp.filter_genes
+        norm_kwargs: Mapping[str, Any] = MappingProxyType(
+            {}
+        ),  # keyword arguments passed to sc.pp.normalize_total, ignored if size_norm is True.
+        highly_variable_genes_kwargs: Mapping[str, Any] = MappingProxyType(
+            {}
+        ),  # keyword arguments passed to sc.pp.highly_variable_genes
+        pca_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.tl.pca
+        overwrite: bool = False,
+    ) -> SpatialData:
+        adata = self._get_adata()
+        # Calculate QC Metrics
+        if calculate_qc_metrics:
+            sc.pp.calculate_qc_metrics(adata, layer=None, inplace=True, **qc_kwargs)
+
+            # Filter cells and genes
+            if filter_cells:
+                sc.pp.filter_cells(adata, inplace=True, copy=False, **filter_cells_kwargs)
+            if filter_genes:
+                sc.pp.filter_genes(adata, inplace=True, copy=False, **filter_genes_kwargs)
+
+        if calculate_cell_size:
+            # we do not want to loose the index (_CELL_INDEX)
+            old_index = adata.obs.index
+            if _CELLSIZE_KEY in adata.obs.columns:
+                log.warning(f"Column with name '{_CELLSIZE_KEY}' already exists. Removing column '{_CELLSIZE_KEY}'.")
+                adata.obs = adata.obs.drop(columns=_CELLSIZE_KEY)
+            for i, _labels_layer in enumerate(self.labels_layer):
+                log.info(f"Calculating cell size from provided labels_layer '{_labels_layer}'")
+                se = _get_spatial_element(self.sdata, layer=_labels_layer)
+                _shapesize = _get_mask_area(se.data)
+                _shapesize[_REGION_KEY] = _labels_layer
+                if i == 0:
+                    shapesize = _shapesize
+                else:
+                    shapesize = pd.concat([shapesize, _shapesize], ignore_index=True)
+            # note that we checked that adata.obs[ _INSTANCE_KEY ] is unique for given region (see self._get_adata())
+            adata.obs = pd.merge(adata.obs.reset_index(), shapesize, on=[_INSTANCE_KEY, _REGION_KEY], how="left")
+            adata.obs.index = old_index
+            adata.obs = adata.obs.drop(columns=[_CELL_INDEX])
+
+        adata.layers[_RAW_COUNTS_KEY] = adata.X.copy()
+
+        if size_norm:
+            adata.X = (adata.X.T * 100 / adata.obs[_CELLSIZE_KEY].values).T
+            if issparse(adata.X):
+                adata.X = adata.X.tocsr()
+        else:
+            sc.pp.normalize_total(adata, layer=None, layers=None, copy=False, inplace=True, **norm_kwargs)
+
+        if log1p:
+            sc.pp.log1p(adata, base=None, copy=False, layer=None, obsm=None)
+
+        if highly_variable_genes:
+            sc.pp.highly_variable_genes(adata, layer=None, inplace=True, subset=False, **highly_variable_genes_kwargs)
+            adata.raw = adata.copy()
+            adata = adata[:, adata.var.highly_variable]
+
+        if scale and q is not None:
+            raise ValueError(
+                "Please choose between scaling via 'sp.pp.scale' or normalization by q quantile, not both."
+            )
+
+        if scale:
+            if adata.raw is None:
+                adata.raw = adata.copy()
+            sc.pp.scale(adata, copy=False, layer=None, obsm=None, zero_center=True, max_value=max_value_scale)
+
+        if q is not None:
+            if adata.raw is None:
+                adata.raw = adata.copy()
+            arr = adata.X.toarray() if issparse(adata.X) else adata.X  # np.where not defined on sparse matrix
+            arr = np.where(arr == 0, np.nan, arr)
+            arr_quantile = np.nanquantile(arr, q, axis=0)
+            adata.X = (adata.X.T * 100 / arr_quantile.reshape(-1, 1)).T
+            if issparse(adata.X):
+                adata.X = adata.X.tocsr()
+
+        if calculate_pca:
+            # calculate the max amount of pc's possible
+            n_comps = pca_kwargs.pop("n_comps", None)
+            if n_comps is not None:
+                if min(adata.shape) < n_comps:
+                    n_comps = min(adata.shape) - 1
+                    log.warning(
+                        f"amount of pc's was set to {min( adata.shape)-1} because of the dimensionality of 'sdata.tables[table_layer]'."
+                    )
+            if not scale:
+                log.warning(
+                    "Please consider scaling the data by passing 'scale=True', when passing 'calculate_pca=True'."
+                )
+            self._type_check_before_pca(adata)
+            sc.tl.pca(adata, copy=False, n_comps=n_comps, **pca_kwargs)
+
+        self.sdata = add_table_layer(
+            self.sdata,
+            adata=adata,
+            output_layer=output_layer,
+            region=self.labels_layer,
+            overwrite=overwrite,
+        )
+
+        if update_shapes_layers:
+            for _labels_layer in self.labels_layer:
+                self.sdata = filter_shapes_layer(
+                    self.sdata,
+                    table_layer=output_layer,
+                    labels_layer=_labels_layer,
+                    prefix_filtered_shapes_layer="filtered_low_counts",
+                )
+
+        return self.sdata

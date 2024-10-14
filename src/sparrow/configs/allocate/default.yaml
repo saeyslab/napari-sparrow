@@ -27,13 +27,14 @@ total_counts_column: "total_counts"
 total_counts_cmap: "magma"
 total_counts_alpha: 0.5
 
-shape_size_column: "shapeSize"
 shape_size_cmap: "magma"
 shape_size_alpha: 0.5
 
 leiden_column: "leiden"
 leiden_cmap: "magma"
 leiden_alpha: 0.5
+
+table_layer_name: "table_transcriptomics"
 
 overwrite: False
 points_layer_name: "transcripts"

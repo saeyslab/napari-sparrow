@@ -5,10 +5,11 @@ from pathlib import Path
 import dask.dataframe as dd
 import numpy as np
 import pyarrow
-import spatialdata
-from dask.dataframe.core import DataFrame as DaskDataFrame
 from spatialdata import SpatialData
+from spatialdata.transformations import Identity
 
+from sparrow.points._points import add_points_layer
+from sparrow.utils._keys import _GENES_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -17,6 +18,8 @@ log = get_pylogger(__name__)
 def read_resolve_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -29,8 +32,12 @@ def read_resolve_transcripts(
     path_count_matrix
         Path to the file containing the transcripts information specific to Resolve.
         Expected to contain x, y coordinates and a gene name.
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
     overwrite
-        If True overwrites the element (points layer) if it already exists.
+        If True overwrites the `output_layer` (a points layer) if it already exists.
 
     Returns
     -------
@@ -44,6 +51,8 @@ def read_resolve_transcripts(
         "delimiter": "\t",
         "header": None,
         "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -54,6 +63,8 @@ def read_vizgen_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
     path_transform_matrix: str | Path,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -66,10 +77,14 @@ def read_vizgen_transcripts(
     path_count_matrix
         Path to the file containing the transcripts information specific to Vizgen.
         Expected to contain x, y coordinates and a gene name.
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
     path_transform_matrix
         Path to the transformation matrix for the affine transformation.
-    overwrite
-        If True overwrites the element (points layer) if it already exists.
+    overwrite: bool, default=False
+        If True overwrites the `output_layer` (a points layer) if it already exists.
 
     Returns
     -------
@@ -79,11 +94,12 @@ def read_vizgen_transcripts(
     kwargs = {
         "column_x": 2,
         "column_y": 3,
-        "column_z": 4,
         "column_gene": 8,
         "delimiter": ",",
         "header": 0,
         "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -93,6 +109,8 @@ def read_vizgen_transcripts(
 def read_stereoseq_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -105,8 +123,12 @@ def read_stereoseq_transcripts(
     path_count_matrix
         Path to the file containing the transcripts information specific to Stereoseq.
         Expected to contain x, y coordinates, gene name, and a midcount column.
-    overwrite:
-        If True overwrites the element (points layer) if it already exists.
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
+    overwrite: bool, default=False
+        If True overwrites the `output_layer` (a points layer) if it already exists.
 
     Returns
     -------
@@ -121,6 +143,8 @@ def read_stereoseq_transcripts(
         "delimiter": ",",
         "header": 0,
         "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
     }
 
     sdata = read_transcripts(*args, **kwargs)
@@ -131,7 +155,7 @@ def read_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
     path_transform_matrix: str | Path | None = None,
-    points_layer: str = "transcripts",
+    output_layer: str = "transcripts",
     overwrite: bool = False,
     debug: bool = False,
     column_x: int = 0,
@@ -143,6 +167,7 @@ def read_transcripts(
     header: int | None = None,
     comment: str | None = None,
     crd: tuple[int, int, int, int] | None = None,
+    to_coordinate_system: str = "global",
     filter_gene_names: str | list | None = None,
     blocksize: str = "64MB",
 ) -> SpatialData:
@@ -150,7 +175,8 @@ def read_transcripts(
     Reads transcript information from a file with each row listing the x and y coordinates, along with the gene name.
 
     If a transform matrix is provided a linear transformation is applied to the coordinates of the transcripts.
-    The SpatialData object is augmented with a points layer named 'transcripts' that contains the transcripts.
+    The transformation is applied to the dask dataframe before adding it to `sdata`.
+    The SpatialData object is augmented with a points layer named `output_layer` that contains the transcripts.
 
     Parameters
     ----------
@@ -163,11 +189,11 @@ def read_transcripts(
         This file should contain a 3x3 transformation matrix for the affine transformation.
         The matrix defines the linear transformation to be applied to the coordinates of the transcripts.
         If no transform matrix is specified, the identity matrix will be used.
-    points_layer
+    output_layer: str, default='transcripts'.
         Name of the points layer of the SpatialData object to which the transcripts will be added.
-    overwrite
-        If True overwrites the element (points layer) if it already exists.
-    debug
+    overwrite: bool, default=False
+        If True overwrites the `output_layer` (a points layer) if it already exists.
+    debug : bool, default=False
         If True, a sample of the data is processed for debugging purposes.
     column_x
         Column index of the X coordinate in the count matrix.
@@ -191,6 +217,8 @@ def read_transcripts(
     crd
         The coordinates (in pixels) for the region of interest in the format (xmin, xmax, ymin, ymax).
         If None, all transcripts are considered.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
     filter_gene_names
         Regular expression(s) of gene names that need to be filtered out (via str.contains), mostly control genes that were added, and which you don't want to use.
         If list of strings, all items in the list are seen as regular expressions. Filtering is case insensitive.
@@ -282,9 +310,9 @@ def read_transcripts(
     transformed_ddf = ddf.map_partitions(transform_coordinates)
 
     # Rename the columns
-    transformed_ddf.columns = ["gene", "pixel_x", "pixel_y"]
+    transformed_ddf.columns = [_GENES_KEY, "pixel_x", "pixel_y"]
 
-    columns = ["pixel_x", "pixel_y", "gene"]
+    columns = ["pixel_x", "pixel_y", _GENES_KEY]
     coordinates = {"x": "pixel_x", "y": "pixel_y"}
 
     if column_z is not None:
@@ -298,34 +326,13 @@ def read_transcripts(
     if crd is not None:
         transformed_ddf = transformed_ddf.query(f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}")
 
-    if sdata.points:
-        for _points_layer in [*sdata.points]:
-            del sdata.points[_points_layer]
-
-    sdata = _add_transcripts_to_sdata(
+    sdata = add_points_layer(
         sdata,
-        transformed_ddf=transformed_ddf,
-        points_layer=points_layer,
+        ddf=transformed_ddf,
+        output_layer=output_layer,
         coordinates=coordinates,
+        transformations={to_coordinate_system: Identity()},
         overwrite=overwrite,
     )
 
-    return sdata
-
-
-def _add_transcripts_to_sdata(
-    sdata: SpatialData,
-    transformed_ddf: DaskDataFrame,
-    points_layer: str,
-    coordinates: dict[str, str],
-    overwrite: bool = False,
-):
-    sdata.add_points(
-        name=points_layer,
-        points=spatialdata.models.PointsModel.parse(
-            transformed_ddf,
-            coordinates=coordinates,
-        ),
-        overwrite=overwrite,
-    )
     return sdata

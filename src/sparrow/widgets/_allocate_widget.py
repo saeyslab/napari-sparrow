@@ -1,4 +1,5 @@
 """Allocation widget for creating and preprocesing the adata object, filtering the cells and performing clustering."""
+
 import os
 import pathlib
 from typing import Any, Callable, Dict, Optional
@@ -6,7 +7,6 @@ from typing import Any, Callable, Dict, Optional
 import napari
 import napari.layers
 import napari.types
-import spatialdata
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
@@ -14,6 +14,8 @@ from spatialdata import SpatialData, read_zarr
 
 import sparrow.utils as utils
 from sparrow.pipeline import SparrowPipeline
+from sparrow.plot._plot import _translate_polygons
+from sparrow.shape._shape import add_shapes_layer
 
 log = utils.get_pylogger(__name__)
 
@@ -88,11 +90,7 @@ def allocate_widget(
     # need to add original unfiltered shapes to sdata object at the beginning of the allocation step.
     # otherwise polygons that were filtered out would not be available any more if you do a rerun of the allocation step.
     for shapes_name in [*shapes]:
-        sdata.add_shapes(
-            name=shapes_name,
-            shapes=spatialdata.models.ShapesModel.parse(shapes[shapes_name]),
-            overwrite=True,
-        )
+        sdata = add_shapes_layer(sdata, input=shapes[shapes_name], output_layer=shapes_name, overwrite=True)
 
     # napari widget does not support the type Optional[int], therefore only choose whether there is a header or not,
     # and do same for midcount column
@@ -144,7 +142,9 @@ def allocate_widget(
         except KeyError:
             log.info(f"Layer '{layer_name}' does not exist.")
 
-        polygons = utils._get_polygons_in_napari_format(df=sdata.shapes[pipeline.shapes_layer_name])
+        polygons = _translate_polygons(sdata.shapes[pipeline.shapes_layer_name].copy(), to_coordinate_system="global")
+
+        polygons = utils._get_polygons_in_napari_format(df=polygons)
 
         # we add the polygons again in this step, because some of them are filtered out in the allocate step
         # (i.e. due to size of polygons etc). If we do not update the polygons here, napari complains because
@@ -161,7 +161,9 @@ def allocate_widget(
         )
 
         viewer.layers[layer_name].metadata["pipeline"] = pipeline
-        viewer.layers[layer_name].metadata["adata"] = sdata.table  # spatialdata plugin uses this
+        viewer.layers[layer_name].metadata["adata"] = sdata.tables[
+            pipeline.cfg.allocate.table_layer_name
+        ]  # spatialdata plugin uses this
 
         log.info(f"Added '{utils.ALLOCATION}' layer")
 

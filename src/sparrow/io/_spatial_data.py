@@ -12,9 +12,9 @@ from dask.array import from_zarr
 from dask_image import imread
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import Translation
+from spatialdata.transformations import Identity, Translation
 
-from sparrow.image._image import _add_image_layer, _fix_dimensions
+from sparrow.image._image import _fix_dimensions, add_image_layer
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -27,6 +27,7 @@ def create_sdata(
     chunks: str | tuple[int, int, int, int] | int | None = None,
     dims: list[str] | None = None,
     crd: tuple[int, int, int, int] | None = None,
+    to_coordinate_system: str = "global",
     scale_factors: ScaleFactors_t | None = None,
     c_coords: int | str | Iterable[int | str] | None = None,
     z_projection: bool = True,
@@ -92,6 +93,8 @@ def create_sdata(
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
         If specified, this region is cropped from the image, and added as image layer to the
         SpatialData object.
+    to_coordinate_system
+        Coordinate system to which `img_layer` will be added.
     scale_factors
         Scale factors to apply for multiscale.
     c_coords
@@ -146,17 +149,17 @@ def create_sdata(
             tx = crd[0]
             ty = crd[2]
 
-            translation = Translation([tx, ty], axes=("x", "y"))
+            transformation = Translation([tx, ty], axes=("x", "y"))
 
         else:
-            translation = None
+            transformation = Identity()
 
-        _add_image_layer(
+        sdata = add_image_layer(
             sdata,
             arr=dask_array,
             output_layer=img_layer,
             chunks=chunks,
-            transformation=translation,
+            transformations={to_coordinate_system: transformation},
             scale_factors=scale_factors,
             c_coords=c_coords,
             overwrite=False,

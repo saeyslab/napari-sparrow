@@ -2,17 +2,32 @@
 
 ## Input data
 
-Input data is provided from a [RESOLVE experiment on mouse liver](https://cloud.irc.ugent.be/public/index.php/s/HrXG9WKqjqHBEzS). The dataset used in the examples is mouse liver A1-1. Please download the DAPI-stained image and the .txt file.
+There are some built-in datasets. For example to get data from a [Resolve](https://resolvebiosciences.com/) experiment on mouse liver:
+
+```
+from sparrow.datasets.registry import get_registry
+
+registry=get_registry()
+path_image = registry.fetch( "transcriptomics/resolve/mouse/20272_slide1_A1-1_DAPI.tiff" )
+path_coordinates = registry.fetch("transcriptomics/resolve/mouse/20272_slide1_A1-1_results.txt")
+```
+
+And to download an example SpatialData object resulting from running the `SPArrOW` pipeline:
+
+```
+import sparrow as sp
+sdata=sp.datasets.resolve_example()
+```
 
 ### Jupyter notebooks
 
-Check the [notebooks](notebooks.md#tutorials) in the tutorials section.
+Check the notebooks in the [tutorials section](tutorials/index.md).
 
 ### Napari plugin
 
-After installing [installing](installation.md) SPArrOW You can run the plugin by first starting Napari, and starting the plugin from Napari's menu bar: `napari > Plugins > napari-sparrow`.
+After installing [installing](installation.md) `SPArrOW`, you can run the plugin by first starting Napari, and starting the plugin from Napari's menu bar: `napari > Plugins > sparrow`.
 
-Use the plugin to tune the parameters of SPArrOW for the different steps of the pipeline. Tuning can be done on small crops of the image. After every step, a corresponding configuration _.yaml_ file will be saved in the output directory chosen by the user. We refer to the [hpc](hpc.md) documentation for information on how to use these generated configuration files via the CLI.
+Use the plugin to tune the parameters of `SPArrOW` for the different steps of the pipeline. Tuning can be done on small crops of the image. After every step, a corresponding configuration _.yaml_ file will be saved in the output directory chosen by the user. We refer to the [hpc](/tutorials/hpc/index.md) documentation for information on how to use these generated configuration files via the CLI.
 
 ### (Hydra) CLI
 

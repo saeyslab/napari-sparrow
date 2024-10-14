@@ -9,22 +9,21 @@
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-sparrow)](https://napari-hub.org/plugins/napari-sparrow)
 -->
 
-**A library for Spatial Transcriptomics Data Analysis.**
+# **SPArrOW: A library for Spatial Transcriptomics Data Analysis.**
 
-Note: This package is still under very active development. 
-For more information, please check out the read-the-docs:
-https://sparrow-pipeline.readthedocs.io/en/latest/
+[![documentation badge](https://readthedocs.org/projects/sparrow-pipeline/badge/?version=latest)](https://sparrow-pipeline.readthedocs.io/en/latest/)
 
-# Installation
+Note: This package is still under very active development.
+
+## Installation
 
 Check out the docs for [installation instructions](docs/installation.md).
 
-# Tutorials
+## Tutorials
 
-See [here](docs/tutorials/) for tutorials.
-Tutorials are available at https://sparrow-pipeline.readthedocs.io/en/latest/
+Tutorials are available [here](https://sparrow-pipeline.readthedocs.io/en/latest/).
 
-# Usage
+## Usage
 
 [Learn](docs/usage.md) how SPArrOW can be integrated into your workflow in different ways.
 

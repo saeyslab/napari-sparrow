@@ -1,22 +1,25 @@
+from __future__ import annotations
+
 import itertools
 from functools import singledispatchmethod
-from typing import Any, Union
+from typing import Any
 
 import dask
 import geopandas
 import numpy as np
 import pandas as pd
-import rasterio
 import shapely
 import spatialdata
 from dask.array import Array
 from geopandas import GeoDataFrame
-from numpy.typing import NDArray
-from shapely.affinity import translate
-from spatialdata import SpatialData
-from spatialdata.transformations import Identity, Translation
+from rasterio import Affine
+from rasterio.features import shapes
+from spatialdata import SpatialData, read_zarr
+from spatialdata.models._utils import MappingToCoordinateSystem_t
+from spatialdata.transformations import get_transformation
 
-from sparrow.image._image import _get_translation_values
+from sparrow.utils._io import _incremental_io_on_disk
+from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -26,17 +29,11 @@ class ShapesLayerManager:
     def add_shapes(
         self,
         sdata: SpatialData,
-        input: Union[Array, GeoDataFrame],
+        input: Array | GeoDataFrame,
         output_layer: str,
-        transformation: Union[Translation, Identity] = None,
+        transformations: MappingToCoordinateSystem_t = None,
         overwrite: bool = False,
     ) -> SpatialData:
-        if transformation is not None and not isinstance(transformation, (Translation, Identity)):
-            raise ValueError(
-                f"Currently only transformations of type Translation are supported, "
-                f"while provided transformation is of type {type(transformation)}"
-            )
-
         polygons = self.get_polygons_from_input(input)
 
         if polygons.empty:
@@ -45,10 +42,7 @@ class ShapesLayerManager:
             )
             return sdata
 
-        if transformation is not None:
-            polygons = self.set_transformation(polygons, transformation)
-
-        polygons = self.create_spatial_element(polygons)
+        polygons = spatialdata.models.ShapesModel.parse(polygons, transformations=transformations)
 
         sdata = self.add_to_sdata(
             sdata,
@@ -62,9 +56,14 @@ class ShapesLayerManager:
     def filter_shapes(
         self,
         sdata: SpatialData,
-        indexes_to_keep: NDArray,
+        table_layer: str,
+        labels_layer: str,
         prefix_filtered_shapes_layer: str,
     ) -> SpatialData:
+        mask = sdata.tables[table_layer].obs[_REGION_KEY].isin([labels_layer])
+        indexes_to_keep = sdata.tables[table_layer].obs[mask][_INSTANCE_KEY].values.astype(int)
+        coordinate_systems_labels_layer = {*get_transformation(sdata.labels[labels_layer], get_all=True)}
+
         if len(indexes_to_keep) == 0:
             log.warning(
                 "Length of the 'indexes_to_keep' parameter is 0. "
@@ -75,6 +74,9 @@ class ShapesLayerManager:
         for _shapes_layer in [*sdata.shapes]:
             polygons = self.retrieve_data_from_sdata(sdata, name=_shapes_layer)
             polygons = self.get_polygons_from_input(polygons)
+            # only filter shapes that are in same coordinate system as the labels layer
+            if not set(coordinate_systems_labels_layer).intersection({*get_transformation(polygons, get_all=True)}):
+                continue
 
             current_indexes_shapes_layer = polygons.index.values.astype(int)
 
@@ -105,19 +107,22 @@ class ShapesLayerManager:
                 f"Adding new shapes layer '{output_filtered_shapes_layer}' containing these filtered out polygons."
             )
 
+            # if this assert would break in future spatialdata, then pass transformations of polygons to .parse
+            assert get_transformation(filtered_polygons, get_all=True) == get_transformation(polygons, get_all=True)
             sdata = self.add_to_sdata(
                 sdata,
                 output_layer=output_filtered_shapes_layer,
-                spatial_element=self.create_spatial_element(filtered_polygons),
+                spatial_element=spatialdata.models.ShapesModel.parse(filtered_polygons),
                 overwrite=True,
             )
 
             updated_polygons = self.retrieve_data_from_sdata(sdata, name=_shapes_layer)[bool_to_keep]
 
+            assert get_transformation(updated_polygons, get_all=True) == get_transformation(polygons, get_all=True)
             sdata = self.add_to_sdata(
                 sdata,
                 output_layer=_shapes_layer,
-                spatial_element=self.create_spatial_element(updated_polygons),
+                spatial_element=spatialdata.models.ShapesModel.parse(updated_polygons),
                 overwrite=True,
             )
 
@@ -129,6 +134,7 @@ class ShapesLayerManager:
 
     @get_polygons_from_input.register(Array)
     def _get_polygons_from_array(self, input: Array) -> GeoDataFrame:
+        assert np.issubdtype(input.dtype, np.integer), "Only integer arrays are supported."
         dimension = self.get_dims(input)
         if dimension == 3:
             all_polygons = []
@@ -138,6 +144,7 @@ class ShapesLayerManager:
             polygons = geopandas.GeoDataFrame(pd.concat(all_polygons, ignore_index=False))
             return polygons
         elif dimension == 2:
+            polygons = _mask_image_to_polygons(input)
             return _mask_image_to_polygons(input)
 
     @get_polygons_from_input.register(GeoDataFrame)
@@ -168,21 +175,6 @@ class ShapesLayerManager:
         else:
             raise ValueError("All geometries should either be 2D or 3D. Mixed dimensions found.")
 
-    def set_transformation(self, polygons: GeoDataFrame, transformation: Union[Translation, Identity]) -> GeoDataFrame:
-        x_translation, y_translation = _get_translation_values(transformation)
-
-        polygons["geometry"] = polygons["geometry"].apply(
-            lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
-        )
-
-        return polygons
-
-    def create_spatial_element(
-        self,
-        polygons: GeoDataFrame,
-    ) -> GeoDataFrame:
-        return spatialdata.models.ShapesModel.parse(polygons)
-
     def add_to_sdata(
         self,
         sdata: SpatialData,
@@ -190,14 +182,31 @@ class ShapesLayerManager:
         spatial_element: GeoDataFrame,
         overwrite: bool = False,
     ) -> SpatialData:
-        sdata.add_shapes(name=output_layer, shapes=spatial_element, overwrite=overwrite)
+        # given a spatial_element
+        if output_layer in [*sdata.shapes]:
+            if sdata.is_backed():
+                if overwrite:
+                    sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=spatial_element)
+                else:
+                    raise ValueError(
+                        f"Attempting to overwrite 'sdata.shapes[\"{output_layer}\"]', but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
+                    )
+            else:
+                sdata[output_layer] = spatial_element
+        else:
+            sdata[output_layer] = spatial_element
+            if sdata.is_backed():
+                sdata.write_element(output_layer)
+                sdata = read_zarr(sdata.path)
+
         return sdata
 
     def retrieve_data_from_sdata(self, sdata: SpatialData, name: str) -> GeoDataFrame:
         return sdata.shapes[name]
 
     def remove_from_sdata(self, sdata: SpatialData, name: str) -> SpatialData:
-        del sdata.shapes[name]
+        element_type = sdata._element_type_from_element_name(name)
+        del getattr(sdata, element_type)[name]
         return sdata
 
 
@@ -260,10 +269,10 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
         # Get chunk's top-left corner coordinates
         x_offset, y_offset = chunk_coords
 
-        for shape, value in rasterio.features.shapes(
+        for shape, value in shapes(
             mask_chunk.astype(np.int32),
             mask=bool_mask,
-            transform=rasterio.Affine(1.0, 0, y_offset, 0, 1.0, x_offset),
+            transform=Affine(1.0, 0, y_offset, 0, 1.0, x_offset),
         ):
             if z_slice is not None:
                 coordinates = shape["coordinates"]
@@ -285,7 +294,7 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
         extract_polygons(chunk, coord) for chunk, coord in zip(mask.to_delayed().flatten(), chunk_coords)
     ]
     # Compute the results
-    results = dask.compute(*delayed_results, scheduler="threads")
+    results = dask.compute(*delayed_results)
 
     # Combine the results into a single list of polygons and values
     all_polygons = []
@@ -295,11 +304,12 @@ def _mask_image_to_polygons(mask: Array, z_slice: int = None) -> GeoDataFrame:
         all_values.extend(values)
 
     # Create a GeoDataFrame from the extracted polygons and values
-    gdf = geopandas.GeoDataFrame({"geometry": all_polygons, "cells": all_values})
+    gdf = geopandas.GeoDataFrame({"geometry": all_polygons, _INSTANCE_KEY: all_values})
 
+    # TODO. If extra column supported in a shapes layer of a SpatialData object, we could think about adding _INSTANCE_KEY as a column to the shapes.
     # Combine polygons that are actually pieces of the same cell back together.
     # (These pieces of same cell got written to different chunks by dask, needed for parallel processing.)
-    gdf = gdf.dissolve(by="cells")
+    gdf = gdf.dissolve(by=_INSTANCE_KEY)
 
     gdf.index = gdf.index.astype("str")
 

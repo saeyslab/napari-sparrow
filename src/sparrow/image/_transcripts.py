@@ -6,7 +6,9 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation
 
-from sparrow.image._image import _add_image_layer, _get_boundary, _get_spatial_element
+from sparrow.image._image import _get_boundary, _get_spatial_element, add_image_layer
+from sparrow.utils._keys import _GENES_KEY
+from sparrow.utils._transformations import _identity_check_transformations_points
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -20,11 +22,12 @@ def transcript_density(
     name_x: str = "x",
     name_y: str = "y",
     name_z: Optional[str] = None,
-    name_gene_column: str = "gene",
+    name_gene_column: str = _GENES_KEY,
     z_index: Optional[int] = None,
     scaling_factor: float = 100,
     chunks: int = 1024,
     crd: Optional[Tuple[int, int, int, int]] = None,
+    to_coordinate_system: str = "global",
     scale_factors: Optional[ScaleFactors_t] = None,
     output_layer: str = "transcript_density",
     overwrite: bool = False,
@@ -41,7 +44,7 @@ def transcript_density(
         Data containing spatial information.
     img_layer
         The layer of the SpatialData object used for determining image boundary.
-        Defaults to the last layer if set to None.
+        Defaults to the last layer if set to None. `img_layer` and `points_layer` should be registered in coordinate system `to_coordinate_system`.
     points_layer
         The layer name that contains the transcript data points, by default "transcripts".
     n_sample
@@ -53,7 +56,7 @@ def transcript_density(
     name_z
         Column name for z-coordinates of the transcripts in the points layer, by default None.
     name_gene_column
-        Column name in the points_layer representing gene information, by default "gene".
+        Column name in the points_layer representing gene information.
     z_index
         The z index in the points layer for which to calculate transcript density. If set to None for a 3D points layer
         (and `name_z` is not equal to None), an y-x transcript density projection will be calculated.
@@ -64,6 +67,8 @@ def transcript_density(
     crd
         The coordinates for a region of interest in the format (xmin, xmax, ymin, ymax).
         If provided, the density is computed only for this region, by default None.
+    to_coordinate_system
+        The coordinate system that holds `img_layer` and `points_layer`.
     scale_factors
         Scale factors to apply for multiscale.
     output_layer
@@ -90,6 +95,8 @@ def transcript_density(
 
     ddf = sdata.points[points_layer]
 
+    _identity_check_transformations_points(ddf, to_coordinate_system=to_coordinate_system)
+
     ddf[name_x] = ddf[name_x].round().astype(int)
     ddf[name_y] = ddf[name_y].round().astype(int)
     if name_z is not None:
@@ -101,7 +108,7 @@ def transcript_density(
 
     se = _get_spatial_element(sdata, layer=img_layer)
 
-    img_boundary = _get_boundary(se)
+    img_boundary = _get_boundary(se, to_coordinate_system=to_coordinate_system)
 
     # if crd is None, get boundary from image at img_layer if given,
     if crd is None:
@@ -138,9 +145,9 @@ def transcript_density(
 
     counts_location_transcript = counts_location_transcript.reset_index()
 
-    if crd:
-        counts_location_transcript[name_x] = counts_location_transcript[name_x] - crd[0]
-        counts_location_transcript[name_y] = counts_location_transcript[name_y] - crd[2]
+    # crd is set to img boundary if None
+    counts_location_transcript[name_x] = counts_location_transcript[name_x] - crd[0]
+    counts_location_transcript[name_y] = counts_location_transcript[name_y] - crd[2]
 
     chunks = (chunks, chunks)
     image = da.zeros((crd[1] - crd[0], crd[3] - crd[2]), chunks=chunks, dtype=int)
@@ -184,19 +191,16 @@ def transcript_density(
     # rechunk, otherwise possible issues when saving to zarr
     blurred_transcripts = blurred_transcripts.rechunk(blurred_transcripts.chunksize)
 
-    if crd:
-        translation = Translation([crd[0], crd[2]], axes=("x", "y"))
-    else:
-        translation = None
+    translation = Translation([crd[0], crd[2]], axes=("x", "y"))
 
     arr = blurred_transcripts[None,]
 
-    sdata = _add_image_layer(
+    sdata = add_image_layer(
         sdata,
         arr=arr,
         output_layer=output_layer,
         chunks=arr.chunksize,
-        transformation=translation,
+        transformations={to_coordinate_system: translation},
         scale_factors=scale_factors,
         overwrite=overwrite,
     )

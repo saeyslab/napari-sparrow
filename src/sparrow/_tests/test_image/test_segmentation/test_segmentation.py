@@ -3,13 +3,13 @@ import importlib.util
 import dask.dataframe as dd
 import pandas as pd
 import pytest
-import spatialdata
 from dask.dataframe import DataFrame
 from spatialdata import SpatialData
 
 from sparrow.image.segmentation._segmentation import segment, segment_points
 from sparrow.image.segmentation.segmentation_models._baysor import _dummy
 from sparrow.image.segmentation.segmentation_models._cellpose import _cellpose
+from sparrow.points._points import add_points_layer
 
 
 @pytest.mark.skipif(not importlib.util.find_spec("cellpose"), reason="requires the cellpose library")
@@ -76,14 +76,15 @@ def test_segment_points(sdata_multi_c: SpatialData):
 
     coordinates = {"x": "x", "y": "y"}
 
-    sdata_multi_c.add_points(
-        name="transcripts",
-        points=spatialdata.models.PointsModel.parse(
-            ddf,
-            coordinates=coordinates,
-        ),
+    sdata_multi_c = add_points_layer(
+        sdata_multi_c,
+        ddf=ddf,
+        output_layer="transcripts",
+        coordinates=coordinates,
+        overwrite=False,
     )
-    assert type(sdata_multi_c.points["transcripts"]) == DataFrame
+
+    assert isinstance((sdata_multi_c.points["transcripts"]), DataFrame)
 
     sdata_multi_c = segment_points(
         sdata_multi_c,
@@ -98,3 +99,28 @@ def test_segment_points(sdata_multi_c: SpatialData):
         chunks=256,
         crd=None,
     )
+
+    output_labels_layer = ["masks_whole_copy_dummy_1", "masks_whole_copy_dummy_2"]
+    output_shapes_layer = ["masks_whole_copy_dummy_boundaries_1", "masks_whole_copy_dummy_boundaries_2"]
+    # test multi channel support for output labels dimension.
+    sdata_multi_c = segment_points(
+        sdata_multi_c,
+        labels_layer="masks_whole",
+        points_layer="transcripts",
+        name_x="x",
+        name_y="y",
+        name_gene="gene",
+        model=_dummy,
+        c_dim=2,
+        output_labels_layer=output_labels_layer,
+        output_shapes_layer=output_shapes_layer,
+        labels_layer_align=output_labels_layer[0],
+        chunks=256,
+        iou_depth=[3, 4],  # this will be used when aligning labels
+        crd=None,
+    )
+
+    for _output_labels_layer in output_labels_layer:
+        assert _output_labels_layer in sdata_multi_c.labels
+    for _output_shapes_layer in output_shapes_layer:
+        assert _output_shapes_layer in sdata_multi_c.shapes

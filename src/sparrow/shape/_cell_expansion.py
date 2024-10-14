@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import geopandas
+import numpy as np
+from geopandas import GeoDataFrame
 from longsgis import voronoiDiagram4plg
 from shapely.geometry import Polygon
 from spatialdata import SpatialData
+from spatialdata.transformations import get_transformation
 
-from sparrow.shape._shape import _add_shapes_layer
+from sparrow.shape._shape import add_shapes_layer
+from sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def create_voronoi_boundaries(
@@ -52,6 +58,7 @@ def create_voronoi_boundaries(
 
     if output_layer is None:
         output_layer = f"expanded_cells{radius}"
+        log.info(f"Name of the output layer is not provided. Setting to '{output_layer}'.")
 
     x_min, y_min, x_max, y_max = sdata[shapes_layer].geometry.total_bounds
 
@@ -65,7 +72,7 @@ def create_voronoi_boundaries(
     )
 
     gdf = sdata[shapes_layer].copy()
-    gdf["geometry"] = sdata[shapes_layer].simplify(2)
+    gdf["geometry"] = gdf.simplify(2)
 
     vd = voronoiDiagram4plg(gdf, boundary)
     voronoi = geopandas.sjoin(vd, gdf, predicate="contains", how="left")
@@ -78,28 +85,37 @@ def create_voronoi_boundaries(
 
     gdf.geometry = intersected
 
-    sdata = _add_shapes_layer(
+    # sanity check. If this sanity check would fail in spatialdata at some point, then pass transformation to transformations parameter of add_shapes_layer.
+    assert get_transformation(gdf, get_all=True) == get_transformation(sdata[shapes_layer], get_all=True)
+
+    sdata = add_shapes_layer(
         sdata,
         input=gdf,
         output_layer=output_layer,
+        transformations=None,
         overwrite=overwrite,
     )
 
     return sdata
 
 
-def _delete_overlap(voronoi, polygons):
-    I1, I2 = voronoi.sindex.query_bulk(voronoi["geometry"], predicate="overlaps")
+def _delete_overlap(voronoi: GeoDataFrame, polygons: GeoDataFrame) -> GeoDataFrame:
+    I1, I2 = voronoi.sindex.query(voronoi["geometry"], predicate="overlaps")
     voronoi2 = voronoi.copy()
 
+    geometry_loc = voronoi.columns.get_loc("geometry")
+
     for cell1, cell2 in zip(I1, I2):
-        # if cell1!=cell2:
-        voronoi.geometry.iloc[cell1] = voronoi.iloc[cell1].geometry.intersection(
+        voronoi.iloc[cell1, geometry_loc] = voronoi.iloc[cell1].geometry.intersection(
             voronoi2.iloc[cell1].geometry.difference(voronoi2.iloc[cell2].geometry)
         )
-        voronoi.geometry.iloc[cell2] = voronoi.iloc[cell2].geometry.intersection(
+        voronoi.iloc[cell2, geometry_loc] = voronoi.iloc[cell2].geometry.intersection(
             voronoi2.iloc[cell2].geometry.difference(voronoi2.iloc[cell1].geometry)
         )
+    assert np.array_equal(
+        np.sort(voronoi.index), np.sort(polygons.index)
+    ), "Indices of voronoi and polygons do not match"
+    polygons = polygons.reindex(voronoi.index)
     voronoi["geometry"] = voronoi.geometry.union(polygons.geometry)
     polygons = polygons.buffer(distance=0)
     voronoi = voronoi.buffer(distance=0)

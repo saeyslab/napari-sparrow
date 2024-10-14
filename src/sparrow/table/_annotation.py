@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 from itertools import chain
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Literal, Mapping
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -13,8 +14,8 @@ import scanpy as sc
 from anndata import AnnData
 from spatialdata import SpatialData
 
-from sparrow.table._keys import _ANNOTATION_KEY, _CLEANLINESS_KEY, _UNKNOWN_CELLTYPE_KEY
-from sparrow.table._table import _back_sdata_table_to_zarr
+from sparrow.table._table import ProcessTable, add_table_layer
+from sparrow.utils._keys import _ANNOTATION_KEY, _CLEANLINESS_KEY, _UNKNOWN_CELLTYPE_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -22,25 +23,39 @@ log = get_pylogger(__name__)
 
 def score_genes(
     sdata: SpatialData,
+    labels_layer: list[str],
+    table_layer: str,
+    output_layer: str,
     path_marker_genes: str | Path | pd.DataFrame,
     delimiter=",",
     row_norm: bool = False,
     repl_columns: dict[str, str] | None = None,
-    del_celltypes: list[str] | None = None,
-    input_dict=False,
-    # TODO add annotation key here, let user pass it
+    del_celltypes: dict[str] | None = None,
+    input_dict: bool = False,
+    celltype_column: str = _ANNOTATION_KEY,
+    overwrite: bool = False,
     **kwargs: Any,
-) -> tuple[dict, pd.DataFrame]:
+) -> tuple[SpatialData, list[str], list[str]]:
     """
     The function loads marker genes from a CSV file and scores cells for each cell type using those markers using scanpy's `sc.tl.score_genes` function.
 
+    Function annotates cells to the celltype with the maximum score obtained through `sc.tl.score_genes`.
     Marker genes can be provided as a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column;
     or in dictionary format. The function further allows replacements of column names and deletions of specific marker genes.
 
     Parameters
     ----------
     sdata
-        Data containing spatial information.
+        The SpatialData object.
+    labels_layer
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY in `sdata.tables[table_layer].obs`.
+        Note that if `output_layer` is equal to `table_layer` and overwrite is True,
+        cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
+        If a list of labels layers is provided, they will therefore be scored together (e.g. multiple samples).
+    table_layer
+        The table layer in `sdata` on which to perform annotation on.
+    output_layer
+        The output table layer in `sdata` to which table layer with results of annotation will be written.
     path_marker_genes
         Path to the CSV file containing the marker genes or a pandas dataframe.
         It should be a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column.
@@ -57,19 +72,31 @@ def score_genes(
     input_dict
         If True, the marker gene list from the CSV file is treated as a dictionary with the first column being
         the cell type names and the subsequent columns being the marker genes for those cell types. Default is False.
+    celltype_column
+        The column name in the SpatialData object's table that specifies the cell type annotations.
+        The default value is `_ANNOTATION_KEY`.
+    overwrite
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
     **kwargs
         Additional keyword arguments passed to `scanpy.tl.score_genes`.
 
     Returns
     -------
-    A dictionary with cell types as keys and their respective marker genes as values.
-    A DataFrame with the following structure. Index: cells, which corresponds to individual cell IDs. Columns: celltypes, as provided via the markers file. Values: Score obtained using scanpy's score_genes function for each cell type and for each cell.
+    tuple:
+
+        - Updated `sdata`.
+
+        - list of strings, with all celltypes that are scored (but are not in the del_celltypes list).
+
+        - list of strings, with all celltypes, some of which may not be scored, because their corresponding transcripts do not appear in the region of interest. _UNKNOWN_CELLTYPE_KEY, is also added if it is detected.
 
     Notes
     -----
     The cell type `_UNKNOWN_CELLTYPE_KEY` is reserved for cells that could not be assigned a specific cell type.
 
     """
+    process_table_instance = ProcessTable(sdata, labels_layer=labels_layer, table_layer=table_layer)
+    adata = process_table_instance._get_adata()
     # Load marker genes from csv
     if input_dict:
         log.warning(
@@ -87,8 +114,11 @@ def score_genes(
     else:
         if isinstance(path_marker_genes, pd.DataFrame):
             df_markers = path_marker_genes
-        else:
+        elif isinstance(path_marker_genes, (str, Path)):
             df_markers = pd.read_csv(path_marker_genes, index_col=0, delimiter=delimiter)
+        else:
+            raise ValueError("Please pass either a path to a .csv file, or a pandas Dataframe to 'path_marker_genes'.")
+
         if repl_columns:
             for column, replace in repl_columns.items():
                 df_markers.columns = df_markers.columns.str.replace(column, replace)
@@ -106,12 +136,19 @@ def score_genes(
         _UNKNOWN_CELLTYPE_KEY not in genes_dict.keys()
     ), f"Cell type {_UNKNOWN_CELLTYPE_KEY} is reserved for cells that could not be assigned a specific cell type"
 
+    # sanity check
+    unique_genes = {item for sublist in genes_dict.values() for item in sublist}
+    if not set(adata.var.index).intersection(unique_genes):
+        raise ValueError(
+            f"No genes in provided marker genes file at '{path_marker_genes}' where found in .var of table layer '{table_layer}'."
+        )
+
     # Score all cells for all celltypes
     for key, value in genes_dict.items():
         try:
-            sc.tl.score_genes(sdata.table, value, score_name=key, copy=False, **kwargs)
+            sc.tl.score_genes(adata, value, score_name=key, copy=False, **kwargs)
         except ValueError:
-            log.warning(f"Markergenes {value} not present in region, celltype {key} not found")
+            log.warning(f"Markergenes '{value}' not present in region, celltype '{key}' not found.")
 
     # Delete genes from marker genes and genes dict
     if del_celltypes:
@@ -121,91 +158,161 @@ def score_genes(
             if gene in genes_dict.keys():
                 del genes_dict[gene]
 
-    sdata, scoresper_cluster = _annotate_celltype(
-        sdata=sdata,
+    adata, celltypes_scored = _annotate_celltype(
+        adata=adata,
         celltypes=df_markers.columns,
         row_norm=row_norm,
-        celltype_column=_ANNOTATION_KEY,
+        celltype_column=celltype_column,
     )
 
     # add _UNKNOWN_CELLTYPE_KEY to the list of celltypes if it is detected.
-    if _UNKNOWN_CELLTYPE_KEY in sdata.table.obs[_ANNOTATION_KEY].cat.categories:
+    if _UNKNOWN_CELLTYPE_KEY in adata.obs[celltype_column].cat.categories:
         genes_dict[_UNKNOWN_CELLTYPE_KEY] = []
 
-    _back_sdata_table_to_zarr(sdata)
+    celltypes_all = list(genes_dict.keys())
 
-    return genes_dict, scoresper_cluster
+    sdata = add_table_layer(
+        sdata,
+        adata=adata,
+        output_layer=output_layer,
+        region=process_table_instance.labels_layer,
+        overwrite=overwrite,
+    )
+
+    return sdata, celltypes_scored, celltypes_all
 
 
 def score_genes_iter(
     sdata: SpatialData,
+    labels_layer: list[str],
+    table_layer: str,
+    output_layer: str,
     path_marker_genes: str | Path | pd.DataFrame,
     delimiter: str = ",",
-    norm_expr_var: bool = False,
-    min_score: str | None = "Zero",
-    min_score_q: int = 25,
-    scaling="Nmarkers",
-    scale_score_q=1,
+    min_score: Literal["Zero", "Quantile", None] = "Zero",
+    min_score_p: float = 25,
+    scaling: Literal[
+        "MinMax",
+        "ZeroMax",
+        "Nmarkers",
+        "Robust",
+        "Rank",
+    ] = "Nmarkers",
+    scale_score_p: float = 1,
     n_iter: int = 5,
-    suffix="",
+    calculate_umap=False,
+    calculate_neighbors=False,
+    neigbors_kwargs: Mapping[str, Any] = MappingProxyType({}),
+    umap_kwargs: Mapping[str, Any] = MappingProxyType({}),
     output_dir=None,
-) -> tuple[SpatialData, pd.DataFrame]:
+    celltype_column: str = _ANNOTATION_KEY,
+    overwrite: bool = False,
+) -> tuple[SpatialData, list[str], list[str]]:
     """
-    Annotation algorithm.
+    Iterative annotation algorithm.
+
+    For each cell, a score is calculated for each cell type.
+
+    In the 0-th iteration this is:
+
+    First mean expression is substracted from expression levels.
+    Score for each cell type is obtained via sum of these normalized expressions of the markers in the cell.
+
+    And in following iterations:
+
+    Expression levels are normalized by substracting the mean over all celltypes assigned in iteration i-1.
+    Score for each cell type is obtained via sum of these normalized expressions of the markers in the cell.
+
+    Function expects scaled data (obtained through e.g. `scanpy.pp.scale`).
 
     Parameters
     ----------
     sdata
         The SpatialData object.
+    labels_layer
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY in `sdata.tables[table_layer].obs`.
+        Note that if `output_layer` is equal to `table_layer` and overwrite is True,
+        cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
+        If a list of labels layers is provided, they will therefore be scored together (e.g. multiple samples).
+    table_layer
+        The table layer in `sdata` on which to perform annotation on. We assume the data is already preprocessed by e.g. `sp.tb.preprocess_transcriptomics`.
+        Features should all have approximately same variance.
+    output_layer
+        The output table layer in `sdata` to which table layer with results of annotation will be written.
     path_marker_genes
         Path to the CSV file containing the marker genes or a pandas dataframe.
         It should be a one-hot encoded matrix with cell types listed in the first row, and marker genes in the first column.
     delimiter
         Delimiter used in the CSV file.
-    norm_expr_var
-        Whether to normalize the gene expression matrix by the variance. Defaults to False, as we assume preprocessing is already employed.
     min_score
-        Min score method. Choose from these options: "Zero", "Quantile", None.
-    min_score_q
+        Min score method. Choose from one of these options: "Zero", "Quantile", None.
+    min_score_p
         Min score percentile. Ignored if `min_score` is not set to "Quantile".
     scaling
-        Scaling method. Choose from these options: "MinMax", "ZeroMax", "Nmarkers", "Robust", "Rank".
-    scale_score_q
+        Scaling method. Choose from one of these options: "MinMax", "ZeroMax", "Nmarkers", "Robust", "Rank".
+    scale_score_p
         Scale score percentile.
     n_iter
         Number of iterations.
-    suffix
-        Suffix.
+    calculate_umap
+        If `True`, calculates a UMAP via `scanpy.tl.umap` for visualization of obtained annotations per iteration.
+        If `False` and 'umap' or 'X_umap' is not in .obsm, then no umap will be plotted.
+    calculate_neighbors
+        If `True`, calculates neighbors via `scanpy.pp.neighbors`. Ignored if `calculate_umap` is set to `False`.
+    umap_kwargs
+        Keyword arguments passed to `scanpy.tl.umap`. Ignored if `calculate_umap` is `False`.
+    neigbors_kwargs
+        Keyword arguments passed to `scanpy.pp.neighbors`. Ignored if `calculate_umap` is `False` or if `calculate_neighbors` is set to `False` and "neighbors" already in `.uns.keys()`.
     output_dir
         If specified, figures with umaps will be saved in this directory after each iteration. If None, the plots will be displayed directly without saving.
+    celltype_column
+        The column name in the SpatialData object's table that specifies the cell type annotations.
+        The default value is `_ANNOTATION_KEY`.
+    overwrite
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
 
     Returns
     -------
-    An updated `sdata`.
-    A DataFrame with the following structure. Index: cells, which corresponds to individual cell IDs. Columns: celltypes, as provided via the markers file. Values: Score obtained using sparrow's score_genes function for each cell type and for each cell.
+    tuple:
+
+        - Updated `sdata`.
+
+        - list of strings, with all celltypes that are scored (but are not in the del_celltypes list).
+
+        - list of strings, with all celltypes, some of which may not be scored, because their corresponding transcripts do not appear in the region of interest. _UNKNOWN_CELLTYPE_KEY, is also added if it is detected.
     """
-    adata = sdata.table
-
     kwargs = {}
-    kwargs["norm_expr_var"] = norm_expr_var
     kwargs["min_score"] = min_score
-    kwargs["min_score_q"] = min_score_q
+    kwargs["min_score_p"] = min_score_p
     kwargs["scaling"] = scaling
-    kwargs["scale_score_q"] = scale_score_q
+    kwargs["scale_score_p"] = scale_score_p
 
-    adata, df = _annotate_celltype_iter(
+    process_table_instance = ProcessTable(sdata, labels_layer=labels_layer, table_layer=table_layer)
+    adata = process_table_instance._get_adata()
+
+    adata, celltypes_scored, celltypes_all = _annotate_celltype_iter(
         adata=adata,
         path_marker_genes=path_marker_genes,
         delimiter=delimiter,
         n_iter=n_iter,
-        suffix=suffix,
+        calculate_umap=calculate_umap,
+        calculate_neighbors=calculate_neighbors,
+        neigbors_kwargs=neigbors_kwargs,
+        umap_kwargs=umap_kwargs,
         output_dir=output_dir,
+        celltype_column=celltype_column,
         **kwargs,  # keyword arguments passed to _annotate_celltype_weighted
     )
 
-    _back_sdata_table_to_zarr(sdata)
+    sdata = add_table_layer(
+        sdata,
+        adata=adata,
+        output_layer=output_layer,
+        region=process_table_instance.labels_layer,
+        overwrite=overwrite,
+    )
 
-    return sdata, df
+    return sdata, celltypes_scored, celltypes_all
 
 
 def _annotate_celltype_iter(
@@ -213,165 +320,174 @@ def _annotate_celltype_iter(
     path_marker_genes: str | Path | pd.DataFrame,
     delimiter: str = ",",
     n_iter=5,
-    suffix="",
+    calculate_umap=False,
+    calculate_neighbors=False,
+    neigbors_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.pp.neighbors
+    umap_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.tl.umap
     output_dir=None,
+    celltype_column: str = _ANNOTATION_KEY,
     **kwargs,
 ) -> tuple[AnnData, pd.DataFrame]:
     # initial clustering: = typical own_score_genes
     # 'mean expression' is over all cells'
     # but you do MinMax scaling so 'mean expression' does not have an effect
 
-    if not isinstance(path_marker_genes, pd.DataFrame):
+    if celltype_column in adata.obs:
+        log.warning(f"Column '{celltype_column}' already a column in '.obs'. This column will be overwritten.")
+
+    if isinstance(path_marker_genes, (str, Path)):
         marker_genes = pd.read_csv(path_marker_genes, index_col=0, delimiter=delimiter)
-    elif isinstance(path_marker_genes, (str, Path)):
+    elif isinstance(path_marker_genes, pd.DataFrame):
         marker_genes = path_marker_genes
     else:
         raise ValueError("Please pass either a path to a .csv file, or a pandas Dataframe to 'path_marker_genes'.")
 
-    adata, scores = _annotate_celltype_weighted(
+    # only retain marker genes that are in adata
+    marker_genes = marker_genes[marker_genes.index.isin(adata.var_names)]
+
+    celltypes_all = marker_genes.columns
+    column_sums = marker_genes.sum(axis=0)
+    columns_to_drop = column_sums[column_sums == 0].index.tolist()
+    for _column in columns_to_drop:
+        log.info(
+            f"Celltype '{_column}' has no marker genes in given tissue, and will be removed from the marker genes file."
+        )
+    marker_genes = marker_genes.loc[:, column_sums != 0]
+
+    # Remove celltype columns if they already exist in the DataFrame
+    for column in marker_genes.columns:
+        if column in adata.obs.columns:
+            log.info(f"Column '{column}' already a column in '.obs'. Removing.")
+            adata.obs.drop(column, axis=1, inplace=True)
+
+    adata, _ = _annotate_celltype_weighted(
         adata,
         marker_genes=marker_genes,
-        suffix=suffix,
-        mean="all",
         mean_values=None,
+        celltype_column=celltype_column,
         **kwargs,
     )
 
-    log.info(
-        (
-            adata.obs["annotation_own_score_genes" + suffix].value_counts()
-            / len(adata.obs["annotation_own_score_genes" + suffix])
+    log.info((adata.obs[celltype_column].value_counts() / len(adata.obs[celltype_column])) * 100)
+
+    if calculate_umap:
+        if calculate_neighbors:
+            if "neighbors" in adata.uns.keys():
+                log.warning(
+                    "'neighbors' already in 'adata.uns', recalculating neighbors. Consider passing 'calculate_neigbors=False'."
+                )
+            sc.pp.neighbors(adata, copy=False, **neigbors_kwargs)
+        else:
+            if "neighbors" not in adata.uns.keys():
+                log.info("'neighbors not in 'adata.uns', computing neighborhood graph before calculating umap.")
+                sc.pp.neighbors(adata, copy=False, **neigbors_kwargs)
+            else:
+                log.info("'neighbors already in 'adata.uns', reusing for calculating umap.")
+        sc.tl.umap(adata, copy=False, **umap_kwargs)
+
+    if not any(key in adata.obsm for key in ["umap", "X_umap"]):
+        log.info(
+            "Could not find 'umap' or 'X_umap' in .obsm. Will not plot umap. Set 'calculate_umap' to 'True' to enable visualization of the umap."
         )
-        * 100
-    )
+    else:
+        sc.pl.umap(adata, color=[celltype_column], show=not output_dir)
+        if output_dir is not None:
+            plt.savefig(os.path.join(output_dir, celltype_column), bbox_inches="tight")
+            plt.close()
+        del adata.uns[f"{celltype_column}_colors"]
 
-    sc.pl.umap(adata, color=["annotation_own_score_genes" + suffix], show=not output_dir)
-    if output_dir is not None:
-        plt.savefig(os.path.join(output_dir, f"annotation_own_score_genes{suffix}"), bbox_inches="tight")
-        plt.close()
-
-    adata.obs["annotation_own_score_genes_start_iterative" + suffix] = adata.obs["annotation_own_score_genes" + suffix]
-
-    adata.uns["own_score_genes_start_iterative" + suffix] = scores
     # iterative clustering:
     # own_score_genes again but now no (MinMax) scaling hence mean_expression has an effect
     # mean expression with fair contribution of each cell type (cell types are based on the previous clustering)
-    changes = []
+    # changes = []
     completed = 0
     for _iteration in range(n_iter):
         log.info(f"Iteration {_iteration}.")
-        cell_types = np.unique(adata.obs["annotation_own_score_genes" + suffix]).tolist()
-        cell_types.remove(_UNKNOWN_CELLTYPE_KEY)
+        cell_types = np.unique(adata.obs[celltype_column]).tolist()
+        if _UNKNOWN_CELLTYPE_KEY in cell_types:
+            cell_types.remove(_UNKNOWN_CELLTYPE_KEY)
         mean_per_ct = []
         for ct in cell_types:
-            l = pd.DataFrame(adata.obs["annotation_own_score_genes" + suffix] == ct)
-            l = l.index[l["annotation_own_score_genes" + suffix]].tolist()
+            l = pd.DataFrame(adata.obs[celltype_column] == ct)
+            l = l.index[l[celltype_column]].tolist()
             ct_sel = adata[l, :]
             mean_per_ct.append(ct_sel.to_df().mean(axis=0))
 
         df = pd.concat(mean_per_ct, axis=1)
         next_mean = df.mean(axis=1)
-        if "annotation_own_score_genes_previous" + suffix in adata.obs.columns:
-            adata.obs.drop(columns=["annotation_own_score_genes_previous" + suffix], inplace=True)
+        if f"{celltype_column}_previous" in adata.obs.columns:
+            adata.obs.drop(columns=[f"{celltype_column}_previous"], inplace=True)
 
         adata.obs.rename(
-            columns={"annotation_own_score_genes" + suffix: "annotation_own_score_genes_previous" + suffix},
+            columns={celltype_column: f"{celltype_column}_previous"},
             inplace=True,
         )
         adata, scores = _annotate_celltype_weighted(
             adata,
             marker_genes=marker_genes,
-            suffix=suffix,
-            mean="given",
             mean_values=next_mean,
+            celltype_column=celltype_column,
             **kwargs,
         )
-        t = (
-            adata.obs["annotation_own_score_genes" + suffix]
-            == adata.obs["annotation_own_score_genes_previous" + suffix]
-        )
-        adata.obs["own_score_genes_diff_iter" + suffix] = [int(x) for x in t.to_list()]
-        fr = adata.obs["own_score_genes_diff_iter" + suffix].value_counts() / len(
-            adata.obs["own_score_genes_diff_iter" + suffix]
-        )
+        t = adata.obs[celltype_column] == adata.obs[f"{celltype_column}_previous"]
+        adata.obs["own_score_genes_diff_iter"] = [int(x) for x in t.to_list()]
+        fr = adata.obs["own_score_genes_diff_iter"].value_counts() / len(adata.obs["own_score_genes_diff_iter"])
         completed = completed + 1
         if len(fr) > 1 and (fr[0] * 100) > 0.05:
             log.info("Percentage of cells with changed annotation: " + str(np.round((fr[0] * 100), 2)))
-            changes.append(fr[0] * 100)
-            sc.pl.umap(adata, color=["own_score_genes_diff_iter" + suffix], show=not output_dir)
-            if output_dir is not None:
-                plt.savefig(
-                    os.path.join(output_dir, f"own_score_genes_diff_iter{suffix}_{_iteration}"), bbox_inches="tight"
+            # changes.append(fr[0] * 100)
+            if not any(key in adata.obsm for key in ["umap", "X_umap"]):
+                log.info(
+                    "Could not find 'umap' or 'X_umap' in .obsm. Will not plot umap. Set 'calculate_umap' to 'True' to enable visualization of the umap."
                 )
-                plt.close()
-            sc.pl.umap(adata, color=["annotation_own_score_genes" + suffix], show=not output_dir)
-            if output_dir is not None:
-                plt.savefig(
-                    os.path.join(output_dir, f"annotation_own_score_genes{suffix}_{_iteration}"), bbox_inches="tight"
-                )
-                plt.close()
-            log.info(
-                (
-                    adata.obs["annotation_own_score_genes" + suffix].value_counts()
-                    / len(adata.obs["annotation_own_score_genes" + suffix])
-                )
-                * 100
-            )
+            else:
+                for _name in ["own_score_genes_diff_iter", celltype_column]:
+                    sc.pl.umap(adata, color=[_name], show=not output_dir)
+                    if output_dir is not None:
+                        plt.savefig(os.path.join(output_dir, f"{_name}_{_iteration}"), bbox_inches="tight")
+                        plt.close()
+                # remove colors added by sc.pl.umap
+                del adata.uns[f"{celltype_column}_colors"]
+            log.info((adata.obs[celltype_column].value_counts() / len(adata.obs[celltype_column])) * 100)
         else:
             if len(fr) > 1:
                 log.info("Percentage of cells with changed annotation: " + str(np.round((fr[0] * 100), 2)))
             else:
                 log.info("Percentage of cells with changed annotation: " + str(0.0))
             log.info("converged")
-            changes.append(0)
+            # changes.append(0)
             break
-    # plt.plot(list(range(1,completed+1,1)),changes)
-    # make x-axis integers and start from 1
-    # ax = plt.gca()
-    # ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
-    # plt.xlabel('Iteration')
-    # plt.ylabel('Percentage of cells with changed annotation')
-    # save plot in folder output dir
-    # if output_dir is not None:
-    #    plt.savefig(os.path.join(output_dir, "own_score_genes_iterative_convergence" + suffix + ".png"))
-    # drop columns from anndata.obs
-    adata.obs.drop(columns=["own_score_genes_diff_iter" + suffix], inplace=True)
-    adata.obs.drop(columns=["annotation_own_score_genes_previous" + suffix], inplace=True)
+
+    adata.obs.drop(columns=["own_score_genes_diff_iter"], inplace=True)
+    adata.obs.drop(columns=[f"{celltype_column}_previous"], inplace=True)
 
     scores.index = adata.obs.index
 
-    return adata, scores
+    celltypes_scored = scores.columns
+
+    adata.obs = pd.concat([adata.obs, scores], axis=1)
+
+    adata.obs[celltype_column] = adata.obs[celltype_column].astype("category")
+
+    return adata, celltypes_scored.to_list(), celltypes_all.to_list()
 
 
 def _annotate_celltype_weighted(
     adata: AnnData,
     marker_genes: pd.DataFrame,
-    norm_expr_var=False,
-    min_score: str | None = "Zero",
-    min_score_q=25,
-    scaling="Nmarkers",
-    scale_score_q=1,
-    suffix="",
-    mean: str = "all",
+    min_score: Literal["Zero", "Quantile", None] = "Zero",
+    min_score_p: float = 25,
+    scaling: Literal[
+        "MinMax",
+        "ZeroMax",
+        "Nmarkers",
+        "Robust",
+        "Rank",
+    ] = "Nmarkers",
+    scale_score_p: float = 1,
     mean_values=None,
+    celltype_column: str = _ANNOTATION_KEY,
 ) -> tuple[AnnData, pd.DataFrame]:
-    # annotate each cell
-    # method based on score_genes of scanpy but no bins and min max normalization of the scores per cell type
-    # for each cell, a score is calculated for each cell type:
-    # sum of the expressions of the markers in the cell - sum of the mean expressions of the markers in all cells
-    # our expression data does not need to be scaled anymore (norm_expr_var = False) because sc.pp.scale is already applied in Sparrow
-    # the input data should be normalized and scaled
-    # create marker gene list
-    # start time
-
-    # TODO: check if everything ok with the anndata indices.
-
-    _mean_options = (
-        "all",
-        "given",
-    )
-    if mean not in _mean_options:
-        raise ValueError(f"'mean' should be one of {_mean_options}")
     _min_score_options = (
         "Zero",
         "Quantile",
@@ -393,15 +509,10 @@ def _annotate_celltype_weighted(
     cell_types = marker_genes.columns.tolist()
     # get the counts out
     matrix = adata.to_df()
-    # correct for the variance of the expression of each gene
 
-    # TODO: rewrite this part with mean == ...
-    # the normalization for if it didn't happen yet
-    if norm_expr_var:
-        matrix = matrix.div(matrix.std(axis=0))
-    if mean == "all":
+    if mean_values is None:
         mean_expression = matrix.mean(axis=0)
-    if mean == "given":
+    else:
         mean_expression = mean_values
 
     # make sure the mean over all genes is zero, so no minus necessary anymore
@@ -425,18 +536,13 @@ def _annotate_celltype_weighted(
     # min score to obtain for a cell type, otherwise 'unknown'
 
     if min_score == "Zero":
-        scores_cell_celltype_ok = scores_cell_celltype.copy(deep=True)
-        # TODO rewrite, and use boolean arrays
-        scores_cell_celltype_ok[scores_cell_celltype_ok > 0] = True
-        # scores_cell_celltype_ok=scores_celltype_ok>0, just use the vbooleans
-        scores_cell_celltype_ok[scores_cell_celltype_ok != True] = False  # noqa: E712 TODO
+        scores_cell_celltype_ok = scores_cell_celltype > 0
     if min_score == "Quantile":
-        scores_cell_celltype_ok = scores_cell_celltype.copy(deep=True)
-        scores_cell_celltype_ok[scores_cell_celltype_ok > scores_cell_celltype_ok.quantile(min_score_q / 100)] = True
-        scores_cell_celltype_ok[scores_cell_celltype_ok != True] = False  # noqa: E712 TODO
+        scores_cell_celltype_ok = scores_cell_celltype > scores_cell_celltype.quantile(min_score_p / 100)
     if min_score is None:
-        scores_cell_celltype_ok = scores_cell_celltype.copy(deep=True)
-        scores_cell_celltype_ok[scores_cell_celltype_ok.round(6) == scores_cell_celltype_ok.round(6)] = True
+        scores_cell_celltype_ok = pd.DataFrame(
+            True, index=scores_cell_celltype.index, columns=scores_cell_celltype.columns
+        )
 
     # scale scores per cell type to make them more comparable between cell types (because some cell types have more markers etc.)
     # this scaling happens per celtype over the different cells
@@ -452,17 +558,17 @@ def _annotate_celltype_weighted(
     if scaling == "Nmarkers":
         Nmarkers = marker_genes.sum(axis=0).to_list()
         scores_cell_celltype = scores_cell_celltype.div(Nmarkers)
-        log.info("scaling based on number of markers per cell type")
+        log.info("Scaling based on number of markers per celltype.")
     if scaling == "Robust":
         for cell_type in cell_types:
-            if np.percentile(scores_cell_celltype[cell_type], scale_score_q) < np.percentile(
-                scores_cell_celltype[cell_type], 100 - scale_score_q
+            if np.percentile(scores_cell_celltype[cell_type], scale_score_p) < np.percentile(
+                scores_cell_celltype[cell_type], 100 - scale_score_p
             ):
                 scores_cell_celltype[cell_type] = (
-                    scores_cell_celltype[cell_type] - np.percentile(scores_cell_celltype[cell_type], scale_score_q)
+                    scores_cell_celltype[cell_type] - np.percentile(scores_cell_celltype[cell_type], scale_score_p)
                 ) / (
-                    np.percentile(scores_cell_celltype[cell_type], 100 - scale_score_q)
-                    - np.percentile(scores_cell_celltype[cell_type], scale_score_q)
+                    np.percentile(scores_cell_celltype[cell_type], 100 - scale_score_p)
+                    - np.percentile(scores_cell_celltype[cell_type], scale_score_p)
                 )
 
             else:  # MinMax scaling if percentiles are equal
@@ -475,47 +581,47 @@ def _annotate_celltype_weighted(
             scores_cell_celltype[cell_type] = scores_cell_celltype[cell_type].rank(pct=True)
 
     # cell is annotated with the cell type with the highest score (+ this highest score is above min_score)
-    to_return = scores_cell_celltype.copy(deep=True)
-    scores_cell_celltype[scores_cell_celltype_ok == False] = 0  # np.nan  # noqa: E712 TODO
-    # change the values of keys in list
+    scores_cell_celltype[~scores_cell_celltype_ok] = 0
 
     # cleanliness of each annotation is calculated
-    # max_scores = scores_cell_celltype.max(axis=1)
-    # second_scores = scores_cell_celltype.apply(lambda x: x.nlargest(2).values[-1], axis=1)
     max_scores, second_scores = (
-        np.sort(scores_cell_celltype.values)[:, -1],
+        np.sort(scores_cell_celltype.values)[:, -1:],
         np.sort(scores_cell_celltype.values)[:, -2:-1],
     )
-    # make dataframes from max and second scores
-    max_scores = pd.DataFrame(max_scores, index=scores_cell_celltype.index)
-    second_scores = pd.DataFrame(second_scores, index=scores_cell_celltype.index)
-    cleanliness = (max_scores - second_scores) / ((max_scores + second_scores + 0.0000001) / 2)
-    # make cleanliness into a pd dataframe wxith cells as rows
-    # cleanliness = pd.DataFrame(cleanliness, index=scores_cell_celltype.index)
 
-    scores_cell_celltype[scores_cell_celltype_ok == False] = np.nan  # noqa: E712 TODO
-    sc_cell_cellt = scores_cell_celltype.idxmax(axis=1).to_dict()
+    # Calculate the cleanliness
+    difference = max_scores - second_scores
+    sum_scores = max_scores + second_scores
+    # avoid division by zero by setting a mask, if max_score same as min_score, set cleanliness to inf.
+    mask = sum_scores == 0
+    cleanliness = np.full(max_scores.shape, np.inf)
+    cleanliness[~mask] = difference[~mask] / (sum_scores[~mask] / 2.0)
 
-    unknown_cells = [k for k, v in sc_cell_cellt.items() if pd.isnull(v)]
+    scores_cell_celltype[~scores_cell_celltype_ok] = np.nan
 
-    for i in unknown_cells:
-        sc_cell_cellt[i] = _UNKNOWN_CELLTYPE_KEY
-    sc_cell_cellt = {str(k): v for k, v in sc_cell_cellt.items()}
-    adata.obs["annotation_own_score_genes" + suffix] = sc_cell_cellt.values()
+    def assign_cell_type(row):
+        # If all NaN, return _UNKNOWN_CELLTYPE_KEY for this cell
+        if row.isna().all():
+            return _UNKNOWN_CELLTYPE_KEY
+        # Identify the cell type with the max score
+        return row.idxmax()
 
-    adata.obs["score_celltype_own_score_genes" + suffix] = max_scores.values
-    adata.obs["second_score_celltype_own_score_genes" + suffix] = second_scores.values
-    adata.obs["cleanliness_own_score_genes" + suffix] = cleanliness.values
-    adata.uns["own_score_genes" + suffix] = scores_cell_celltype
+    adata.obs[celltype_column] = scores_cell_celltype.apply(assign_cell_type, axis=1).values
+    adata.obs[_CLEANLINESS_KEY] = cleanliness
 
-    return adata, to_return
+    return adata, scores_cell_celltype
 
 
 def cluster_cleanliness(
     sdata: SpatialData,
+    labels_layer: list[str],
+    table_layer: str,
+    output_layer: str,
     celltypes: list[str],
     celltype_indexes: dict[str, int] | None = None,
     colors: list[str] | None = None,
+    celltype_column: str = _ANNOTATION_KEY,
+    overwrite: bool = False,
 ) -> tuple[SpatialData, dict | None]:
     """
     Re-calculates annotations, potentially following corrections to the list of celltypes, or after a manual update of the assigned scores per cell type via e.g. `correct_marker_genes`.
@@ -527,8 +633,17 @@ def cluster_cleanliness(
     ----------
     sdata
         Data containing spatial information.
+    labels_layer
+        The labels layer(s) of `sdata` used to select the cells via the _REGION_KEY in `sdata.tables[table_layer].obs`.
+        Note that if `output_layer` is equal to `table_layer` and overwrite is True,
+        cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
+        If a list of labels layers is provided, they will therefore be scored together (e.g. multiple samples).
+    table_layer
+        The table layer in `sdata` on which to perform cleaning on.
+    output_layer
+        The output table layer in `sdata` to which table layer with results of cleaned annotations will be written.
     celltypes
-        List of celltypes used for annotation.
+        List of celltypes that you want to use for annotation, can be a subset of what is available in .obs of corresponding table.
     celltype_indexes
         Dictionary with cell type as keys and indexes as values.
         Cell types with provided indexes will be grouped together under new cell type provided as key.
@@ -538,22 +653,32 @@ def cluster_cleanliness(
     colors
         List of colors to be used for visualizing different cell types. If not provided,
         a default colormap will be generated.
+    celltype_column
+        The column name in the SpatialData object's table that specifies the cell type annotations.
+        The default value is `_ANNOTATION_KEY`.
+    overwrite
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
 
     Returns
     -------
-    Updated spatial data after the cleanliness analysis.
-    Dictionary with cell types as keys and their corresponding colors as values.
+    tuple:
+
+        - Updated spatial data after the cleanliness analysis.
+
+        - Dictionary with cell types as keys and their corresponding colors as values.
     """
+    process_table_instance = ProcessTable(sdata, labels_layer=labels_layer, table_layer=table_layer)
+    adata = process_table_instance._get_adata()
     celltypes = np.array(sorted(celltypes), dtype=str)
     color_dict = None
 
     # recalculate annotation, because we possibly did correction on celltype score for certain cells via correct_marker_genes function,
     # or updated the list of celltypes.
-    sdata, _ = _annotate_celltype(
-        sdata=sdata,
+    adata, _ = _annotate_celltype(
+        adata=adata,
         celltypes=celltypes,
         row_norm=False,
-        celltype_column=_ANNOTATION_KEY,
+        celltype_column=celltype_column,
     )
 
     # Create custom colormap for clusters
@@ -566,59 +691,73 @@ def cluster_cleanliness(
         )
         colors = [mpl.colors.rgb2hex(color[j * 4 + i]) for i in range(4) for j in range(10)]
 
-    sdata.table.uns[f"{_ANNOTATION_KEY}_colors"] = colors
+    adata.uns[f"{celltype_column}_colors"] = colors
 
     if celltype_indexes:
-        sdata.table.obs[f"{_ANNOTATION_KEY}Save"] = sdata.table.obs[_ANNOTATION_KEY]
+        adata.obs[f"{celltype_column}Save"] = adata.obs[celltype_column]
         gene_celltypes = {}
 
         for key, value in celltype_indexes.items():
             gene_celltypes[key] = celltypes[value]
 
         for gene, _indexes in celltype_indexes.items():
-            sdata = _annotate_maxscore(gene, gene_celltypes, sdata)
+            adata = _annotate_maxscore(adata, gene, gene_celltypes, celltype_column=celltype_column)
 
         for gene, _indexes in celltype_indexes.items():
-            sdata = _remove_celltypes(gene, gene_celltypes, sdata)
+            adata = _remove_celltypes(adata, gene, gene_celltypes, celltype_column=celltype_column)
 
         celltypes_f = np.delete(celltypes, list(chain(*celltype_indexes.values())))  # type: ignore
         celltypes_f = np.append(celltypes_f, list(celltype_indexes.keys()))
-        color_dict = dict(zip(celltypes_f, sdata.table.uns[f"{_ANNOTATION_KEY}_colors"]))
+        color_dict = dict(zip(celltypes_f, adata.uns[f"{celltype_column}_colors"]))
 
     else:
-        color_dict = dict(zip(celltypes, sdata.table.uns[f"{_ANNOTATION_KEY}_colors"]))
+        color_dict = dict(zip(celltypes, adata.uns[f"{celltype_column}_colors"]))
 
     for i, name in enumerate(color_dict.keys()):
         color_dict[name] = colors[i]
-    sdata.table.uns[f"{_ANNOTATION_KEY}_colors"] = list(
-        map(color_dict.get, sdata.table.obs[_ANNOTATION_KEY].cat.categories.values)
-    )
+    adata.uns[f"{celltype_column}_colors"] = list(map(color_dict.get, adata.obs[celltype_column].cat.categories.values))
 
-    _back_sdata_table_to_zarr(sdata)
+    sdata = add_table_layer(
+        sdata,
+        adata=adata,
+        output_layer=output_layer,
+        region=process_table_instance.labels_layer,
+        overwrite=overwrite,
+    )
 
     return sdata, color_dict
 
 
 def _annotate_celltype(
-    sdata: SpatialData,
+    adata: AnnData,
     celltypes: list[str],
     row_norm: bool = False,
     celltype_column: str = _ANNOTATION_KEY,
-) -> tuple[SpatialData, pd.DataFrame]:
-    scoresper_cluster = sdata.table.obs[[col for col in sdata.table.obs if col in celltypes]]
+) -> tuple[SpatialData, list[str]]:
+    scoresper_cluster = adata.obs[[col for col in adata.obs if col in celltypes]]
 
     # Row normalization for visualisation purposes
     if row_norm:
         row_norm = scoresper_cluster.sub(scoresper_cluster.mean(axis=1).values, axis="rows").div(
             scoresper_cluster.std(axis=1).values, axis="rows"
         )
-        sdata.table.obs[scoresper_cluster.columns.values] = row_norm
-        temp = pd.DataFrame(np.sort(row_norm)[:, -2:])
+        adata.obs[scoresper_cluster.columns.values] = row_norm
+        temp = np.sort(row_norm)[:, -2:]
     else:
-        temp = pd.DataFrame(np.sort(scoresper_cluster)[:, -2:])
+        temp = np.sort(scoresper_cluster)[:, -2:]
 
-    scores = (temp[1] - temp[0]) / ((temp[1] + temp[0]) / 2)
-    sdata.table.obs[_CLEANLINESS_KEY] = scores.values
+    max_scores = temp[:, 1].reshape(-1, 1)
+    second_scores = temp[:, 0].reshape(-1, 1)
+
+    # Calculate the cleanliness
+    difference = max_scores - second_scores
+    sum_scores = max_scores + second_scores
+    # avoid division by zero by setting a mask, if max_score same as min_score, set cleanliness to inf.
+    mask = sum_scores == 0
+    cleanliness = np.full(max_scores.shape, np.inf)
+    cleanliness[~mask] = difference[~mask] / (sum_scores[~mask] / 2.0)
+
+    adata.obs[_CLEANLINESS_KEY] = cleanliness
 
     def assign_cell_type(row):
         # Identify the cell type with the max score
@@ -631,29 +770,29 @@ def _annotate_celltype(
 
     # Assign _UNKNOWN_CELLTYPE_KEY cell_type if no cell type could be found that has larger expression than random sample
     # as calculated by sc.tl.score_genes function of scanpy.
-    sdata.table.obs[celltype_column] = scoresper_cluster.apply(assign_cell_type, axis=1)
-    sdata.table.obs[celltype_column] = sdata.table.obs[celltype_column].astype("category")
+    adata.obs[celltype_column] = scoresper_cluster.apply(assign_cell_type, axis=1)
+    adata.obs[celltype_column] = adata.obs[celltype_column].astype("category")
     # Set the Cleanliness score for UNKNOWN_CELLTYPE_KEY equal to 0 (i.e. not clean)
-    sdata.table.obs.loc[sdata.table.obs[celltype_column] == _UNKNOWN_CELLTYPE_KEY, _CLEANLINESS_KEY] = 0
+    adata.obs.loc[adata.obs[celltype_column] == _UNKNOWN_CELLTYPE_KEY, _CLEANLINESS_KEY] = 0
 
-    return sdata, scoresper_cluster
+    return adata, list(scoresper_cluster.columns.values)
 
 
-def _remove_celltypes(types: str, indexes: dict, sdata):
+def _remove_celltypes(adata: AnnData, types: str, indexes: dict, celltype_column: str = _ANNOTATION_KEY) -> AnnData:
     """Returns the AnnData object."""
     for index in indexes[types]:
-        if index in sdata.table.obs[_ANNOTATION_KEY].cat.categories:
-            sdata.table.obs[_ANNOTATION_KEY] = sdata.table.obs[_ANNOTATION_KEY].cat.remove_categories(index)
-    return sdata
+        if index in adata.obs[celltype_column].cat.categories:
+            adata.obs[celltype_column] = adata.obs[celltype_column].cat.remove_categories(index)
+    return adata
 
 
-def _annotate_maxscore(types: str, indexes: dict, sdata):
+def _annotate_maxscore(adata: AnnData, types: str, indexes: dict, celltype_column: str = _ANNOTATION_KEY) -> AnnData:
     """Returns the AnnData object.
 
     Adds types to the Anndata maxscore category.
     """
-    sdata.table.obs[_ANNOTATION_KEY] = sdata.table.obs[_ANNOTATION_KEY].cat.add_categories([types])
-    for i, val in enumerate(sdata.table.obs[_ANNOTATION_KEY]):
+    adata.obs[celltype_column] = adata.obs[celltype_column].cat.add_categories([types])
+    for i, val in enumerate(adata.obs[celltype_column]):
         if val in indexes[types]:
-            sdata.table.obs[_ANNOTATION_KEY][i] = types
-    return sdata
+            adata.obs[celltype_column][i] = types
+    return adata

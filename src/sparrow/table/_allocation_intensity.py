@@ -4,18 +4,16 @@ import uuid
 from typing import Iterable
 
 import anndata as ad
-import dask.array as da
 import numpy as np
 import pandas as pd
-import spatialdata
 from anndata import AnnData
-from dask import delayed
-from dask.array import Array, unique
-from numpy.typing import NDArray
+from dask_image.ndmeasure import center_of_mass
 from spatialdata import SpatialData
 
 from sparrow.image._image import _get_spatial_element, _get_translation
-from sparrow.table._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY
+from sparrow.table._table import add_table_layer
+from sparrow.utils._aggregate import RasterAggregator
+from sparrow.utils._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY, _SPATIAL
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -25,13 +23,16 @@ def allocate_intensity(
     sdata: SpatialData,
     img_layer: str | None = None,
     labels_layer: str | None = None,
+    output_layer: str = "table_intensities",
     channels: int | str | Iterable[int] | Iterable[str] | None = None,
+    to_coordinate_system: str = "global",
     chunks: str | int | tuple[int, ...] | None = 10000,
     append: bool = False,
-    remove_background_intensity: bool = True,
+    calculate_center_of_mass: bool = True,
+    overwrite: bool = True,
 ) -> SpatialData:
     """
-    Allocates intensity values from a specified image layer to corresponding cells in a SpatialData object and returns an updated SpatialData object with an attached table attribute containing the AnnData object with intensity values for each cell and each (specified) channel.
+    Allocates intensity values from a specified image layer to corresponding cells in a SpatialData object and returns an updated SpatialData object augmented with a table layer (`sdata.tables[output_layer]`) AnnData object with intensity values for each cell and each (specified) channel.
 
     It requires that the image layer and the labels layer have the same shape and alignment.
 
@@ -46,23 +47,29 @@ def allocate_intensity(
     labels_layer
         The name of the layer in `sdata` containing the labels (segmentation) used to define the boundaries of cells.
         These labels correspond with regions in the `img_layer`. If not provided, will use last labels_layer.
+    output_layer: str, optional
+        The table layer in `sdata` in which to save the AnnData object with the intensity values per cell.
     channels
         Specifies the channels to be considered when extracting intensity information from the `img_layer`.
         This parameter can take a single integer or string or an iterable of integers or strings representing specific channels.
         If set to None (the default), intensity data will be aggregated from all available channels within the image layer.
+    to_coordinate_system
+        The coordinate system that holds `img_layer` and `labels_layer`.
     chunks
-        The chunk size for processing the image data.
+        The chunk size for processing the image data. If provided as a tuple, desired chunksize for (z), y, x should be provided.
     append
-        If set to True, and the `labels_layer` does not yet exist as an `_INSTANCE_KEY` in `sdata.table.obs`,
+        If set to True, and the `labels_layer` does not yet exist as a `_REGION_KEY` in `sdata.tables[output_layer].obs`,
         the intensity values extracted during the current function call will be appended (along axis=0) to any existing intensity data
-        within the SpatialData object's table attribute. If False, any existing data in `sdata.table` will be overwritten by the newly extracted intensity values.
-    remove_background_intensity
-        If set to True, the calculated intensity for the background (INSTANCE_KEY==0) will not be added to `sdata.table`.
+        within the SpatialData object's table attribute. If False, and overwrite is set to True any existing data in `sdata.tables[output_layer]` will be overwritten by the newly extracted intensity values.
+    calculate_center_of_mass
+        If `True`, the center of mass of the labels in `labels_layer` will be calculated and added to `sdata.tables[ output_layer ].obsm[_SPATIAL]`.
+        To calculate center of mass, we use `dask_image.ndmeasure.center_of_mass`.
+    overwrite
+        If `True`, overwrites the `output_layer` if it already exists in `sdata`.
 
     Returns
     -------
-    An updated version of the input SpatialData object. The updated object includes a 'table' attribute
-    containing an AnnData object with intensity values for each cell across the channels in the `img_layer`.
+    An updated version of the input SpatialData object augmented with a table layer (`sdata.tables[output_layer]`) AnnData object.
 
     Notes
     -----
@@ -88,11 +95,19 @@ def allocate_intensity(
     ... )
     >>>
     >>> sdata = sp.tb.allocate_intensity(
-    ...     sdata, img_layer="raw_image", labels_layer="masks_whole", chunks=100
+    ...     sdata, img_layer="raw_image", labels_layer="masks_whole", output_layer="table_intensities", chunks=100
     ... )
     >>>
     >>> sdata = sp.tb.allocate_intensity(
-    ...     sdata, img_layer="raw_image", labels_layer="masks_nuclear_aligned", chunks=100, append=True
+    ...     sdata, img_layer="raw_image", labels_layer="masks_nuclear_aligned", output_later="table_intensities", chunks=100, append=True
+    ... )
+    >>> # alternatively, save to different tables
+    >>> sdata = sp.tb.allocate_intensity(
+    ...     sdata, img_layer="raw_image", labels_layer="masks_whole", output_layer="table_intensities_masks_whole", chunks=100
+    ... )
+    >>>
+    >>> sdata = sp.tb.allocate_intensity(
+    ...     sdata, img_layer="raw_image", labels_layer="masks_nuclear_aligned", output_later="table_intensities_masks_nuclear_aligned", chunks=100, append=True
     ... )
     """
     if img_layer is None:
@@ -123,125 +138,105 @@ def allocate_intensity(
     f"but image layer with name {img_layer} has shape {se_image.data.shape}, "
     f"while labels layer with name {labels_layer} has shape {se_labels.data.shape}  "
 
-    t1x, t1y = _get_translation(se_image)
-    t2x, t2y = _get_translation(se_labels)
+    t1x, t1y = _get_translation(se_image, to_coordinate_system=to_coordinate_system)
+    t2x, t2y = _get_translation(se_labels, to_coordinate_system=to_coordinate_system)
 
     assert (t1x, t1y) == (t2x, t2y), f"image layer with name {img_layer} should "
-    f"have same translation as labels layer with name {labels_layer}"
+    f"be registered to labels layer with name {labels_layer} in coordinate system {to_coordinate_system}."
 
     if channels is None:
         channels = se_image.c.data
 
-    # iterate over all the channels and collect intensity for each channel and each cell
-    channel_intensities = []
-    for channel in channels:
-        channel_idx = list(se_image.c.data).index(channel)
-        channel_intensities.append(
-            _calculate_intensity(se_image.isel(c=channel_idx).data, se_labels.data, chunks=chunks)
-        )
+    _array_mask = se_labels.data
+    _array_img = se_image.data
 
-    channel_intensities = np.concatenate(channel_intensities, axis=1)
+    to_squeeze = False
+    if se_image.ndim == 3:
+        to_squeeze = True
+        _array_mask = _array_mask[None, ...]
+        _array_img = _array_img[:, None, ...]
+
+    chunks_masks = None
+    if chunks is not None:
+        if not isinstance(chunks, (int, str)):
+            if to_squeeze:
+                assert len(chunks) == _array_img.ndim - 2
+                chunks = (_array_img.chunksize[0], 1, chunks[0], chunks[1])
+                chunks_masks = (1, chunks[2], chunks[3])
+            else:
+                assert len(chunks) == _array_img.ndim - 1
+                chunks = (_array_img.chunksize[0], chunks[0], chunks[1], chunks[2])
+                chunks_masks = (chunks[1], chunks[2], chunks[3])
+        else:
+            chunks_masks = chunks
+
+    _array_img = _array_img.rechunk(chunks) if chunks is not None else _array_img
+    _array_mask_rechunked = _array_mask.rechunk(chunks_masks) if chunks_masks is not None else _array_mask
+
+    assert all(
+        element in se_image.c.data for element in channels
+    ), f"Some channels specified via 'channels' could not be found in image layer '{img_layer}'. Please choose 'channels' from '{list( se_image.c.data )}'."
+    channel_indices = [list(se_image.c.data).index(channel) for channel in channels]
+    _array_img = _array_img[channel_indices]
+    aggregator = RasterAggregator(image_dask_array=_array_img, mask_dask_array=_array_mask_rechunked)
+    df_sum = aggregator.aggregate_sum()
+
+    _cells_id = df_sum[_INSTANCE_KEY].values
+    channel_intensities = df_sum.drop([_INSTANCE_KEY], axis=1).values
 
     channels = list(map(str, channels))
     var = pd.DataFrame(index=channels)
     var.index = var.index.map(str)
     var.index.name = "channels"
 
-    _cells_id = unique(se_labels.data).compute()
+    # _cells_id = unique(se_labels.data).compute()  # two times computation of unique labels, this is not necessary.
     cells = pd.DataFrame(index=_cells_id)
     _uuid_value = str(uuid.uuid4())[:8]
     cells.index = cells.index.map(lambda x: f"{x}_{labels_layer}_{_uuid_value}")
     cells.index.name = _CELL_INDEX
     adata = AnnData(X=channel_intensities, obs=cells, var=var)
 
-    adata.obs[_INSTANCE_KEY] = _cells_id
+    adata.obs[_INSTANCE_KEY] = _cells_id.astype(int)
     adata.obs[_REGION_KEY] = pd.Categorical([labels_layer] * len(adata.obs))
-    if remove_background_intensity:
-        adata = adata[adata.obs[_INSTANCE_KEY] != 0]
+    # remove background intensity
+    adata = adata[adata.obs[_INSTANCE_KEY] != 0]
+    _cells_id = _cells_id[_cells_id != 0]
 
-    if sdata.table is None:
-        sdata.table = spatialdata.models.TableModel.parse(
-            adata,
-            region_key=_REGION_KEY,
-            region=[labels_layer],
-            instance_key=_INSTANCE_KEY,
+    if calculate_center_of_mass:
+        # add center of cells here (via the masks).
+        _array_mask = _array_mask.squeeze(0) if to_squeeze else _array_mask
+        coordinates = center_of_mass(
+            image=_array_mask,  # do not use rechunked array mask here, leads to significant increase in required ram.
+            label_image=_array_mask,
+            index=_cells_id,
         )
-        return sdata
+
+        coordinates = coordinates.compute()
+        coordinates += np.array([t1y, t1x]) if to_squeeze else np.array([0, t1y, t1x])
+
+        adata.obsm[_SPATIAL] = coordinates
 
     if append:
-        if labels_layer in sdata.table.obs[_REGION_KEY]:
-            raise ValueError(f"labels_layer '{labels_layer}' already exists as region in the `sdata` object.")
-        adata = ad.concat([sdata.table, adata], axis=0)
-        # get the regions already in sdata, and append the new one
-        region = sdata.table.obs[_REGION_KEY].cat.categories.to_list()
+        region = []
+        if output_layer in [*sdata.tables]:
+            if labels_layer in sdata.tables[output_layer].obs[_REGION_KEY].cat.categories:
+                raise ValueError(
+                    f"'{labels_layer}' already exists as a region in the 'sdata.tables[{output_layer}]' object. Please choose a different labels layer, choose a different 'output_layer' or set append to False and overwrite to True to overwrite the existing table."
+                )
+            adata = ad.concat([sdata.tables[output_layer], adata], axis=0)
+            # get the regions already in sdata, and append the new one
+            region = sdata.tables[output_layer].obs[_REGION_KEY].cat.categories.to_list()
         region.append(labels_layer)
+
     else:
         region = [labels_layer]
 
-    del sdata.table
-    sdata.table = spatialdata.models.TableModel.parse(
-        adata, region_key=_REGION_KEY, region=region, instance_key=_INSTANCE_KEY
+    sdata = add_table_layer(
+        sdata,
+        adata=adata,
+        output_layer=output_layer,
+        region=region,
+        overwrite=overwrite,
     )
 
     return sdata
-
-
-def _calculate_intensity(
-    float_dask_array: Array,
-    mask_dask_array: Array,
-    chunks: str | int | tuple[int, ...] | None = 10000,
-) -> NDArray:
-    # lazy computation of pixel intensities on one channel for each label in mask_dask_array
-    # result is an array of shape (len(unique(mask_dask_array).compute(), 1 ), so be aware that if
-    # some labels are missing, e.g. unique(mask_dask_array).compute()=np.array([ 0,1,3,4 ]), resulting
-    # array will hold at postiion 2 the intensity for cell with index 3.
-
-    assert float_dask_array.shape == mask_dask_array.shape
-
-    float_dask_array = float_dask_array.rechunk(chunks)
-    mask_dask_array = mask_dask_array.rechunk(chunks)
-
-    labels = unique(mask_dask_array).compute()
-
-    def _calculate_intensity_per_chunk(mask_block: NDArray, float_block: NDArray) -> NDArray:
-        sums = np.bincount(mask_block.ravel(), weights=float_block.ravel())
-
-        num_padding = (max(labels) + 1) - len(sums)
-
-        sums = np.pad(sums, (0, num_padding), "constant", constant_values=(0))
-
-        sums = sums[labels]
-
-        sums = sums.reshape(-1, 1)
-
-        return sums
-
-    chunk_sum = da.map_blocks(
-        lambda m, f: _calculate_intensity_per_chunk(m, f),
-        mask_dask_array,
-        float_dask_array,
-        dtype=float,
-        chunks=(len(labels), 1),
-    )
-
-    # here you could persist array of shape (num_labels * nr_of_chunks_x, nr_of_chunks_y) into memory
-    # chunk_sum=chunk_sum.persist()  --> could take a lot of memory if you would have many chunks
-    # therefore we use this delayed tasks.
-
-    sum_of_chunks = np.zeros((len(labels), 1), dtype=chunk_sum.dtype)
-
-    num_chunks = chunk_sum.numblocks
-    tasks = []
-
-    # sum the result for each chunk
-    for i in range(num_chunks[0]):
-        for j in range(num_chunks[1]):
-            current_chunk = chunk_sum.blocks[i, j]
-            task = delayed(np.add)(sum_of_chunks, current_chunk)
-            tasks.append(task)
-
-    total_sum_delayed = delayed(sum)(tasks)
-
-    sum_of_chunks = total_sum_delayed.compute()
-
-    return sum_of_chunks

@@ -6,30 +6,27 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 from dask.array import Array
-from dask.dataframe import DataFrame as DaskDataFrame
-from geopandas import GeoDataFrame
-from multiscale_spatial_image.multiscale_spatial_image import MultiscaleSpatialImage
-from spatial_image import SpatialImage
+from datatree import DataTree
 from spatialdata import SpatialData
+from spatialdata.models._utils import MappingToCoordinateSystem_t
 from spatialdata.models.models import ScaleFactors_t
-from spatialdata.transformations import BaseTransformation, Identity, Translation
-from spatialdata.transformations._utils import (
-    _get_transformations,
-    _get_transformations_xarray,
-)
+from spatialdata.transformations import get_transformation
+from spatialdata.transformations.transformations import Identity, Sequence, Translation
 from xarray import DataArray
 
 from sparrow.image._manager import ImageLayerManager, LabelLayerManager
+from sparrow.utils._transformations import _get_translation_values
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
 
 def _substract_translation_crd(
-    spatial_image: SpatialImage | DataArray,
+    spatial_image: DataArray,
     crd=Tuple[int, int, int, int],
+    to_coordinate_system: str = "global",
 ) -> tuple[int, int, int, int] | None:
-    tx, ty = _get_translation(spatial_image)
+    tx, ty = _get_translation(spatial_image, to_coordinate_system=to_coordinate_system)
 
     _crd = crd
     crd = [
@@ -42,7 +39,7 @@ def _substract_translation_crd(
     if crd[1] - crd[0] <= 0 or crd[3] - crd[2] <= 0:
         log.warning(
             f"Crop param {_crd} after correction for possible translation on "
-            f"SpatialImage object '{spatial_image.name}' is "
+            f"DataArray object '{spatial_image.name}' is "
             f"'{crd}. Falling back to setting crd to 'None'."
         )
         crd = None
@@ -50,48 +47,42 @@ def _substract_translation_crd(
     return crd
 
 
-def _get_boundary(spatial_image: SpatialImage | DataArray) -> tuple[int, int, int, int]:
-    tx, ty = _get_translation(spatial_image)
+def _get_boundary(spatial_image: DataArray, to_coordinate_system: str = "global") -> tuple[int, int, int, int]:
+    tx, ty = _get_translation(spatial_image, to_coordinate_system=to_coordinate_system)
     width = spatial_image.sizes["x"]
     height = spatial_image.sizes["y"]
     return (int(tx), int(tx + width), int(ty), int(ty + height))
 
 
-def _get_translation(spatial_image: SpatialImage | MultiscaleSpatialImage | DataArray) -> tuple[float, float]:
-    translation = _get_transformation(spatial_image)
+def _get_translation(spatial_image: DataArray, to_coordinate_system: str = "global") -> tuple[float, float]:
+    transformations = get_transformation(spatial_image, get_all=True)
+    if len(transformations) > 1:
+        log.info(
+            f"There seems to be more than one coordinate system defined on the provided spatial element ('{[*transformations]}'). "
+            f"We only consider the coordinate sytem specified via parameter 'to_coordinate_system': '{to_coordinate_system}'."
+        )
+    if to_coordinate_system not in [*transformations]:
+        raise ValueError(
+            f"Coordinate system '{to_coordinate_system}' does not appear to be a coordinate system of the spatial element. "
+            f"Please choose a coordinate system from this list: {[*transformations]}."
+        )
+    translation = transformations[to_coordinate_system]
 
-    if not isinstance(translation, (Translation, Identity)):
+    if not isinstance(translation, (Sequence | Translation, Identity)):
         raise ValueError(
             f"Currently only transformations of type Translation are supported, "
-            f"while transformation associated with {spatial_image} is of type {type(translation)}."
+            f"while transformation associated with {spatial_image} in coordinate system '{to_coordinate_system}' is of type {type(translation)}."
         )
 
     return _get_translation_values(translation)
 
 
-def _get_translation_values(translation: Translation | Identity):
-    transform_matrix = translation.to_affine_matrix(input_axes=("x", "y"), output_axes=("x", "y"))
-
-    if (
-        transform_matrix[0, 0] == 1.0
-        and transform_matrix[0, 1] == 0.0
-        and transform_matrix[1, 0] == 0.0
-        and transform_matrix[1, 1] == 1.0
-        and transform_matrix[2, 0] == 0.0
-        and transform_matrix[2, 1] == 0.0
-        and transform_matrix[2, 2] == 1.0
-    ):
-        return transform_matrix[0, 2], transform_matrix[1, 2]
-    else:
-        raise ValueError(f"The provided transform matrix {transform_matrix} represents more than just a translation.")
-
-
-def _apply_transform(se: SpatialImage | DataArray) -> tuple[SpatialImage | DataArray, np.ndarray, np.ndarray]:
+def _apply_transform(se: DataArray, to_coordinate_system: str = "global") -> tuple[DataArray, np.ndarray, np.ndarray]:
     """
-    Apply the translation (if any) of the given SpatialImage to its x- and y-coordinates array.
+    Apply the translation (if any) of the given DataArray to its x- and y-coordinates array.
 
-    The new SpatialImage is returned, as well as the original coordinates array.
-    This function is used because some plotting functions ignore the SpatialImage transformation
+    The new DataArray is returned, as well as the original coordinates array.
+    This function is used because some plotting functions ignore the DataArray transformation
     matrix, but do use the coordinates arrays for absolute positioning of the image in the plot.
     After plotting the coordinates can be restored with _unapply_transform().
     """
@@ -100,91 +91,38 @@ def _apply_transform(se: SpatialImage | DataArray) -> tuple[SpatialImage | DataA
     y_orig_coords = se.y.data
 
     # Translate
-    tx, ty = _get_translation(se)
+    tx, ty = _get_translation(se, to_coordinate_system=to_coordinate_system)
     x_coords = xr.DataArray(tx + np.arange(se.sizes["x"], dtype="float64"), dims="x")
     y_coords = xr.DataArray(ty + np.arange(se.sizes["y"], dtype="float64"), dims="y")
     se = se.assign_coords({"x": x_coords, "y": y_coords})
-    # QUESTION: should we set the resulting SpatialImage's transformation matrix to the
+    # QUESTION: should we set the resulting DataArray's transformation matrix to the
     # identity matrix too, for consistency? If so we have to keep track of it too for restoring later.
 
     return se, x_orig_coords, y_orig_coords
 
 
-def _unapply_transform(
-    se: SpatialImage | DataArray, x_coords: np.ndarray, y_coords: np.ndarray
-) -> SpatialImage | DataArray:
+def _unapply_transform(se: DataArray, x_coords: np.ndarray, y_coords: np.ndarray) -> DataArray:
     """Restore the coordinates which were temporarily modified via _apply_transform()."""
     se = se.assign_coords({"y": y_coords, "x": x_coords})
     return se
 
 
-def _get_spatial_element(sdata: SpatialData, layer: str) -> SpatialImage | DataArray:
+def _get_spatial_element(sdata: SpatialData, layer: str) -> DataArray:
     if layer in sdata.images:
         si = sdata.images[layer]
     elif layer in sdata.labels:
         si = sdata.labels[layer]
     else:
         raise KeyError(f"'{layer}' not found in sdata.images or sdata.labels")
-    if isinstance(si, SpatialImage):
+    if isinstance(si, DataArray):
         return si
-    elif isinstance(si, MultiscaleSpatialImage):
+    elif isinstance(si, DataTree):
         # get the name of the unscaled image
-        # TODO maybe add some other checks here
         scale_0 = si.__iter__().__next__()
         name = si[scale_0].__iter__().__next__()
         return si[scale_0][name]
     else:
         raise ValueError(f"Not implemented for layer '{layer}' of type {type(si)}.")
-
-
-def _get_transformation(
-    element: SpatialImage | MultiscaleSpatialImage | GeoDataFrame | DaskDataFrame | DataArray,
-    to_coordinate_system: str | None = None,
-    get_all: bool = False,
-) -> BaseTransformation | dict[str, BaseTransformation]:
-    """
-    Get the transformation/s of an element.
-
-    This function extends the capabilities of `spatialdata.transformations.get_transformation` by also supporting extraction from `xarray.DataArray`.
-    This facilitates interaction with `MultiscaleSpatialImage`.
-
-    Parameters
-    ----------
-    element
-        The element.
-    to_coordinate_system
-        The coordinate system to which the transformation should be returned.
-
-        * If None and `get_all=False` returns the transformation from the 'global' coordinate system (default system).
-        * If None and `get_all=True` returns all transformations.
-
-    get_all
-        If True, all transformations are returned. If True, `to_coordinate_system` needs to be None.
-
-    Returns
-    -------
-    The transformation, if `to_coordinate_system` is not None, otherwise a dictionary of transformations to all
-    the coordinate systems.
-    """
-    from spatialdata.models._utils import DEFAULT_COORDINATE_SYSTEM
-
-    if isinstance(element, (SpatialImage, MultiscaleSpatialImage, GeoDataFrame, DaskDataFrame)):
-        transformations = _get_transformations(element)
-    elif isinstance(element, DataArray):
-        transformations = _get_transformations_xarray(element)
-    assert isinstance(transformations, dict)
-
-    if get_all is False:
-        if to_coordinate_system is None:
-            to_coordinate_system = DEFAULT_COORDINATE_SYSTEM
-        # get a specific transformation
-        if to_coordinate_system not in transformations:
-            raise ValueError(f"Transformation to {to_coordinate_system} not found in element {element}.")
-        return transformations[to_coordinate_system]
-    else:
-        assert to_coordinate_system is None
-        # get the dict of all the transformations
-        return transformations
 
 
 def _fix_dimensions(
@@ -231,17 +169,49 @@ def _fix_dimensions(
     return array
 
 
-def _add_image_layer(
+def add_image_layer(
     sdata: SpatialData,
     arr: Array,
     output_layer: str,
     dims: tuple[str, ...] | None = None,
-    chunks: str | tuple[int, int, int] | int | None = None,
-    transformation: BaseTransformation | dict[str, BaseTransformation] = None,
+    chunks: str | tuple[int, ...] | int | None = None,
+    transformations: MappingToCoordinateSystem_t | None = None,
     scale_factors: ScaleFactors_t | None = None,
     c_coords: list[str] | None = None,
     overwrite: bool = False,
-):
+) -> SpatialData:
+    """
+    Add an image layer to a SpatialData object.
+
+    This function allows you to add an image layer to `sdata`.
+    If `sdata` is backed by a zarr store, the resulting image layer will be backed to the zarr store, otherwise `arr` will be persisted in memory.
+    All layers of the Dask graph associated with `arr` will therefore be materialized upon calling `add_image_layer`.
+
+    Parameters
+    ----------
+    sdata
+        The SpatialData object to which the new image layer will be added.
+    arr
+        The array containing the image data to be added.
+    output_layer
+        The name of the output layer where the image data will be stored.
+    dims
+        A tuple specifying the dimensions of the image data (e.g., ("c", "z", "y", "x")). If None, defaults will be inferred.
+    chunks
+        Specification for chunking the data.
+    transformations
+        Transformations that will be added to resulting `output_layer`.
+    scale_factors
+        Scale factors to apply for multiscale data. If specified `output_layer` will be multiscale.
+    c_coords
+        Names of the channels. If None, channel names will be named sequentially as 0,1,...
+    overwrite
+        If True, overwrites the output layer if it already exists in `sdata`.
+
+    Returns
+    -------
+    The `sdata` object with the image layer added.
+    """
     manager = ImageLayerManager()
     sdata = manager.add_layer(
         sdata,
@@ -249,7 +219,7 @@ def _add_image_layer(
         output_layer=output_layer,
         dims=dims,
         chunks=chunks,
-        transformation=transformation,
+        transformations=transformations,
         scale_factors=scale_factors,
         c_coords=c_coords,
         overwrite=overwrite,
@@ -258,16 +228,46 @@ def _add_image_layer(
     return sdata
 
 
-def _add_label_layer(
+def add_labels_layer(
     sdata: SpatialData,
     arr: Array,
     output_layer: str,
     dims: tuple[str, ...] | None = None,
-    chunks: str | tuple[int, int] | int | None = None,
-    transformation: BaseTransformation | dict[str, BaseTransformation] = None,
+    chunks: str | tuple[int, ...] | int | None = None,
+    transformations: MappingToCoordinateSystem_t | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
-):
+) -> SpatialData:
+    """
+    Add a labels layer to a SpatialData object.
+
+    This function allows you to add a labels layer to `sdata`.
+    If `sdata` is backed by a zarr store, the resulting labels layer will be backed to the zarr store, otherwise `arr` will be persisted in memory.
+    All layers of the Dask graph associated with `arr` will therefore be materialized upon calling `add_labels_layer`.
+
+    Parameters
+    ----------
+    sdata
+        The SpatialData object to which the new labels layer will be added.
+    arr
+        The array containing the labels data to be added. Should be of type int.
+    output_layer
+        The name of the output layer where the labels data will be stored.
+    dims
+        A tuple specifying the dimensions of the labels data (e.g., (""z", "y", "x")). If None, defaults will be inferred.
+    chunks
+        Specification for chunking the data.
+    transformations
+        Transformations that will be added to resulting `output_layer`.
+    scale_factors
+        Scale factors to apply for multiscale data. If specified `output_layer` will be multiscale
+    overwrite
+        If True, overwrites the `output_layer` if it already exists in `sdata`.
+
+    Returns
+    -------
+    The `sdata` object with the labels layer added.
+    """
     manager = LabelLayerManager()
     sdata = manager.add_layer(
         sdata,
@@ -275,7 +275,7 @@ def _add_label_layer(
         output_layer=output_layer,
         dims=dims,
         chunks=chunks,
-        transformation=transformation,
+        transformations=transformations,
         scale_factors=scale_factors,
         overwrite=overwrite,
     )
