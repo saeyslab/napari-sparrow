@@ -25,11 +25,11 @@ Tutorials are available [here](https://sparrow-pipeline.readthedocs.io/en/latest
 
 ## Usage
 
-[Learn](docs/usage.md) how SPArrOW can be integrated into your workflow in different ways.
+[Learn](docs/usage.md) how `SPArrOW` can be integrated into your workflow in different ways.
 
 ## Contributing
 
-See [here](docs/contributing.md) for info on how to contribute to SPArrOW.
+See [here](docs/contributing.md) for info on how to contribute to `SPArrOW`.
 
 ## References
 
