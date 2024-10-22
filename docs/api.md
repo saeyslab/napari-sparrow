@@ -21,11 +21,14 @@ I/O.
 .. autosummary::
     :toctree: generated
 
-    io.create_sdata
+    io.merscope
+    io.xenium
+    io.visium_hd
     io.read_transcripts
     io.read_resolve_transcripts
-    io.read_vizgen_transcripts
+    io.read_merscope_transcripts
     io.read_stereoseq_transcripts
+    io.create_sdata
 
 ```
 
@@ -227,6 +230,9 @@ Dataset loaders.
     datasets.mibi_example
     datasets.vectra_example
     datasets.resolve_example
+    datasets.merscope_example
+    datasets.xenium_example
+    datasets.visium_hd_example
     datasets.get_registry
     datasets.get_spatialdata_registry
 ```
