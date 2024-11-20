@@ -1,15 +1,13 @@
-![alt text](https://github.com/saeyslab/harpy/blob/main/docs/_static/img/logo-white.png)
-
 <!-- These badges won't work while the GitHub repo is private:
 [![License BSD-3](https://img.shields.io/pypi/l/napari-sparrow.svg?color=green)](https://github.com/saeyslab/napari-sparrow/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/napari-sparrow.svg?color=green)](https://pypi.org/project/napari-sparrow)
+[![tests](https://github.com/saeyslab/harpy/workflows/tests/badge.svg)](https://github.com/saeyslab/harpy/actions)
 [![Python Version](https://img.shields.io/pypi/pyversions/napari-sparrow.svg?color=green)](https://python.org)
-[![tests](https://github.com/saeyslab/napari-sparrow/workflows/tests/badge.svg)](https://github.com/saeyslab/napari-sparrow/actions)
-[![codecov](https://codecov.io/gh/saeyslab/napari-sparrow/branch/main/graph/badge.svg)](https://codecov.io/gh/saeyslab/napari-sparrow)
+[![codecov](https://codecov.io/gh/saeyslab/harpy/graph/badge.svg?token=7UXMDWVYFZ)](https://codecov.io/gh/saeyslab/harpy)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-sparrow)](https://napari-hub.org/plugins/napari-sparrow)
 -->
 
-# **Harpy: A library for single-cell Spatial Proteomics data analysis.**
+# **Harpy: single-cell spatial proteomics analysis that makes you happy** <img src="./docs/_static/img/logo.png" align ="right" alt="" width ="150"/>
 
 [![documentation badge](https://readthedocs.org/projects/harpy/badge/?version=latest)](https://harpy.readthedocs.io/en/latest/)
 
