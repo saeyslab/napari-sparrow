@@ -31,6 +31,7 @@ def pixel_clustering_preprocess(
     q_post: float = 99.9,
     sigma: float | Iterable[float] | None = 2,
     norm_sum: bool = True,
+    cap_max: float | None = None,
     chunks: str | int | tuple[int, ...] | None = None,
     scale_factors: ScaleFactors_t | None = None,
     cast_dtype: type | None = np.float32,
@@ -64,6 +65,9 @@ def pixel_clustering_preprocess(
         Gaussian blur parameter for each channel. Use `0` to omit blurring for specific channels or `None` to skip blurring altogether.
     norm_sum
         If `True`, each channel is normalized by the sum of all channels at each pixel.
+    cap_max
+        The maximum allowable value for the elements in the resulting preprocessed image layers. If `None`, no capping is applied.
+        Typical value would be `1.0` to exclude outliers.
     chunks
         Chunk sizes for processing. If provided as a tuple, it should contain chunk sizes for `c`, `(z)`, `y`, `x`.
     scale_factors
@@ -102,9 +106,9 @@ def pixel_clustering_preprocess(
         if isinstance(output_layer, Iterable) and not isinstance(output_layer, str)
         else [output_layer]
     )
-    assert len(output_layer) == len(
-        img_layer
-    ), "The number of 'output_layer' specified should be the equal to the the number of 'img_layer' specified."
+    assert len(output_layer) == len(img_layer), (
+        "The number of 'output_layer' specified should be the equal to the the number of 'img_layer' specified."
+    )
 
     se_image = _get_spatial_element(sdata, layer=img_layer[0])
 
@@ -123,9 +127,9 @@ def pixel_clustering_preprocess(
         if i == 0:
             _array_dim = arr.ndim
         else:
-            assert (
-                _array_dim == arr.ndim
-            ), "Image layers specified via parameter `img_layer` should all have same number of dimensions."
+            assert _array_dim == arr.ndim, (
+                "Image layers specified via parameter `img_layer` should all have same number of dimensions."
+            )
         if chunks is not None:
             arr = arr.rechunk(chunks)
 
@@ -175,9 +179,9 @@ def pixel_clustering_preprocess(
     # 3) gaussian blur
     if sigma is not None:
         sigma = list(sigma) if isinstance(sigma, Iterable) else [sigma] * len(channels)
-        assert (
-            len(sigma) == len(channels)
-        ), f"If 'sigma' is provided as a list, it should match the number of channels in '{se_image}', or the number of channels provided via the 'channels' parameter '{channels}'."
+        assert len(sigma) == len(channels), (
+            f"If 'sigma' is provided as a list, it should match the number of channels in '{se_image}', or the number of channels provided via the 'channels' parameter '{channels}'."
+        )
         # gaussian blur for each image separately
         for i in range(len(_arr_list)):
             _arr_list[i] = _gaussian_blur(_arr_list[i], sigma=sigma)
@@ -220,6 +224,10 @@ def pixel_clustering_preprocess(
     if q_post is not None:
         for i in range(len(_arr_list)):
             _arr_list[i] = _arr_list[i] / da.asarray(arr_percentile_post_norm_mean[..., None, None, None])
+
+    if cap_max is not None:
+        for i in range(len(_arr_list)):
+            _arr_list[i] = da.clip(_arr_list[i], None, cap_max)
 
     # need to let dask do optimization of the computation graph in case there are multiple images
     # otherwise will recaclulate whole preprocessing every time we add an image layer to the sdata zarr store
