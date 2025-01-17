@@ -504,15 +504,23 @@ def _plot(
             polygons = sdata.shapes[shapes_layer].cx[crd[0] : crd[1], crd[2] : crd[3]]
         if z_index is not None:
             polygons = _get_z_slice_polygons(polygons, z_index=z_index)
-
     if polygons is not None and column is not None:
         if not polygons.empty:
             if column + "_colors" in sdata.table.uns:
-                cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
-                    "new_map",
-                    sdata.table.uns[column + "_colors"],
-                    N=len(sdata.table.uns[column + "_colors"]),
-                )
+                if sdata.table.obs[column].dtype.name == "category":
+                    #create Dicto f colors for each category
+                    color_Dict=dict(zip(sdata.table.obs[column].cat.categories,sdata.table.uns[column + "_colors"]))
+                    #create a list of colors for each category present in the column
+                    celltypes=sdata.table.obs.loc[polygons.index,:][column].cat.remove_unused_categories().cat.categories
+                    colors=[color_Dict[celltype] for celltype in celltypes]
+                    cmap=matplotlib.colors.ListedColormap(colors)
+                    #cmap = matplotlib.colors.ListedColormap(sdata.table.uns[column + "_colors"])
+                else:    
+                    cmap = matplotlib.colors.LinearSegmentedColormap.from_list(
+                        "new_map",
+                        sdata.table.uns[column + "_colors"],
+                        N=len(sdata.table.uns[column + "_colors"]),
+                    )
             if column in sdata.table.obs.columns:
                 column = sdata.table[polygons.index, :].obs[column]
             elif column in sdata.table.var.index:
@@ -583,6 +591,7 @@ def _plot(
         vmax=vmax_img,
     )
 
+
     if polygons is not None:
         if not polygons.empty:
             polygons.plot(
@@ -629,13 +638,15 @@ def _plot(
         titles.append(shapes_layer)
     title = ", ".join(titles)
     ax.set_title(title)
-    # ax.axes.xaxis.set_visible(False)
-    # ax.axes.yaxis.set_visible(False)
+    ax.axes.xaxis.set_visible(False)
+    ax.axes.yaxis.set_visible(False)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.spines["bottom"].set_visible(False)
     ax.spines["left"].set_visible(False)
-
+    #remove legend
+    #if ax.get_legend():
+    ax.get_legend()
     # Restore coords
     se = _unapply_transform(se, x_coords_orig, y_coords_orig)
 
