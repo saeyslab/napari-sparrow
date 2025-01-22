@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import uuid
 from abc import ABC, abstractmethod
@@ -96,7 +97,7 @@ def segment(
         it's recommended to set the depth to a value greater than twice the estimated diameter of the cells/nulcei.
     chunks
         Chunk sizes for processing. Can be a string, integer or tuple of integers. If chunks is a `tuple`,
-        they  contain the chunk size that will be used in y and x dimension. Chunking in `z` or `c` dimension is not supported.
+        they  contain the chunk size that will be used in `y` and `x` dimension. Chunking in `z` or `c` dimension is not supported.
     boundary
         Boundary parameter passed to `dask.array.map_overlap`.
     trim
@@ -105,7 +106,7 @@ def segment(
         we recommend setting trim to `False`.
     iou
         If set to `True`, will try to harmonize labels across chunks using a label adjacency graph with an iou threshold (see `harpy.image.segmentation.utils._link_labels`). If set to `False`, conflicts will be resolved using an algorithm that only retains masks with the center in the chunk.
-        Setting `iou` to `False` gives good results if there is reasonable agreement of the predicted labels accross adjacent chunks.
+        Setting `iou` to `False` gives good results if there is reasonable agreement of the predicted labels across adjacent chunks.
     iou_depth
         iou depth used for harmonizing labels across chunks. Note that if `labels_layer_align` is specified, `iou_depth` will also be used for harmonizing labels between different chunks.
     iou_threshold
@@ -326,9 +327,9 @@ class SegmentationModel(ABC):
             output_shapes_layer = _fix_name(output_shapes_layer)
 
         if output_labels_layer is not None and output_shapes_layer is not None:
-            assert (
-                len(output_labels_layer) == len(output_shapes_layer)
-            ), "It 'output_labels_layer' or 'output_shapes_layer' is provided as a list, they should be of the same length."
+            assert len(output_labels_layer) == len(output_shapes_layer), (
+                "It 'output_labels_layer' or 'output_shapes_layer' is provided as a list, they should be of the same length."
+            )
 
         return output_labels_layer, output_shapes_layer
 
@@ -431,6 +432,7 @@ class SegmentationModel(ABC):
 
         # align the labels layers if labels_layer_align is specified, and if there is more than one labels layer.
         if labels_layer_align is not None and len(output_labels_layer) > 1:
+            log.info(f"Aligning labels layers: {output_labels_layer}")
             depth = kwargs["depth"]
             iou_depth = kwargs["iou_depth"]
             chunks = kwargs["chunks"]
@@ -546,12 +548,13 @@ class SegmentationModel(ABC):
 
         # write to intermediate zarr store if sdata is backed to reduce ram memory.
         if temp_path is not None:
+            zarr_path = os.path.join(temp_path, f"labels_{uuid.uuid4()}.zarr")
             _chunks = x_labels.chunks
             x_labels.rechunk(x_labels.chunksize).to_zarr(
-                temp_path,
-                overwrite=True,
+                zarr_path,
+                overwrite=False,
             )
-            x_labels = da.from_zarr(temp_path)
+            x_labels = da.from_zarr(zarr_path)
             x_labels = x_labels.rechunk(_chunks)
         else:
             x_labels = x_labels.persist()
@@ -622,7 +625,24 @@ class SegmentationModel(ABC):
             _all_labels.append(_x_labels)
 
         # returns a dask array containing labels with dimension (z,y,x,c)
-        return da.stack(_all_labels, axis=-1)
+        x_labels = da.stack(_all_labels, axis=-1)
+
+        log.info("Linking labels across chunks.")
+
+        if x_labels.shape[-1] > 1:
+            # write to intermediate zarr store, otherwise will redo solving of chunks for each label channel.
+            if temp_path is not None:
+                zarr_path = os.path.join(temp_path, f"labels_{uuid.uuid4()}.zarr")
+                _chunks = x_labels.chunks
+                x_labels.rechunk(x_labels.chunksize).to_zarr(
+                    zarr_path,
+                    overwrite=False,
+                )
+                x_labels = da.from_zarr(zarr_path)
+            else:
+                x_labels = x_labels.persist()
+
+        return x_labels
 
     def _segment_chunk(
         self,
@@ -729,7 +749,7 @@ class SegmentationModelStains(SegmentationModel):
             x = x.rechunk(x.chunksize)
 
         if sdata.is_backed():
-            _temp_path = UPath(sdata.path).parent / f"{uuid.uuid4()}.zarr"
+            _temp_path = UPath(sdata.path).parent / f"tmp_{uuid.uuid4()}"
         else:
             _temp_path = None
 
@@ -852,13 +872,13 @@ class SegmentationModelPoints(SegmentationModel):
             # need to account for fact that there can be a translation defined on the labels layer
             # query the dask dataframe. We use this query, because spatialdata query pulls query in memory.
             _ddf = sdata.points[points_layer].query(
-                f"{ _crd_points[0] } <= {name_x} < { _crd_points[1] } and { _crd_points[2] } <= {name_y} < { _crd_points[3] }"
+                f"{_crd_points[0]} <= {name_x} < {_crd_points[1]} and {_crd_points[2]} <= {name_y} < {_crd_points[3]}"
             )
             coordinates = {name_x: name_x, name_y: name_y}
 
             # we write to points layer,
             # otherwise we would need to do this query again for every chunk we process later on
-            _crd_points_layer = f"{points_layer}_{'_'.join(str(int( item )) for item in _crd_points)}"
+            _crd_points_layer = f"{points_layer}_{'_'.join(str(int(item)) for item in _crd_points)}"
 
             sdata = add_points_layer(
                 sdata,
@@ -878,7 +898,7 @@ class SegmentationModelPoints(SegmentationModel):
         self._crd_points = _crd_points
 
         if sdata.is_backed():
-            _temp_path = UPath(sdata.path).parent / f"{uuid.uuid4()}.zarr"
+            _temp_path = UPath(sdata.path).parent / f"tmp_{uuid.uuid4()}"
         else:
             _temp_path = None
 
@@ -959,7 +979,7 @@ class SegmentationModelPoints(SegmentationModel):
             assert x_stop <= shape_size[2] + _crd_points[0], "Provided query not inside labels region."
 
         # query the dask dataframe
-        _ddf = self._ddf.query(f"{ x_start } <= {name_x} < { x_stop } and { y_start } <= {name_y} < { y_stop }")
+        _ddf = self._ddf.query(f"{x_start} <= {name_x} < {x_stop} and {y_start} <= {name_y} < {y_stop}")
 
         df = _ddf.compute()
         # account for the fact that we do a reflect at the boundaries,
