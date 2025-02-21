@@ -4,11 +4,12 @@ import dask.array as da
 import numpy as np
 import pytest
 from scipy import ndimage
+from scipy.stats import kurtosis, skew
 from skimage.measure import regionprops_table
 from xrspatial import zonal_stats
 
-from harpy.utils._aggregate import RasterAggregator, _get_mask_area
-from harpy.utils._keys import _CELLSIZE_KEY
+from harpy.utils._aggregate import RasterAggregator, _get_center_of_mass, _get_mask_area, _region_radii_and_axes
+from harpy.utils._keys import _CELLSIZE_KEY, _INSTANCE_KEY
 
 
 def test_aggregate_sum_dask_array():
@@ -193,6 +194,117 @@ def test_aggregate_var(sdata):
     assert np.allclose(df_var[2].values, scipy_var, rtol=0, atol=1e-5)
 
 
+def test_aggregate_kurtosis(sdata):
+    se_image = sdata["blobs_image"]
+    se_labels = sdata["blobs_labels"]
+
+    image = se_image.data[:, None, ...]
+    mask = se_labels.data[None, ...]
+
+    aggregator = RasterAggregator(
+        mask_dask_array=mask.rechunk(100),
+        image_dask_array=image.rechunk(100),
+    )
+    df_kurt = aggregator.aggregate_kurtosis()
+
+    assert df_kurt.shape[1] - 1 == image.shape[0]
+
+    kurtosis_scipy = kurtosis(image[0].squeeze()[mask.squeeze() == 1].compute(), fisher=True, bias=True)
+
+    assert np.allclose(df_kurt[df_kurt[_INSTANCE_KEY] == 1][0].item(), kurtosis_scipy, rtol=0, atol=1e-5)
+
+
+def test_aggregate_skewness(sdata):
+    se_image = sdata["blobs_image"]
+    se_labels = sdata["blobs_labels"]
+
+    image = se_image.data[:, None, ...]
+    mask = se_labels.data[None, ...]
+
+    aggregator = RasterAggregator(
+        mask_dask_array=mask.rechunk(100),
+        image_dask_array=image.rechunk(100),
+    )
+    df_skew = aggregator.aggregate_skew()
+
+    assert df_skew.shape[1] - 1 == image.shape[0]
+
+    skew_scipy = skew(image[0].squeeze()[mask.squeeze() == 1].compute(), bias=True)
+
+    assert np.allclose(df_skew[df_skew[_INSTANCE_KEY] == 1][0].item(), skew_scipy, rtol=0, atol=1e-5)
+
+
+def test_aggregate_quantiles(sdata_multi_c_no_backed):
+    se_image = sdata_multi_c_no_backed["raw_image"]
+    se_labels = sdata_multi_c_no_backed["masks_whole"]
+
+    image = se_image.data[:, None, ...].rechunk(210)
+    mask = se_labels.data[None, ...].rechunk(210)
+
+    aggregator = RasterAggregator(
+        mask_dask_array=mask,
+        image_dask_array=image,
+    )
+
+    quantiles = [0.3, 0.5]
+    dfs = aggregator.aggregate_quantiles(depth=200, quantiles=quantiles, quantile_background=True)
+
+    channel_id = 3
+    cell_id = 670
+    quantile = 0.3
+    assert (
+        np.quantile(image[channel_id].compute()[mask.compute() == cell_id], q=quantile)
+        == dfs[quantiles.index(quantile)][dfs[quantiles.index(quantile)][_INSTANCE_KEY] == cell_id][channel_id].item()
+    )
+
+    channel_id = 1
+    cell_id = 0
+    quantile = 0.5
+    assert np.isclose(
+        np.quantile(image[channel_id].compute()[mask.compute() == cell_id], q=quantile),
+        dfs[quantiles.index(quantile)][dfs[quantiles.index(quantile)][_INSTANCE_KEY] == cell_id][channel_id].item(),
+        rtol=0,
+        atol=1e-6,
+    )
+
+
+def test_aggregate_radii_and_axes(sdata_multi_c_no_backed):
+    se_labels = sdata_multi_c_no_backed["masks_whole"]
+
+    mask = se_labels.data[None, ...].rechunk(210)
+
+    aggregator = RasterAggregator(
+        mask_dask_array=mask,
+        image_dask_array=None,
+    )
+
+    df = aggregator.aggregate_radii_and_axes(depth=200, calculate_axes=True)
+
+    assert df.shape == (
+        len(aggregator._labels) - 1,  # radii for background (0), not computed.
+        mask.ndim + mask.ndim**2 + 1,  # 3 radii, 3*3 axes, 1 cell ID
+    )
+
+    cell_id = 2
+
+    radii, axes = _region_radii_and_axes(mask, label=cell_id)
+
+    assert np.allclose(radii, df[df[_INSTANCE_KEY] == cell_id][range(3)].values.flatten())
+    assert np.allclose(axes.flatten(), df[df[_INSTANCE_KEY] == cell_id][range(3, 12)].values.flatten())
+
+    # check that we get same results for other chunksize
+    mask = se_labels.data[None, ...].rechunk(100)
+
+    aggregator = RasterAggregator(
+        mask_dask_array=mask,
+        image_dask_array=None,
+    )
+
+    df_other_chunksize = aggregator.aggregate_radii_and_axes(depth=200, calculate_axes=True)
+
+    assert np.allclose(df_other_chunksize.values, df.values)
+
+
 def test_aggregate_var_3D(sdata):
     se_image = sdata["blobs_image"]
     se_labels = sdata["blobs_labels"]
@@ -262,6 +374,19 @@ def test_get_mask_area_subset(sdata):
     area = ndimage.sum_labels(input=np.ones(mask_compute.shape), labels=mask_compute, index=subset_index)
 
     assert np.array_equal(df[_CELLSIZE_KEY].values, area)
+
+
+def test_get_center_of_mask(sdata):
+    se_labels = sdata["blobs_labels"]
+    mask = se_labels.data[None, ...].rechunk(512)
+    df = _get_center_of_mass(mask)
+
+    mask_compute = mask.compute()
+    scipy_center_of_mass = np.array(
+        ndimage.center_of_mass(input=mask_compute, labels=mask_compute, index=np.unique(mask_compute))
+    )
+
+    assert np.array_equal(df[[0, 1, 2]].values, np.array(scipy_center_of_mass), equal_nan=True)
 
 
 def test_aggregate_custom_channel(sdata_multi_c_no_backed):
@@ -415,3 +540,21 @@ def test_aggregate_custom_channel_multiple_features_sdata(sdata):
             fn=_calculate_intensity_mean_area,
             features=2,
         )
+
+
+def test_region_radii_and_axes():
+    mask = np.array(
+        [
+            [1, 1, 1, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+        ]
+    )
+
+    mask = mask[None, ...]
+
+    radii, axis = _region_radii_and_axes(mask=mask, label=1)
+
+    assert np.array_equal(np.array([1.0, 0.0, 0.0]), radii)
+
+    assert np.allclose(np.array([[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), axis)
