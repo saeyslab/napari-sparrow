@@ -12,7 +12,7 @@ import napari.layers
 import napari.types
 import napari.utils
 import numpy as np
-from datatree import DataTree
+from xarray import DataTree
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info

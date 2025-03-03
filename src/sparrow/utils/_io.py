@@ -2,10 +2,9 @@ import uuid
 
 from anndata import AnnData
 from dask.dataframe import DataFrame
-from datatree import DataTree
 from geopandas import GeoDataFrame
 from spatialdata import SpatialData, read_zarr
-from xarray import DataArray
+from xarray import DataArray, DataTree
 
 from sparrow.utils.pylogger import get_pylogger
 
