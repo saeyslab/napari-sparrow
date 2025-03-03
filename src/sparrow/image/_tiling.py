@@ -18,10 +18,9 @@ from sparrow.utils.pylogger import get_pylogger
 log = get_pylogger(__name__)
 
 try:
-    import jax.numpy as jnp
     from basicpy import BaSiC
 except ImportError:
-    log.warning("'jax' or 'basicpy' not installed, to use 'sp.im.tiling_correction', please install these libraries.")
+    log.warning("'basicpy' not installed, to use 'sp.im.tiling_correction', please install these libraries.")
 
 try:
     import cv2
@@ -134,7 +133,7 @@ def tiling_correction(
 
         basic = BaSiC(smoothness_flatfield=1)
         basic.fit(tiles)
-        if jnp.isnan(basic._reweight_score).item():
+        if np.isnan(basic._reweight_score).item():
             log.warning(
                 f"Basicpy model used for illumination correction for channel '{channel}' did not converge. "
                 "Illumination correction will be skipped. Continuing with inpainting. Please consider using a larger image ( more tiles )."
