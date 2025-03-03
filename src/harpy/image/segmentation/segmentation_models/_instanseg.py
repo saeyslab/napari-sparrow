@@ -77,7 +77,7 @@ def instanseg_callable(
         import torch
 
         # instanseg_model is the path to the torch jit .pt file.
-        instanseg_model = torch.load(instanseg_model)
+        instanseg_model = torch.load(instanseg_model, weights_only=False)
         instanseg_model = InstanSeg(model_type=instanseg_model, device=device)
 
     if output is None:
