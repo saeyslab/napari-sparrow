@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import os
 from itertools import chain
 from pathlib import Path
@@ -341,6 +342,18 @@ def _annotate_celltype_iter(
         marker_genes = path_marker_genes
     else:
         raise ValueError("Please pass either a path to a .csv file, or a pandas Dataframe to 'path_marker_genes'.")
+
+    # Replace whitespace with underscores
+    # Spatialdata 0.3.0 does not allow whitespace in attribute names
+    # See https://github.com/scverse/spatialdata/discussions/707
+    def colname_transform(old_name: str) -> str:
+        new_name = re.sub(r"[^\w\._-]", "_", old_name)
+        if old_name is not new_name:
+            log.warning(
+                f"Renaming cell type {old_name} to {new_name}. See https://github.com/scverse/spatialdata/discussions/707 for more info."
+            )
+        return new_name
+    marker_genes.columns = marker_genes.columns.to_series().apply(colname_transform)
 
     # only retain marker genes that are in adata
     marker_genes = marker_genes[marker_genes.index.isin(adata.var_names)]
