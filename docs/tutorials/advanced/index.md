@@ -14,4 +14,5 @@ These tutorials are more advanced and require a deeper understanding of the Harp
     coordinate_systems.ipynb
     Rasterize_and_vectorize.ipynb
     Harpy_transcriptomics.ipynb
+    Understanding_Dask.ipynb
 ```
