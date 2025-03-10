@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
+import shutil
 import uuid
 from collections.abc import Iterable
+from pathlib import Path
 
 import dask.array as da
+import dask.dataframe as dd
 import numpy as np
 import pandas as pd
 from anndata import AnnData
@@ -45,6 +49,7 @@ def flowsom(
     scale_factors: ScaleFactors_t | None = None,
     client: Client | None = None,
     persist_intermediate: bool = True,
+    write_intermediate: bool = True,
     overwrite: bool = False,
     **kwargs,  # keyword arguments passed to _flowsom
 ) -> tuple[SpatialData, fs.FlowSOM, pd.Series]:
@@ -84,9 +89,13 @@ def flowsom(
         If set to `True` will persit intermediate computation in memory. If `img_layer`, or one of the elements in `img_layer` is large, this could lead to increased ram usage.
         Set to `False` to write to intermediate zarr store instead, which will reduce ram usage, but will increase computation time slightly.
         We advice to set `persist_intermediate` to `True`, as it will only persist an array of dimension `(2,z,y,x)`, of dtype `numpy.uint8`.
-        Ignored if `sdata` is not backed by a zarr store.
+        Ignored if `sdata` is not backed by a Zarr store.
+    write_intermediate
+        If set to `True`, an intermediate Zarr store will be used during sampling from `img_layer` for flowsom training.
+        Enable this option to reduce RAM usage, especially if `img_layer` or any of its components is large.
+        Ignored if `sdata` is not backed by a Zarr store.
     overwrite
-        If True, overwrites the `output_layer_cluster` and/or `output_layer_metacluster` if it already exists in `sdata`.
+        If `True`, overwrites the `output_layer_cluster` and/or `output_layer_metacluster` if it already exists in `sdata`.
     **kwargs
         Additional keyword arguments passed to `fs.FlowSOM`.
 
@@ -155,12 +164,21 @@ def flowsom(
             to_squeeze = True
         _arr_list.append(arr)
 
+        if sdata.is_backed() and write_intermediate:
+            _temp_path = os.path.join(os.path.dirname(sdata.path), f"tmp_{uuid.uuid4()}")
+        else:
+            _temp_path = None
+
         # sample to train flowsom
         _arr_sampled = _sample_dask_array(
-            _arr_list[i], fraction=fraction, remove_nan_columns=True, seed=random_state
-        ).compute()
+            _arr_list[i], fraction=fraction, remove_nan_columns=True, seed=random_state, temp_path=_temp_path
+        )
         results_arr_sampled.append(_arr_sampled)
         _region_keys.extend(_arr_sampled.shape[0] * [img_layer[i]])
+
+        # clean up
+        if sdata.is_backed() and write_intermediate:
+            shutil.rmtree(_temp_path)
 
     arr_sampled = np.row_stack(results_arr_sampled)
 
@@ -310,7 +328,13 @@ def _predict_flowsom_clusters_chunk(array: NDArray, fsom: fs.FlowSOM) -> NDArray
     return np.stack([clusters_array, meta_clusters_array], axis=0)
 
 
-def _sample_dask_array(array: Array, fraction: float = 0.1, remove_nan_columns: bool = True, seed: int = 0) -> Array:
+def _sample_dask_array(
+    array: Array,
+    fraction: float = 0.1,
+    remove_nan_columns: bool = True,
+    seed: int = 0,
+    temp_path: str | Path | None = None,
+) -> NDArray:
     """Function to sample from dask array and flatten"""
     assert array.ndim == 4
 
@@ -318,34 +342,49 @@ def _sample_dask_array(array: Array, fraction: float = 0.1, remove_nan_columns: 
 
     def _remove_nan_columns(array):
         # remove rows for which all values are NaN along the channels
-        nan_mask = da.isnan(array[:, :-3]).all(axis=1)
+        nan_mask = np.isnan(array[:, :-3]).all(axis=1)
         return array[~nan_mask]
 
     # Reshape the array to shape (z*y*x, c)
     reshaped_array = array.transpose(1, 2, 3, 0).reshape(-1, c)
 
-    z_coords, y_coords, x_coords = da.meshgrid(da.arange(z), da.arange(y), da.arange(x), indexing="ij")
+    z_coords, y_coords, x_coords = da.meshgrid(
+        da.arange(z, dtype=np.uint32),
+        da.arange(y, dtype=np.uint32),
+        da.arange(x, dtype=np.uint32),
+        indexing="ij",
+    )
+
     coordinates = da.stack([z_coords.ravel(), y_coords.ravel(), x_coords.ravel()], axis=1)
+    coordinates = coordinates.rechunk(reshaped_array.chunksize)
+
+    # if we do not write to intermediate slot, unmanaged memory can become high (meshgrid needs to be pulled in memory)
+    # causing pausing/termination of the workers.
+    if temp_path is not None:
+        coordinates.to_zarr(os.path.join(temp_path, "coordinates.zarr"))
+        coordinates = da.from_zarr(os.path.join(temp_path, "coordinates.zarr"))
 
     final_array = da.concatenate([reshaped_array, coordinates], axis=1)
 
     if fraction is None or fraction == 1:
         if remove_nan_columns:
-            return _remove_nan_columns(final_array)
+            return _remove_nan_columns(final_array.compute())
         else:
-            return final_array
+            return final_array.compute()
 
-    num_samples = int(fraction * final_array.shape[0])
+    # write to intermediate slot, to reduce unmanaged memory
+    if temp_path is not None:
+        final_array.to_zarr(os.path.join(temp_path, "final_array.zarr"))
+        final_array = da.from_zarr(os.path.join(temp_path, "final_array.zarr"))
 
-    rng = da.random.RandomState(seed)
-    indices = rng.choice(
-        final_array.shape[0],
-        size=num_samples,
-        replace=False,
-        chunks=num_samples,  # indices can not be multi-chunk, see https://github.com/dask/dask/blob/a9396a913c33de1d5966df9cc1901fd70107c99b/dask/array/random.py#L896
-    )
+    sample = dd.from_array(final_array).sample(frac=fraction, replace=False, random_state=seed).values.compute()
+
+    # clean up
+    if temp_path is not None:
+        shutil.rmtree(os.path.join(temp_path, "coordinates.zarr"))
+        shutil.rmtree(os.path.join(temp_path, "final_array.zarr"))
 
     if remove_nan_columns:
-        return _remove_nan_columns(final_array[indices])
+        return _remove_nan_columns(sample)
     else:
-        return final_array[indices]
+        return sample
