@@ -1,6 +1,7 @@
 """Define package version"""
+import importlib.metadata
 
-__version__ = "0.0.1"
+__version__ = importlib.metadata.version("harpy-analysis")
 
 import os
 
