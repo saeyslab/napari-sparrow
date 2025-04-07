@@ -13,7 +13,7 @@ Create a conda virtual environment as explained [here](./installation.md) and in
 
 ```bash
 conda activate harpy
-pip install -e '.[testing,docs]'
+pip install -e '.[dev]'
 ```
 
 This development environment is supported for:
