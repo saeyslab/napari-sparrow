@@ -47,12 +47,12 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           cache-dependency-glob: pyproject.toml
-      - name: run tests using hatch
+      - name: run tests using uv and pytest
         env:
           MPLBACKEND: agg
           PLATFORM: ${{ matrix.os }}
           DISPLAY: :42
-        run: uv run --extra dev --python ${{ matrix.python }} --cov harpy --cov-branch --cov-report=xml src/harpy/_tests
+        run: uv run --extra dev --python ${{ matrix.python }} pytest --cov harpy --cov-branch --cov-report=xml src/harpy/_tests
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
