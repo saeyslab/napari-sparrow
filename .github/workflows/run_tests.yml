@@ -52,8 +52,9 @@ jobs:
           MPLBACKEND: agg
           PLATFORM: ${{ matrix.os }}
           DISPLAY: :42
-        run: uvx hatch test --cover --python ${{ matrix.python }} src/harpy/_tests
+        run: uv run --extra dev --python ${{ matrix.python }} --cov harpy --cov-branch --cov-report=xml src/harpy/_tests
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          slug: saeyslab/harpy
