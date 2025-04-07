@@ -146,6 +146,7 @@ harpy = "harpy.single:main"
 harpy = "harpy:napari.yaml"
 
 [tool.coverage.run]
+source = ["harpy"]
 omit = ["src/harpy/_tests/*", "experiments/*", "src/harpy/widgets/*", "docs/*" ]
 
 [tool.ruff]
