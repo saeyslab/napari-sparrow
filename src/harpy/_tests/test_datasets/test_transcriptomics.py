@@ -12,6 +12,7 @@ from harpy.datasets.transcriptomics import (
 from harpy.utils._keys import _INSTANCE_KEY, _REGION_KEY
 
 
+@pytest.mark.skip(reason="This test downloads a Visium HD run experiment to the OS cache.")
 def test_visium_hd_example():
     sdata = visium_hd_example(bin_size=16)
     assert isinstance(sdata, SpatialData)

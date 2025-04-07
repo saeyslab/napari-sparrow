@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=42.0.0", "wheel"]
-build-backend = "setuptools.build_meta"
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
 
 [project]
 name = "harpy-analysis"
@@ -21,7 +21,6 @@ classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -30,6 +29,8 @@ classifiers = [
 dependencies = [
     "spatialdata>=0.2.6",
     "xarray>=2024.10.0",
+    "dask>=2024.4.1,<=2024.11.2",
+    "xarray-dataclasses>=1.9.1",
     "ome-zarr>=0.9.0",
     "scanpy>=1.9.1",
     "voronoi-diagram-for-polygons>=0.1.6",
@@ -42,42 +43,76 @@ dependencies = [
     "magicgui",
     "pyrootutils",
     "universal_pathlib",
-    "datasets",
+    "datasets>=2.16.0",
     "crick",
+    # spatialdata_io depends on specific version of spatialdata: ImportError: cannot import name 'rasterize_bins_link_table_to_labels' from 'spatialdata' at readers/visium_hd.py", line 21
     "spatialdata_io>=0.1.6",
+    "flowsom",
+    # for debug logging
+    "session-info2",
 ]
 
 # TODO: change to dependency-groups once pip has support https://github.com/pypa/pip/issues/12963
 [project.optional-dependencies]
-plugin = [
-    "napari>=0.4.18",
-    "hydra-core>=1.2.0",
-    "hydra-colorlog>=1.2.0",
-    "napari-spatialdata>=0.2.6",
-    "squidpy>=1.5.0",
+# additional models
+cellpose = [
     "cellpose>=2.2.3",
-    "pytest-qt"
 ]
-testing = [
-    "hydra-core>=1.2.0",
-    "hydra-colorlog>=1.2.0",
-    "cellpose>=2.2.3",
-    "squidpy>=1.5.0",
-    "datasets",
+instanseg = [
+    "instanseg-torch>=0.0.8",
+]
+segmentation = [
+    "harpy-analysis[cellpose,instanseg]"
+]
+basic = [
+    # For more information, see https://basicpy.readthedocs.io/en/latest/installation.html
     "jax>=0.4.6",
     "jaxlib>=0.4.6",
     "basicpy>=1.0.0",
+]
+opencv = [
     "opencv-python",
-    "pytest",
-    "pytest-cov",
-    "tox",
-    "nbconvert"
+]
+clustering = [
+    "flowsom",
+    "scikit-learn>=1.3.1",
+]
+# additional UI or CLI interfaces
+napari = [
+    "napari[all]>=0.4.18",
+    "napari-spatialdata>=0.2.6",
 ]
 cli = [
     "hydra-core>=1.2.0",
     "hydra-colorlog>=1.2.0",
     "submitit>=1.4.5",
     "hydra-submitit-launcher>=1.2.0"
+]
+notebook = [
+    "ipywidgets",
+    "tqdm",
+    "bokeh",
+    "textalloc",
+    "joypy",
+    # require spatialdata<0.3
+    "spatialdata-plot<0.2.9",
+    "nbconvert",
+    "ipython",
+]
+# best default for end-users
+extra = [
+    "squidpy",
+    # do not support basic tiling correction by default in default PyPI install
+    "harpy-analysis[napari,cli,segmentation,opencv,clustering,notebook]",
+]
+# dev dependencies
+test = [
+    "datasets",
+    "opencv-python",
+    "pytest",
+    "pytest-cov",
+    "pytest-qt",
+    "tox",
 ]
 docs = [
     "sphinx>=4.5",
@@ -87,26 +122,15 @@ docs = [
     "sphinxcontrib-bibtex>=1.0.0",
     "sphinx-autodoc-typehints",
     "sphinx-design",
-    "ipython>=8.6.0",
-    "sphinx-copybutton"
+    "sphinx-copybutton",
 ]
-clustering = [
-    "scikit-learn>=1.3.1",
-    "datasets",
-    "textalloc",
-    "joypy",
-    "bokeh",
-    "spatialdata-plot>=0.2.0",
-    #"flowsom @ git+https://github.com/saeyslab/FlowSOM_Python.git"
-]
-instanseg = [
-    # TODO: wait for 0.0.7 release that drops AICSImageIO dependency
-    # "instanseg-torch>=0.0.7"
-    "instanseg-torch @ git+https://github.com/instanseg/instanseg"
-]
-
 benchmark =[
     "asv",
+]
+dev = [
+    "pre-commit",
+    "twine>=4.0.2",
+    "harpy-analysis[extra,test,docs,benchmark]",
 ]
 
 [project.urls]
@@ -172,9 +196,18 @@ extend-include = ["*.ipynb"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/harpy"]
 
-[tool.hatch]
-# TODO: remove once instanseg-torch is released
-metadata.allow-direct-references = true
+[tool.hatch.envs.default]
+installer = "uv"
+features = [ "dev" ]
+
+[tool.hatch.envs.docs]
+features = [ "dev" ]
+scripts.build = "sphinx-build -M html docs docs/_build {args}"
+scripts.open = "python -m webbrowser -t docs/_build/html/index.html"
+scripts.clean = "git clean -fdX -- {args:docs}"
+
+[tool.hatch.envs.hatch-test]
+features = [ "dev" ]
 
 [tool.ruff.pydocstyle]
 convention = "numpy"
@@ -187,6 +220,10 @@ convention = "numpy"
 
 [tool.pytest.ini_options]
 testpaths = ['src/harpy/_tests']
+xfail_strict = true
+addopts = [
+  "--import-mode=importlib", # allow using test files with same name
+]
 
 [tool.pixi.project]
 channels = ["conda-forge"]
@@ -196,16 +233,12 @@ platforms = ["osx-arm64", "linux-64"]
 # add some dependencies, which will fetch them from conda instead of pypi
 # needed to avoid gdal build step when installing rasterio
 rasterio = ">=1.3.2"
-# bioio = "*"
-# numba = "*"
+numba = "*"
+# TODO: needed for bioio
+numpy = "<2"
 
 [tool.pixi.environments]
-# add environments given features of dependency-groups
-plugin = ["plugin"]
-testing = ["testing"]
-cli = ["cli"]
-docs = ["docs"]
-clustering = ["clustering"]
-# TODO fix "instanseg-torch==0.0.6 depends on bioio>=1.1.0,<1.2.dev0 and numpy==2.2.2,
-# we can conclude that instanseg-torch==0.0.6 cannot be used"
-# instanseg = ["instanseg"]
+# does not use harpy-analysis[...] dependencies, so needs to specify them all
+# TODO: can be changed when using dependency-groups
+extra = ["napari", "cli", "cellpose", "instanseg", "opencv", "clustering", "notebook"]
+dev = ["napari", "cli", "cellpose", "instanseg", "opencv", "clustering", "notebook", "dev", "test"]

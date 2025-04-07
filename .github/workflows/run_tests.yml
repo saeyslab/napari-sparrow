@@ -67,7 +67,7 @@ jobs:
         shell: bash -l {0}
         run: |
           conda activate harpy
-          pip install -e '.[testing]'
+          pip install -e '.[dev]'
           pytest --ignore=src/harpy/_tests/test_widget.py --color=yes --cov=dummy --cov-config=pyproject.toml --cov-report=xml --cov-report=term-missing
 
         env:
