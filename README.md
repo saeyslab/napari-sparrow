@@ -1,8 +1,6 @@
 <!-- These badges won't work while the GitHub repo is private:
 [![License BSD-3](https://img.shields.io/pypi/l/harpy.svg?color=green)](https://github.com/saeyslab/harpy/raw/main/LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/harpy.svg?color=green)](https://pypi.org/project/harpy)
-[![tests](https://github.com/saeyslab/harpy/workflows/tests/badge.svg)](https://github.com/saeyslab/harpy/actions)
-[![Python Version](https://img.shields.io/pypi/pyversions/harpy.svg?color=green)](https://python.org)
+[![Python Version](https://img.shields.io/pypi/pyversions/harpy-analysis.svg?color=green)](https://python.org)
 [![codecov](https://codecov.io/gh/saeyslab/harpy/graph/badge.svg?token=7UXMDWVYFZ)](https://codecov.io/gh/saeyslab/harpy)
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/harpy)](https://napari-hub.org/plugins/harpy)
 -->
@@ -10,14 +8,23 @@
 # **Harpy: single-cell spatial proteomics analysis that makes you happy** <img src="./docs/_static/img/logo.png" align ="right" alt="" width ="150"/>
 
 [![PyPI](https://img.shields.io/pypi/v/harpy-analysis.svg)](https://pypi.org/project/harpy-analysis)
-![Build Status](https://github.com//saeyslab/harpy/actions/workflows/build.yaml/badge.svg)
+![Build Status](https://github.com//saeyslab/harpy/actions/workflows/build.yaml/badge.svg)[https://github.com//saeyslab/harpy/actions/]
 [![documentation badge](https://readthedocs.org/projects/harpy/badge/?version=latest)](https://harpy.readthedocs.io/en/latest/)
 
 Note: This package is still under very active development.
 
 ## Installation
 
-Check out the docs for [installation instructions](https://github.com/saeyslab/harpy/blob/main/docs/installation.md).
+**Recommended** for end-users. Install the latest `harpy-analysis` [PyPI package](https://pypi.org/project/harpy-analysis) with the `extra` dependencies in a local Python environment:
+
+```bash
+uv venv --python=3.12 # set python version
+source .venv/bin/activate # activate the virtual environment
+uv pip install 'harpy-analysis[extra]' # use uv to pip install dependencies
+python -c 'import harpy; print(harpy.__version__)' # check if the package is installed
+```
+
+If you're a developer, read the contribution guide. Checkout the docs for more [installation instructions](https://github.com/saeyslab/harpy/blob/main/docs/installation.md).
 
 ## Tutorials
 
