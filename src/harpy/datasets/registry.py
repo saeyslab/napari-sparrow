@@ -76,7 +76,7 @@ def get_spatialdata_registry(path: str | Path | None = None) -> Pooch:
         base_url="https://s3.embl.de/spatialdata",
         version=__version__,
         registry={
-            "spatialdata-sandbox/steinbock_io.zip": "e5eac7dbe316ad7008822fde95c1abacfcfc771b8f9ab28c0e6f768d293cd8d5",
+            "spatialdata-sandbox/steinbock_io.zip": None,
         },
     )
     return registry
