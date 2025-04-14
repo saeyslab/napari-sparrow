@@ -18,9 +18,10 @@ from sparrow.utils.pylogger import get_pylogger
 log = get_pylogger(__name__)
 
 try:
+    import jax.numpy as jnp
     from basicpy import BaSiC
 except ImportError:
-    log.warning("'basicpy' not installed, to use 'sp.im.tiling_correction', please install these libraries.")
+    log.warning("'jax' or 'basicpy' not installed, to use 'sp.im.tiling_correction', please install these libraries.")
 
 try:
     import cv2
