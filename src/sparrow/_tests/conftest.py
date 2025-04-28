@@ -10,7 +10,6 @@ from omegaconf import DictConfig
 from spatialdata import read_zarr
 from spatialdata.datasets import blobs
 
-from sparrow.datasets.cluster_blobs import cluster_blobs
 from sparrow.datasets.pixie_example import pixie_example
 from sparrow.datasets.proteomics import mibi_example
 from sparrow.datasets.registry import get_registry
@@ -105,14 +104,6 @@ def sdata_bin():
     sdata = read_zarr(os.path.commonpath(unzip_path))
     sdata.path = None
 
-    yield sdata
-
-
-@pytest.fixture
-def sdata_blobs():
-    sdata = cluster_blobs(
-        shape=(512, 512), n_cell_types=10, n_cells=100, noise_level_channels=1.2, noise_level_nuclei=1.2, seed=10
-    )
     yield sdata
 
 
