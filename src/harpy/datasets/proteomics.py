@@ -32,6 +32,22 @@ def macsima_example() -> SpatialData:
     return sdata
 
 
+def macsima_tonsil(filter_regex: str | None = "None|FITC|PE|APC") -> SpatialData:
+    """Tonsil proteomics dataset"""
+    # Fetch and unzip the file
+    registry = get_registry()
+    unzip_path = registry.fetch("proteomics/macsima/tonsil_all.zarr.zip", processor=pooch.Unzip())
+    sdata = read_zarr(os.path.commonpath(unzip_path))
+    sdata.path = None
+
+    # filter channels if name is contained in filter_regex
+    if filter_regex:
+        for image in list(sdata.images):
+            sdata[image] = sdata[image].drop_isel(c=sdata[image].coords["c"].str.contains(filter_regex, regex=True))
+
+    return sdata
+
+
 def imc_example():
     """Example IMC dataset"""
     # Fetch and unzip the file
