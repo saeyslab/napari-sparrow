@@ -4,7 +4,7 @@ from spatialdata import SpatialData
 from harpy.datasets.proteomics import macsima_example, macsima_tonsil, mibi_example
 
 
-# @pytest.mark.skip(reason="This test downloads a full experiment to the OS cache.")
+@pytest.mark.skip(reason="This test downloads a full experiment to the OS cache.")
 def test_macsima_tonsil():
     sdata = macsima_tonsil()
     assert isinstance(sdata, SpatialData)
