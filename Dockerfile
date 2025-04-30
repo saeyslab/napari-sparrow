@@ -1,8 +1,6 @@
-FROM sphinxdoc/sphinx
+FROM condaforge/mambaforge:24.9.2-0
 
-WORKDIR /napari-sparrow
-COPY . /napari-sparrow
+COPY . .
 
-RUN pip install .[docs]
-
-CMD ["python", "-m", "sphinx", "-T", "-b", "html", "-d", "_build/doctrees", "-D", "language=en", "docs", "_build/html"]
+RUN mamba env create
+RUN mamba run -n napari-sparrow --no-capture-output pip install .[docs]
