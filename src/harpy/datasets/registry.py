@@ -53,6 +53,7 @@ def get_registry(path: str | Path | None = None) -> Pooch:
             "transcriptomics/xenium/Xenium_V1_humanLung_Cancer_FFPE/Xenium_V1_humanLung_Cancer_FFPE_outs.zip": "865c3805a959b51514555300df61328fc05055b939b9bece43522b8918314e1d",
             "proteomics/mibi_tof/sdata_multi_channel.zarr.zip": "930fd2574666b90d5d6660ad8b52d47afffc9522704b9e6fef39d11c9cfff06e",
             "proteomics/macsima/sdata_multi_channel.zarr.zip": "26187fe62b75c3411f948cbcea52abd24b318992509e768c2ed2f55ddcb99f28",
+            "proteomics/macsima/tonsil_all.zarr.zip": "f3444332c9decb318c6eff03e719ee35df6d7399da2a04a17dbed5833bfd9ed7",
         },
     )
     return registry
