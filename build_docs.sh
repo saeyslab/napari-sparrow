@@ -1,0 +1,1 @@
+mamba run --no-capture-output -n napari-sparrow python -m sphinx -T -b html -d _build/doctrees -D language=en docs html

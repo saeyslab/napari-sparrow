@@ -62,8 +62,6 @@ Operations on image and labels layers.
     im.merge_labels_layers_nuclei
     im.rasterize
     im.mask_to_original
-    im.pixel_clustering_preprocess
-    im.flowsom
 ```
 
 ## Shape
@@ -109,10 +107,6 @@ Operations on table (`AnnData` object) layers.
     tb.cluster_cleanliness
     tb.nhood_enrichment
     tb.add_regionprop_features
-    tb.cluster_intensity
-    tb.cell_clustering_preprocess
-    tb.flowsom
-    tb.weighted_channel_expression
 ```
 
 ## Points
@@ -220,12 +214,6 @@ Dataset loaders.
 .. autosummary::
     :toctree: generated
 
-    datasets.cluster_blobs
-    datasets.multisample_blobs
-    datasets.pixie_example
-    datasets.macsima_example
-    datasets.mibi_example
-    datasets.vectra_example
     datasets.resolve_example
     datasets.get_registry
     datasets.get_spatialdata_registry

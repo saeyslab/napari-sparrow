@@ -7,13 +7,12 @@ from typing import Any
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from datatree import DataTree
 from geopandas import GeoDataFrame
 from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
 from shapely.geometry import LineString, MultiLineString
 from spatialdata.models import get_axes_names
-from xarray import DataArray
+from xarray import DataArray, DataTree
 
 
 def _linestring_to_arrays(geometries):

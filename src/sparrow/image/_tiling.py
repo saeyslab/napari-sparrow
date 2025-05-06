@@ -134,7 +134,7 @@ def tiling_correction(
 
         basic = BaSiC(smoothness_flatfield=1)
         basic.fit(tiles)
-        if jnp.isnan(basic._reweight_score).item():
+        if np.isnan(basic._reweight_score).item():
             log.warning(
                 f"Basicpy model used for illumination correction for channel '{channel}' did not converge. "
                 "Illumination correction will be skipped. Continuing with inpainting. Please consider using a larger image ( more tiles )."

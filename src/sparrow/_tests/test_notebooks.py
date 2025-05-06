@@ -39,16 +39,7 @@ def test_notebooks_harpy_transcriptomics(notebook):
     not importlib.util.find_spec("cellpose") or not importlib.util.find_spec("spatialdata_plot"),
     reason="requires the cellpose library",
 )
-@pytest.mark.parametrize(
-    "notebook",
-    [
-        "Harpy_feature_calculation.ipynb",
-    ],
-)
-def test_notebooks_harpy_feature_calculation(notebook):
-    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
-    run_notebook(os.path.join(root, "docs/tutorials/general", notebook))
 
 
 @pytest.mark.skip
@@ -56,16 +47,7 @@ def test_notebooks_harpy_feature_calculation(notebook):
     not importlib.util.find_spec("textalloc") or not importlib.util.find_spec("spatialdata_plot"),
     reason="requires the textalloc library",
 )
-@pytest.mark.parametrize(
-    "notebook",
-    [
-        "Harpy_QC_IMC.ipynb",
-    ],
-)
-def test_notebooks_harpy_qc_imc(notebook):
-    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
-    run_notebook(os.path.join(root, "docs/tutorials/general", notebook))
 
 
 @pytest.mark.skip
@@ -75,16 +57,6 @@ def test_notebooks_harpy_qc_imc(notebook):
     or not importlib.util.find_spec("spatialdata_plot"),
     reason="requires the textalloc library",
 )
-@pytest.mark.parametrize(
-    "notebook",
-    [
-        "Harpy_QC_in_silico.ipynb",
-    ],
-)
-def test_notebooks_harpy_qc_in_silico(notebook):
-    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
-
-    run_notebook(os.path.join(root, "docs/tutorials/advanced", notebook))
 
 
 @pytest.mark.skip
@@ -98,40 +70,6 @@ def test_notebooks_coordinate_systems(notebook):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
     run_notebook(os.path.join(root, "docs/tutorials/advanced", notebook))
-
-
-@pytest.mark.skip
-@pytest.mark.skipif(not importlib.util.find_spec("flowsom"), reason="requires the flowSOM library")
-@pytest.mark.parametrize(
-    "notebook",
-    [
-        "FlowSOM_for_pixel_and_cell_clustering.ipynb",
-    ],
-)
-def test_notebooks_flowsom(notebook):
-    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
-
-    run_notebook(os.path.join(root, "docs/tutorials/general", notebook))
-
-
-@pytest.mark.skip
-@pytest.mark.skipif(
-    not importlib.util.find_spec("InstanSeg")
-    or not importlib.util.find_spec("monai")
-    or not importlib.util.find_spec("torchvision"),
-    reason="requires the InstanSeg, monai and torchvision libraries",
-)
-@pytest.mark.parametrize(
-    "notebook",
-    [
-        "Harpy_instanseg.ipynb",
-    ],
-)
-def test_notebooks_instanseg(notebook):
-    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
-
-    run_notebook(os.path.join(root, "docs/tutorials/advanced", notebook))
-
 
 @pytest.mark.skip
 @pytest.mark.skipif(
