@@ -174,16 +174,14 @@ def calculate_snr_ratio(
     return df_img
 
 
-def snr_ratio(sdata, ax=None, loglog=True, color="black", channel_names=None, groupby=None, **kwargs):
+def snr_ratio(sdata, ax=None, loglog=True, color="black", channel_names = None,  groupby=None, **kwargs):
     """Plot the signal to noise ratio. On the x-axis is the signal intensity and on the y-axis is the SNR-ratio"""
     log.debug("Plotting SNR ratio")
     if channel_names is None:
-        channel_names = table.var_names
+        channel_names = sdata.table.var_names
     if ax is None:
         fig, ax = plt.subplots()
-    df_img = calculate_snr_ratio(
-        sdata, cycles="cycle" if color == "cycle" else None, channel_names=channel_names, **kwargs
-    )
+    df_img = calculate_snr_ratio(sdata, cycles="cycle" if color == "cycle" else None, channel_names=channel_names, **kwargs)
     if loglog:
         ax.set_xscale("log", base=2)
         ax.set_yscale("log", base=2)
