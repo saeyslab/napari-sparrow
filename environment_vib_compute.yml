@@ -1,13 +1,20 @@
-name: harpy
+name: harpy_26_5_25
 channels:
   - conda-forge
 dependencies:
-  - python=3.10.8
+  - python=3.11
+  - gdal
   - opencv
   - pip
   - rasterio
   - pip:
       - torch
       - cellpose
+      - rioxarray
+      - squidpy
+      - spatialdata
+      - spatialdata-plot
+      - distributed
+      - bokeh
       - ipython
       - ipykernel
