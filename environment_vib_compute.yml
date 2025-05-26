@@ -1,4 +1,4 @@
-name: harpy_26_5_25
+name: harpy
 channels:
   - conda-forge
 dependencies:
