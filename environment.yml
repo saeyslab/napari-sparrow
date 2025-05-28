@@ -1,0 +1,5 @@
+name: napari-sparrow
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10.8
