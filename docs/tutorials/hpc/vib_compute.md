@@ -45,7 +45,7 @@ conda activate harpy
 Install Harpy:
 
 ```bash
-pip install 'harpy-analysis[clustering] @ git+https://github.com/saeyslab/harpy.git'
+pip install 'harpy-analysis @ git+https://github.com/saeyslab/harpy.git'
 ```
 
 ## Run the Harpy notebook as an interactive session.

@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "harpy-analysis"
-version = "0.1.0"
+version = "0.2.0"
 description = "single-cell spatial proteomics analysis that makes you happy"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
@@ -30,6 +30,7 @@ dependencies = [
     "spatialdata>=0.2.6",
     "xarray>=2024.10.0",
     "dask>=2024.4.1,<=2024.11.2",
+    "distributed",
     "xarray-dataclasses>=1.9.1",
     "ome-zarr>=0.9.0",
     "scanpy>=1.9.1",
@@ -45,6 +46,7 @@ dependencies = [
     "universal_pathlib",
     "datasets>=2.16.0",
     "crick",
+    "lazy-loader>=0.4",
     # spatialdata_io depends on specific version of spatialdata: ImportError: cannot import name 'rasterize_bins_link_table_to_labels' from 'spatialdata' at readers/visium_hd.py", line 21
     "spatialdata_io>=0.1.6",
     "flowsom",
@@ -94,6 +96,7 @@ notebook = [
     "bokeh",
     "textalloc",
     "joypy",
+    "supervenn>=0.5.0",
     # require spatialdata<0.3
     "spatialdata-plot<0.2.9",
     "nbconvert",
