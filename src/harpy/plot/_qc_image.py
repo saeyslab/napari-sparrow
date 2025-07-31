@@ -181,9 +181,7 @@ def snr_ratio(sdata, ax=None, loglog=True, color="black", **kwargs):
     log.debug("Plotting SNR ratio")
     if ax is None:
         fig, ax = plt.subplots()
-    df_img = calculate_snr_ratio(
-        sdata, cycles="cycle" if color == "cycle" else None, **kwargs
-    )
+    df_img = calculate_snr_ratio(sdata, cycles="cycle" if color == "cycle" else None, **kwargs)
     if loglog:
         ax.set_xscale("log", base=2)
         ax.set_yscale("log", base=2)
