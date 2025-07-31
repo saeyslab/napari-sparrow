@@ -3,7 +3,7 @@ import os
 import matplotlib
 import matplotlib.pyplot as plt
 
-from harpy.plot._qc_image import histogram
+from harpy.plot._qc_image import histogram, snr_ratio
 
 
 def test_plot_histogram(sdata_blobs, tmp_path):
@@ -45,3 +45,22 @@ def test_plot_histogram(sdata_blobs, tmp_path):
     )
     axes[1].set_ylabel("")
     fig.savefig(os.path.join(tmp_path, "histogram_2_3"))
+
+
+def test_plot_snr_ratio(sdata_blobs, tmp_path):
+    #matplotlib.use("Agg") # What is this for?
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    snr_ratio(
+        sdata_blobs,
+        ax=axes[0],
+        channel_names=None
+    )
+
+    snr_ratio(
+        sdata_blobs,
+        ax=axes[1],
+        channel_names=["nucleus", "lineage_0", "lineage_2", "lineage_3", "lineage_5", "lineage_7","lineage_9"]
+    )
+    fig.savefig(os.path.join(tmp_path, "snr_ratio"))
