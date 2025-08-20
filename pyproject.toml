@@ -40,7 +40,6 @@ dependencies = [
     "leidenalg>=0.9.1",
     "geopandas>=1.0.1",
     "omegaconf==2.3.0",
-    "nptyping",
     "magicgui",
     "pyrootutils",
     "universal_pathlib",

@@ -13,7 +13,7 @@ from typing import Any
 import dask.array as da
 import numpy as np
 from dask.array import Array
-from nptyping import NDArray, Shape
+from numpy.typing import NDArray
 from spatialdata import SpatialData, bounding_box_query
 from spatialdata.models._utils import MappingToCoordinateSystem_t
 from spatialdata.models.models import ScaleFactors_t
@@ -652,13 +652,13 @@ class SegmentationModel(ABC):
 
     def _segment_chunk(
         self,
-        block: NDArray[Shape[Any, Any, Any, Any]],
+        block: NDArray,
         block_id: tuple[int, ...],
         num_blocks: tuple[int, ...],
         shift: int,
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs,
-    ) -> NDArray[Shape[Any, Any, Any, Any]]:
+    ) -> NDArray:
         """Method should be implemented in each subclass to handle the segmentation logic on each chunk"""
         if len(num_blocks) == 4:
             if num_blocks[0] != 1:
@@ -687,11 +687,11 @@ class SegmentationModel(ABC):
     @abstractmethod
     def _custom_segment_chunk(
         self,
-        block: NDArray[Shape[Any, Any, Any, Any]],
+        block: NDArray,
         block_id: tuple[int, ...],
         fn_kwargs: Mapping[str, Any],
         **kwargs,
-    ) -> NDArray[Shape[Any, Any, Any, Any]]:
+    ) -> NDArray:
         """
         Implement the unique part of _segment_chunk in each subclass.
 
@@ -789,11 +789,11 @@ class SegmentationModelStains(SegmentationModel):
 
     def _custom_segment_chunk(
         self,
-        block: NDArray[Shape[Any, Any, Any, Any]],
+        block: NDArray,
         block_id: tuple[int, ...],
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs,
-    ) -> NDArray[Shape[Any, Any, Any, Any]]:
+    ) -> NDArray:
         labels = self._model(block, **fn_kwargs).astype(_SEG_DTYPE)
         return labels
 
@@ -940,13 +940,13 @@ class SegmentationModelPoints(SegmentationModel):
 
     def _custom_segment_chunk(
         self,
-        block: NDArray[Shape[Any, Any, Any, Any]],
+        block: NDArray,
         block_id: tuple[int, ...],
         _output_chunks: tuple[tuple[int, ...], ...],
         _depth: dict[int, int],
         fn_kwargs: Mapping[str, Any] = MappingProxyType({}),
         **kwargs,
-    ) -> NDArray[Shape[Any, Any, Any, Any]]:
+    ) -> NDArray:
         name_x = fn_kwargs.setdefault("name_x", "x")
         name_y = fn_kwargs.setdefault("name_y", "y")
         _ = fn_kwargs.setdefault("name_gene", _GENES_KEY)
