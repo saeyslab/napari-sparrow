@@ -2,7 +2,7 @@
 
 We recommend using a virtual environment such as [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html), [mamba](https://mamba.readthedocs.io/en/latest/index.html), [venv](https://docs.python.org/3/library/venv.html) or others. Instructions below are for conda, but are completely analogous for other solutions.
 
-
+The installation has been tested on windows10, almaLinux 9.6, and apple X. 
 ## 1. Create the environment
 Create a and activate new environment with Python 3.10:
 
