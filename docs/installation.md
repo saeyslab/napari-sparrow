@@ -2,7 +2,7 @@
 
 We recommend using a virtual environment such as [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/index.html), [mamba](https://mamba.readthedocs.io/en/latest/index.html), [venv](https://docs.python.org/3/library/venv.html) or others. Instructions below are for conda, but are completely analogous for other solutions.
 
-The installation has been tested on windows10, almaLinux 9.6, and apple X. 
+The installation has been tested on windows10, almaLinux 9.6, and mac. 
 ## 1. Create the environment
 Create a and activate new environment with Python 3.10:
 
@@ -28,6 +28,7 @@ pip install git+https://github.com/saeyslab/napari-sparrow.git
 
 ### Optional dependencies
 `SPArrOW` includes a number of optional dependencies for specific use cases.
+Note that to run the whole tutorial, the easiest option is to install the testing version. 
 These are listed below.
 
 To use the function `sp.im.tiling_correction`:
