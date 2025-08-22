@@ -157,7 +157,7 @@ def analyse_genes_left_out(
 
     plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
     plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
-    plt.ax_marg_x.axvline(x=filtered[f"log_{_RAW_COUNTS_KEY}"].median(),color='green')
+    plt.ax_marg_x.axvline(x=filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color='green')
     plt.ax_marg_y.axhline(y=filtered["proportion_kept"].median(), color="red")
 
     if output:
