@@ -50,7 +50,7 @@ def analyse_genes_left_out(
     to_coordinate_system
         The coordinate system that holds `labels_layer` and `points_layer`.
     counts_layer
-        The counts layer in `sdata.table` containing raw counts This is by default raw_counts If undefined, using X.
+        The counts layer in `sdata.table` containing raw counts. This is by default `raw_counts`. If undefined, using `X`.
     name_x
         The column name representing the x-coordinate in `points_layer`.
     name_y
