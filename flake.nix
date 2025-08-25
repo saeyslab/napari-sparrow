@@ -11,16 +11,23 @@
       fhs = pkgs.buildFHSEnv {
         name = "fhs";
         targetPkgs = pkgs: [
-          pkgs.uv
-
+          pkgs.micromamba
           pkgs.libz
           pkgs.expat
         ];
         runScript = "zsh";
         profile = ''
-          uv venv --python 3.10
-          uv pip install -e .[docs]
-          source .venv/bin/activate
+          export name=fhs
+
+          export MAMBA_ROOT_PREFIX=./.mamba
+
+          eval "$(micromamba shell hook -s zsh)"
+
+          micromamba create -f environment.yml -n ${envname}
+
+          micromamba activate ${envname}
+
+          pip install -e .[plugin,testing,tiling,cli,docs]
 
           export name=fhs
         '';
