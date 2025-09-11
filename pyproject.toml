@@ -27,7 +27,7 @@ classifiers = [
     "Topic :: Software Development :: Testing"
 ]
 dependencies = [
-    "spatialdata>=0.2.6",
+    "spatialdata>=0.4.0",
     "xarray>=2024.10.0",
     "dask>=2024.4.1,<=2024.11.2",
     "distributed",
@@ -43,7 +43,6 @@ dependencies = [
     "magicgui",
     "pyrootutils",
     "universal_pathlib",
-    "datasets>=2.16.0",
     "crick",
     "lazy-loader>=0.4",
     # spatialdata_io depends on specific version of spatialdata: ImportError: cannot import name 'rasterize_bins_link_table_to_labels' from 'spatialdata' at readers/visium_hd.py", line 21
@@ -109,7 +108,6 @@ extra = [
 ]
 # dev dependencies
 test = [
-    "datasets",
     "opencv-python",
     "pytest",
     "pytest-cov",
