@@ -9,7 +9,7 @@ from .segmentation._merge_masks import (
     merge_labels_layers_nuclei,
 )
 from .segmentation._segmentation import segment, segment_points
-from .segmentation.segmentation_models import baysor_callable, cellpose_callable, instanseg_callable
+from .segmentation.segmentation_models import baysor_callable, cellpose_callable
 
 __all__ = [
     "add_grid_labels_layer",
@@ -17,7 +17,6 @@ __all__ = [
     "expand_labels_layer",
     "filter_labels_layer",
     "cellpose_callable",
-    "instanseg_callable",
     "baysor_callable",
     "map_labels",
     "mask_to_original",
