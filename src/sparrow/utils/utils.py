@@ -17,17 +17,6 @@ from spatialdata.models import get_axes_names
 from xarray import DataArray, DataTree
 
 
-def _linestring_to_arrays(geometries):
-    arrays = []
-    for geometry in geometries:
-        if isinstance(geometry, LineString):
-            arrays.extend(list(geometry.coords))
-        elif isinstance(geometry, MultiLineString):
-            for item in geometry.geoms:
-                arrays.extend(list(item.coords))
-    return np.array(arrays)
-
-
 # https://github.com/scverse/napari-spatialdata/blob/main/src/napari_spatialdata/_viewer.py#L105
 def _get_polygons_in_napari_format(df: GeoDataFrame) -> list:
     polygons = []
@@ -144,21 +133,3 @@ def _get_uint_dtype(value: int) -> str:
     else:
         raise ValueError(f"Maximum cell number is {value}. Values higher than {max_uint64} are not supported.")
     return dtype
-
-
-def _self_contained_warning_message(sdata: SpatialData, layer: str) -> str | None:
-    elements = sdata.elements_are_self_contained()
-    if not elements[layer]:
-        warning_message = (
-            f"Element '{layer}' is Dask-backed, but the SpatialData object is not self-contained.\n"
-            "To resolve this, ensure that you assign the result of operations:\n"
-            "    sdata = harpy.{operation}(sdata, ...)\n"
-            "Alternatively, manually reload from the Zarr store:\n"
-            f"    spatialdata.read_zarr('{sdata.path}')\n"
-            "For more details, see the discussion at:\n"
-            "    https://github.com/saeyslab/harpy/issues/90"
-        )
-
-        return warning_message
-    else:
-        return None
