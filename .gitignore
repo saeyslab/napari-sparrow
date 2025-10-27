@@ -14,6 +14,7 @@ logs
 .autoenv
 
 notebooks
+.mamba
 
 # Add exection for example configs for resolve and vizgen
 !configs/allocate/resolve_liver.yaml
