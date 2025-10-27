@@ -5,19 +5,15 @@
 First clone the GitHub repo and set it as the current directory:
 
 ```bash
-git clone https://github.com/saeyslab/harpy.git
-cd harpy
+git clone https://github.com/saeyslab/napari-sparrow.git
+cd napari-sparrow
 ```
 
-Install Harpy:
+Create a conda virtual environment as explained [here](./installation.md) and install `SPArrOW`.
 
 ```bash
-uv venv --python=3.12 # set python version
-source .venv/bin/activate # activate the virtual environment
-uv pip install -e '.[dev]' 'cellpose==3.1.1.2' # use uv to pip install dependencies and pin cellpose
-python -c 'import harpy; print(harpy.__version__)' # check if the package is installed
-# make changes
-python -m pytest # run the tests
+conda activate napari-sparrow
+pip install -e '.[testing,docs]'
 ```
 
 This development environment is supported for:

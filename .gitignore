@@ -16,6 +16,9 @@ logs
 notebooks
 .mamba
 
+shell.nix
+.mamba
+
 # Add exection for example configs for resolve and vizgen
 !configs/allocate/resolve_liver.yaml
 !configs/allocate/vizgen_example.yaml

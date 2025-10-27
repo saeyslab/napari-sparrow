@@ -9,15 +9,10 @@ from omegaconf import DictConfig
 from spatialdata import read_zarr
 from spatialdata.datasets import blobs
 
-from harpy.datasets.cluster_blobs import cluster_blobs
-from harpy.datasets.pixie_example import pixie_example
-from harpy.datasets.proteomics import mibi_example
-from harpy.datasets.registry import get_registry
-from harpy.datasets.transcriptomics import (
-    resolve_example,
-    resolve_example_multiple_coordinate_systems,
-    visium_hd_example_custom_binning,
-)
+from sparrow.datasets.pixie_example import pixie_example
+from sparrow.datasets.proteomics import mibi_example
+from sparrow.datasets.registry import get_registry
+from sparrow.datasets.transcriptomics import resolve_example, resolve_example_multiple_coordinate_systems
 
 
 @pytest.fixture(scope="function")
@@ -108,14 +103,6 @@ def sdata_transcripts_mul_coord(tmpdir):
 @pytest.fixture
 def sdata_bin():
     sdata = visium_hd_example_custom_binning()
-    yield sdata
-
-
-@pytest.fixture
-def sdata_blobs():
-    sdata = cluster_blobs(
-        shape=(512, 512), n_cell_types=10, n_cells=100, noise_level_channels=1.2, noise_level_nuclei=1.2, seed=10
-    )
     yield sdata
 
 

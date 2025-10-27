@@ -1,3 +1,5 @@
+![alt text](https://github.com/saeyslab/napari-sparrow/blob/main/docs/_static/img/logo.png)
+
 <!-- These badges won't work while the GitHub repo is private:
 [![License BSD-3](https://img.shields.io/pypi/l/harpy.svg?color=green)](https://github.com/saeyslab/harpy/raw/main/LICENSE)
 [![Python Version](https://img.shields.io/pypi/pyversions/harpy-analysis.svg?color=green)](https://python.org)
@@ -5,18 +7,9 @@
 [![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/harpy)](https://napari-hub.org/plugins/harpy)
 -->
 
-# **Harpy: single-cell spatial proteomics analysis that makes you happy** <img src="./docs/_static/img/logo.png" align ="right" alt="" width ="150"/>
+# **SPArrOW: A library for Spatial Transcriptomics Data Analysis.**
 
-[![PyPI](https://img.shields.io/pypi/v/harpy-analysis.svg)](https://pypi.org/project/harpy-analysis)
-[![Downloads](https://static.pepy.tech/badge/harpy-analysis)](https://pepy.tech/project/harpy-analysis)
-[![Build Status](https://github.com//saeyslab/harpy/actions/workflows/build.yaml/badge.svg)](https://github.com//saeyslab/harpy/actions/)
-[![documentation badge](https://readthedocs.org/projects/harpy/badge/?version=latest)](https://harpy.readthedocs.io/en/latest/)
-[![Test Status](https://github.com//saeyslab/harpy/actions/workflows/run_tests.yml/badge.svg)](https://github.com//saeyslab/harpy/actions/)
-[![codecov](https://codecov.io/gh/saeyslab/harpy/branch/main/graph/badge.svg)](https://codecov.io/gh/saeyslab/harpy)
-[![License](https://img.shields.io/badge/license-Academic%20Non--commercial-blue)](./LICENSE)
-![GitHub repo size](https://img.shields.io/github/repo-size/saeyslab/harpy)
-[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![documentation badge](https://readthedocs.org/projects/sparrow-pipeline/badge/?version=latest)](https://sparrow-pipeline.readthedocs.io/en/latest/)
 
 Note: This package is still under active development.
 
@@ -47,15 +40,15 @@ Checkout the docs for [installation instructions](https://github.com/saeyslab/ha
 
 ## Tutorials
 
-Tutorials are available [here](https://harpy.readthedocs.io/en/latest/tutorials).
+Tutorials are available [here](https://sparrow-pipeline.readthedocs.io/en/latest/).
 
 ## Usage
 
-[Learn](https://github.com/saeyslab/harpy/blob/main/docs/usage.md) how Harpy can be integrated into your workflow in different ways.
+[Learn](docs/usage.md) how `SPArrOW` can be integrated into your workflow in different ways.
 
 ## Contributing
 
-See [here](https://github.com/saeyslab/harpy/blob/main/docs/contributing.md) for info on how to contribute to Harpy.
+See [here](docs/contributing.md) for info on how to contribute to `SPArrOW`.
 
 ## References
 
@@ -63,7 +56,7 @@ See [here](https://github.com/saeyslab/harpy/blob/main/docs/contributing.md) for
 
 ## License
 
-Check the [license](https://github.com/saeyslab/harpy/blob/main/LICENSE). Harpy is free for academic usage.
+Check license under license. SPArrOW is free for academic usage.
 For commercial usage, please contact Saeyslab.
 
 ## Issues
@@ -79,3 +72,23 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
+
+## Cite us
+
+Our article currently is available as preprint. You can cite us as follows: 
+@article{pollaris2024sparrow,
+
+  title={SPArrOW: a flexible, interactive and scalable pipeline for spatial transcriptomics analysis},
+  
+  author={Pollaris, Lotte and Vanneste, Bavo and Rombaut, Benjamin and Defauw, Arne and Vernaillen, Frank and Mortier, Julien and Vanhenden, Wout and Martens, Liesbet and Thon{\'e}, Tinne and Hastir, Jean-Francois and others},
+  
+  journal={bioRxiv},
+  
+  pages={2024--07},
+  
+  year={2024},
+  
+  publisher={Cold Spring Harbor Laboratory}
+}
+
+Code to replicate the analysis of the paper can be found here: https://github.com/lopollar/SPArrOW_scripts

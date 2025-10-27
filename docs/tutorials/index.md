@@ -1,6 +1,6 @@
 # Tutorials
 
-Notebooks to showcase the use of Harpy for analyzing spatial proteomics data.
+Notebooks to showcase the use of `SPArrOW` for analyzing spatial transcriptomics data.
 
 ```{eval-rst}
 .. toctree::

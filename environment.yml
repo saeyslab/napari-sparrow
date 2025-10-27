@@ -1,17 +1,5 @@
-name: harpy
+name: napari-sparrow
 channels:
-  - pytorch
   - conda-forge
 dependencies:
   - python=3.10.8
-  - napari
-  - pyqt
-  - opencv
-  - pip
-  - pytorch
-  - rasterio
-  - mkl=2024.0.0 # temp workaround, see https://github.com/pytorch/pytorch/issues/123097
-  - pip:
-      - cellpose
-      - ipython
-      - ipykernel

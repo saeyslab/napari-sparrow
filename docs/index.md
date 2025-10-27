@@ -1,8 +1,16 @@
-# Harpy: single-cell spatial proteomics analysis that makes you happy
+```{eval-rst}
+.. image:: _static/img/logo.png
+  :class: dark-light p-2
+  :alt: Dambi banner
+```
 
 Harpy is a library for highly-multiplexed microscopy image analysis with single-cell resolution.
 
-Please read our documentation to learn more.
+# A library for Spatial Transcriptomics Data Analysis.
+
+SPArrOW is a library for single-cell Spatial Transcriptomics data analysis.
+
+Please see our [preprint](https://www.biorxiv.org/content/10.1101/2024.07.04.601829v1) for citation and to learn more.
 
 ```{eval-rst}
 .. note::
@@ -14,39 +22,39 @@ Please read our documentation to learn more.
     :link: installation
     :link-type: doc
 
-    Learn how to install ``Harpy``.
+    Learn how to install ``SPArrOW``.
 
 .. card:: Tutorials
     :link: tutorials/index
     :link-type: doc
 
-    Tutorials to help you get up to speed with ``Harpy``.
+    Tutorials to help you get up to speed with ``SPArrOW``.
 
 .. card:: Usage
     :link: usage
     :link-type: doc
 
-    Learn how Harpy can be integrated into your workflow in different ways.
+    Learn how ``SPArrOW`` can be integrated into your workflow in different ways.
 
 .. card:: API
     :link: api
     :link-type: doc
 
-    Find a detailed documentation of ``Harpy``.
+    Find a detailed documentation of ``SPArrOW``.
 
 
 .. card:: HPC
     :link: tutorials/hpc/index
     :link-type: doc
 
-    Learn how to run ``Harpy`` in a High-Performance Computing (HPC) environment.
+    Learn how to run ``SPArrOW`` in a High-Performance Computing (HPC) environment.
 
 
 .. card:: Contributing
     :link: contributing
     :link-type: doc
 
-    Learn how to contribute to ``Harpy``.
+    Learn how to contribute to ``SPArrOW``.
 
 ```
 

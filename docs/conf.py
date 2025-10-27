@@ -123,7 +123,7 @@ html_title = project_name
 html_logo = "_static/img/logo.png"
 
 html_theme_options = {
-    "repository_url": "https://github.com/saeyslab/harpy",
+    "repository_url": "https://github.com/saeyslab/napari-sparrow",
     "use_repository_button": True,
     "use_edit_page_button": True,
     "use_source_button": True,

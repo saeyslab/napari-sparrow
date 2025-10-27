@@ -1,5 +1,8 @@
-import lazy_loader as lazy
-
-from harpy.utils.pylogger import get_pylogger
-
-__getattr__, __dir__, __all__ = lazy.attach_stub(__name__, __file__)
+from ._allocation import allocate, bin_counts
+from ._allocation_intensity import allocate_intensity
+from ._annotation import cluster_cleanliness, score_genes, score_genes_iter
+from ._clustering import kmeans, leiden
+from ._enrichment import nhood_enrichment
+from ._preprocess import preprocess_proteomics, preprocess_transcriptomics
+from ._regionprops import add_regionprop_features
+from ._table import add_table_layer, correct_marker_genes, filter_on_size
