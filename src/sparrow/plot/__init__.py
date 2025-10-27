@@ -1,4 +1,5 @@
 from ._annotation import score_genes
+from ._sanity import sanity
 from ._cluster_cleanliness import cluster_cleanliness
 from ._clustering import cluster
 from ._enrichment import nhood_enrichment
