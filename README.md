@@ -1,42 +1,23 @@
 ![alt text](https://github.com/saeyslab/napari-sparrow/blob/main/docs/_static/img/logo.png)
 
 <!-- These badges won't work while the GitHub repo is private:
-[![License BSD-3](https://img.shields.io/pypi/l/harpy.svg?color=green)](https://github.com/saeyslab/harpy/raw/main/LICENSE)
-[![Python Version](https://img.shields.io/pypi/pyversions/harpy-analysis.svg?color=green)](https://python.org)
-[![codecov](https://codecov.io/gh/saeyslab/harpy/graph/badge.svg?token=7UXMDWVYFZ)](https://codecov.io/gh/saeyslab/harpy)
-[![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/harpy)](https://napari-hub.org/plugins/harpy)
+[![License BSD-3](https://img.shields.io/pypi/l/napari-sparrow.svg?color=green)](https://github.com/saeyslab/napari-sparrow/raw/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/napari-sparrow.svg?color=green)](https://pypi.org/project/napari-sparrow)
+[![Python Version](https://img.shields.io/pypi/pyversions/napari-sparrow.svg?color=green)](https://python.org)
+[![tests](https://github.com/saeyslab/napari-sparrow/workflows/tests/badge.svg)](https://github.com/saeyslab/napari-sparrow/actions)
+[![codecov](https://codecov.io/gh/saeyslab/napari-sparrow/branch/main/graph/badge.svg)](https://codecov.io/gh/saeyslab/napari-sparrow)
+[![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/napari-sparrow)](https://napari-hub.org/plugins/napari-sparrow)
 -->
 
 # **SPArrOW: A library for Spatial Transcriptomics Data Analysis.**
 
 [![documentation badge](https://readthedocs.org/projects/sparrow-pipeline/badge/?version=latest)](https://sparrow-pipeline.readthedocs.io/en/latest/)
 
-Note: This package is still under active development.
+Note: This package is still under very active development.
 
 ## Installation
 
-**Recommended** for end-users. Install the latest `harpy-analysis` [PyPI package](https://pypi.org/project/harpy-analysis) with the `extra` dependencies in a local Python environment.
-
-```bash
-uv venv --python=3.12 # set python version
-source .venv/bin/activate # activate the virtual environment
-uv pip install 'harpy-analysis[extra]' # use uv to pip install dependencies
-python -c 'import harpy; print(harpy.__version__)' # check if the package is installed
-```
-
-**Only for developers.** Clone this repository locally, install the `.[dev]` instead of the `[extra]` dependencies and read the contribution guide.
-
-```bash
-# Clone repository from GitHub
-uv venv --python=3.12 # set python version
-source .venv/bin/activate # activate the virtual environment
-uv pip install -e '.[dev]' # use uv to pip install dependencies
-python -c 'import harpy; print(harpy.__version__)' # check if the package is installed
-# make changes
-python -m pytest # run the tests
-```
-
-Checkout the docs for [installation instructions](https://github.com/saeyslab/harpy/blob/main/docs/installation.md) using [conda](https://github.com/conda/conda).
+Check out the docs for [installation instructions](docs/installation.md).
 
 ## Tutorials
 
@@ -67,7 +48,7 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [Cookiecutter]: https://github.com/audreyr/cookiecutter
 [BSD-3]: http://opensource.org/licenses/BSD-3-Clause
 [cookiecutter-napari-plugin]: https://github.com/napari/cookiecutter-napari-plugin
-[file an issue]: https://github.com/saeyslab/harpy/issues
+[file an issue]: https://github.com/saeyslab/napari-sparrow/issues
 [napari]: https://github.com/napari/napari
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
