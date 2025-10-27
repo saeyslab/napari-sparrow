@@ -15,9 +15,9 @@ import skimage as ski
 from matplotlib.axes import Axes
 from spatialdata import SpatialData
 
-from harpy.image import normalize
-from harpy.image._image import _get_spatial_element
-from harpy.utils.pylogger import get_pylogger
+from sparrow.image import normalize
+from sparrow.image._image import _get_spatial_element
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
@@ -26,7 +26,7 @@ try:
 
 except ImportError:
     log.warning(
-        "'textalloc' not installed, to use 'harpy.pl.group_snr_ratio' and 'harpy.pl.snr_ratio', please install this library."
+        "'textalloc' not installed, to use 'sparrow.pl.group_snr_ratio' and 'sparrow.pl.snr_ratio', please install this library."
     )
 
 

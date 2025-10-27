@@ -3,7 +3,7 @@ import os
 import matplotlib
 import matplotlib.pyplot as plt
 
-from harpy.plot._qc_image import histogram, snr_ratio
+from sparrow.plot._qc_image import histogram, snr_ratio
 
 
 def test_plot_histogram(sdata_blobs, tmp_path):

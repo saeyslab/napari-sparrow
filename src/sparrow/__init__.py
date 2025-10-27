@@ -1,9 +1,8 @@
 """Define package version"""
 
-import importlib.metadata
-import os
+__version__ = "0.0.1"
 
-__version__ = importlib.metadata.version("harpy-analysis")
+import os
 
 # see geopandas https://geopandas.org/en/stable/ and https://github.com/geopandas/geopandas/releases/tag/v1.0.0
 # removing this could mean only supporting gepandas >=1.0.0 and shapely 2
@@ -24,14 +23,14 @@ if loglevel is None or loglevel.upper() != "DEBUG":
 # import submodules in specific order to avoid circular imports
 # use aliases from more convenient names
 # isort: off
-from harpy import utils  # noqa: E402
-from harpy import io  # noqa: E402
-from harpy import datasets  # noqa: E402
-from harpy import image as im  # noqa: E402
-from harpy import plot as pl  # noqa: E402
-from harpy import points as pt  # noqa: E402
-from harpy import shape as sh  # noqa: E402
-from harpy import table as tb  # noqa: E402
+from sparrow import utils  # noqa: E402
+from sparrow import io  # noqa: E402
+from sparrow import datasets  # noqa: E402
+from sparrow import image as im  # noqa: E402
+from sparrow import plot as pl  # noqa: E402
+from sparrow import points as pt  # noqa: E402
+from sparrow import shape as sh  # noqa: E402
+from sparrow import table as tb  # noqa: E402
 # isort: on
 
 __all__ = [

@@ -13,7 +13,7 @@ from dask_image.ndmeasure._utils import _label
 from numpy.typing import NDArray
 from sklearn import metrics as sk_metrics
 
-from harpy.utils.pylogger import get_pylogger
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 

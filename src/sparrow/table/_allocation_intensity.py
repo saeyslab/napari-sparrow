@@ -12,11 +12,11 @@ from anndata import AnnData
 from dask_image.ndmeasure import center_of_mass
 from spatialdata import SpatialData
 
-from harpy.image._image import _get_spatial_element, _get_translation
-from harpy.table._table import add_table_layer
-from harpy.utils._aggregate import RasterAggregator
-from harpy.utils._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY, _SPATIAL
-from harpy.utils.pylogger import get_pylogger
+from sparrow.image._image import _get_spatial_element, _get_translation
+from sparrow.table._table import add_table_layer
+from sparrow.utils._aggregate import RasterAggregator
+from sparrow.utils._keys import _CELL_INDEX, _INSTANCE_KEY, _REGION_KEY, _SPATIAL
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
@@ -94,7 +94,7 @@ def allocate_intensity(
 
     Example
     -------
-    >>> sdata = harpy.im.align_labels_layers(
+    >>> sdata = sparrow.im.align_labels_layers(
     ...     sdata,
     ...     labels_layer_1="masks_nuclear",
     ...     labels_layer_2="masks_whole",
@@ -105,19 +105,19 @@ def allocate_intensity(
     ...     depth=100,
     ... )
     >>>
-    >>> sdata = harpy.tb.allocate_intensity(
+    >>> sdata = sparrow.tb.allocate_intensity(
     ...     sdata, img_layer="raw_image", labels_layer="masks_whole", output_layer="table_intensities", chunks=100
     ... )
     >>>
-    >>> sdata = harpy.tb.allocate_intensity(
+    >>> sdata = sparrow.tb.allocate_intensity(
     ...     sdata, img_layer="raw_image", labels_layer="masks_nuclear_aligned", output_later="table_intensities", chunks=100, append=True
     ... )
     >>> # alternatively, save to different tables
-    >>> sdata = harpy.tb.allocate_intensity(
+    >>> sdata = sparrow.tb.allocate_intensity(
     ...     sdata, img_layer="raw_image", labels_layer="masks_whole", output_layer="table_intensities_masks_whole", chunks=100
     ... )
     >>>
-    >>> sdata = harpy.tb.allocate_intensity(
+    >>> sdata = sparrow.tb.allocate_intensity(
     ...     sdata, img_layer="raw_image", labels_layer="masks_nuclear_aligned", output_later="table_intensities_masks_nuclear_aligned", chunks=100, append=True
     ... )
     """

@@ -1,6 +1,6 @@
 from spatialdata import SpatialData
 
-from harpy.image._contrast import enhance_contrast
+from sparrow.image._contrast import enhance_contrast
 
 
 def test_enhance_contrast(sdata_multi_c_no_backed: SpatialData):

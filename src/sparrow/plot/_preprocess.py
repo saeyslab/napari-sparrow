@@ -5,7 +5,7 @@ import scanpy as sc
 import seaborn as sns
 from spatialdata import SpatialData
 
-from harpy.utils._keys import _CELLSIZE_KEY
+from sparrow.utils._keys import _CELLSIZE_KEY
 
 
 def preprocess_transcriptomics(
@@ -25,7 +25,7 @@ def preprocess_transcriptomics(
 
     See Also
     --------
-    harpy.tb.preprocess_transcriptomics: preprocess.
+    sparrow.tb.preprocess_transcriptomics: preprocess.
     """
     sc.pl.pca(
         sdata.tables[table_layer],

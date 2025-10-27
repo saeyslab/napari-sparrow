@@ -9,8 +9,8 @@ from spatialdata.models import TableModel
 from spatialdata_io._constants._constants import VisiumKeys
 from spatialdata_io.readers.visium import visium as sdata_visium
 
-import harpy as hp
-from harpy.utils._keys import _INSTANCE_KEY, _REGION_KEY
+import sparrow as hp
+from sparrow.utils._keys import _INSTANCE_KEY, _REGION_KEY
 
 
 def visium(

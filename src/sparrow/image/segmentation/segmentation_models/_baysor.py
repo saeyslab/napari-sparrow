@@ -19,7 +19,7 @@ from shapely.geometry import GeometryCollection, MultiPolygon, Polygon, shape
 from shapely.validation import make_valid
 from skimage.segmentation import relabel_sequential
 
-from harpy.utils.pylogger import get_pylogger
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
@@ -41,7 +41,7 @@ def baysor_callable(
     """
     Perform cell segmentation using the Baysor algorithm.
 
-    Designed to be compatible with `harpy.im.segment_points` for distributed segmentation workflows.
+    Designed to be compatible with `sparrow.im.segment_points` for distributed segmentation workflows.
 
     Parameters
     ----------

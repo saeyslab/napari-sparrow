@@ -1,8 +1,8 @@
 import pytest
 from spatialdata import SpatialData
 
-from harpy.table._table import add_table_layer
-from harpy.utils._keys import _REGION_KEY
+from sparrow.table._table import add_table_layer
+from sparrow.utils._keys import _REGION_KEY
 
 
 @pytest.mark.parametrize("is_backed", [True, False])

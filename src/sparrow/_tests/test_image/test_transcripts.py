@@ -1,4 +1,4 @@
-from harpy.image._transcripts import transcript_density
+from sparrow.image._transcripts import transcript_density
 
 
 def test_transcripts(sdata_blobs):

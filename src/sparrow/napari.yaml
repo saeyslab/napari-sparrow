@@ -1,33 +1,33 @@
-name: harpy-analysis
-display_name: harpy
+name: sparrow-analysis
+display_name: sparrow
 contributions:
   commands:
-    - id: harpy-analysis.widgets.wizard_widget
-      python_name: harpy.widgets._wizard_widget:wizard_widget
+    - id: sparrow-analysis.widgets.wizard_widget
+      python_name: sparrow.widgets._wizard_widget:wizard_widget
       title: Wizard
-    - id: harpy-analysis.widgets.clean_widget
-      python_name: harpy.widgets._clean_widget:clean_widget
+    - id: sparrow-analysis.widgets.clean_widget
+      python_name: sparrow.widgets._clean_widget:clean_widget
       title: Cleaning
-    - id: harpy-analysis.widgets.segment_widget
-      python_name: harpy.widgets._segment_widget:segment_widget
+    - id: sparrow-analysis.widgets.segment_widget
+      python_name: sparrow.widgets._segment_widget:segment_widget
       title: Segment
-    - id: harpy-analysis.widgets.allocate_widget
-      python_name: harpy.widgets._allocate_widget:allocate_widget
+    - id: sparrow-analysis.widgets.allocate_widget
+      python_name: sparrow.widgets._allocate_widget:allocate_widget
       title: Allocate
-    - id: harpy-analysis.widgets.annotate_widget
-      python_name: harpy.widgets._annotate_widget:annotate_widget
+    - id: sparrow-analysis.widgets.annotate_widget
+      python_name: sparrow.widgets._annotate_widget:annotate_widget
       title: Annotate
   widgets:
     # display_name is the name shown in the napari menu
-    - command: harpy-analysis.widgets.wizard_widget
+    - command: sparrow-analysis.widgets.wizard_widget
       display_name: Wizard
-    # - command: harpy.widgets.clean_widget
+    # - command: sparrow.widgets.clean_widget
     #   display_name: Clean
-    # - command: harpy.widgets.segment_widget
+    # - command: sparrow.widgets.segment_widget
     #   display_name: Segment
-    # - command: harpy.widgets.allocate_widget
+    # - command: sparrow.widgets.allocate_widget
     #   display_name: Allocate
-    # - command: harpy.widgets.annotate_widget
+    # - command: sparrow.widgets.annotate_widget
     #   display_name: Annotate
-    # - command: harpy.widgets.visualize_widget
+    # - command: sparrow.widgets.visualize_widget
     #   display_name: Visualize

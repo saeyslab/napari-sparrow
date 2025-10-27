@@ -8,8 +8,8 @@ from scipy.stats import kurtosis, skew
 from skimage.measure import regionprops_table
 from xrspatial import zonal_stats
 
-from harpy.utils._aggregate import RasterAggregator, _get_center_of_mass, _get_mask_area, _region_radii_and_axes
-from harpy.utils._keys import _CELLSIZE_KEY, _INSTANCE_KEY
+from sparrow.utils._aggregate import RasterAggregator, _get_center_of_mass, _get_mask_area, _region_radii_and_axes
+from sparrow.utils._keys import _CELLSIZE_KEY, _INSTANCE_KEY
 
 
 def test_aggregate_stats(sdata):

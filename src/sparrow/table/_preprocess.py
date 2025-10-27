@@ -10,12 +10,12 @@ import scanpy as sc
 from scipy.sparse import issparse
 from spatialdata import SpatialData
 
-from harpy.image._image import _get_spatial_element
-from harpy.shape._shape import filter_shapes_layer
-from harpy.table._table import ProcessTable, add_table_layer
-from harpy.utils._aggregate import _get_mask_area
-from harpy.utils._keys import _CELLSIZE_KEY, _INSTANCE_KEY, _RAW_COUNTS_KEY, _REGION_KEY
-from harpy.utils.pylogger import get_pylogger
+from sparrow.image._image import _get_spatial_element
+from sparrow.shape._shape import filter_shapes_layer
+from sparrow.table._table import ProcessTable, add_table_layer
+from sparrow.utils._aggregate import _get_mask_area
+from sparrow.utils._keys import _CELLSIZE_KEY, _INSTANCE_KEY, _RAW_COUNTS_KEY, _REGION_KEY
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
@@ -105,7 +105,7 @@ def preprocess_transcriptomics(
 
     See Also
     --------
-    harpy.tb.allocate : create an AnnData table in `sdata` using a `points_layer` and a `labels_layer`.
+    sparrow.tb.allocate : create an AnnData table in `sdata` using a `points_layer` and a `labels_layer`.
     """
     preprocess_instance = Preprocess(sdata, labels_layer=labels_layer, table_layer=table_layer)
     sdata = preprocess_instance.preprocess(
@@ -205,7 +205,7 @@ def preprocess_proteomics(
 
     See Also
     --------
-    harpy.tb.allocate_intensity : create an AnnData table in `sdata` using an `image_layer` and a `labels_layer`.
+    sparrow.tb.allocate_intensity : create an AnnData table in `sdata` using an `image_layer` and a `labels_layer`.
     """
     preprocess_instance = Preprocess(sdata, labels_layer=labels_layer, table_layer=table_layer)
     sdata = preprocess_instance.preprocess(
@@ -307,7 +307,7 @@ class Preprocess(ProcessTable):
 
         if scale and q is not None:
             raise ValueError(
-                "Please choose between scaling via 'harpy.pp.scale' or normalization by q quantile, not both."
+                "Please choose between scaling via 'sparrow.pp.scale' or normalization by q quantile, not both."
             )
 
         if scale:

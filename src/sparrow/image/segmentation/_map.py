@@ -17,19 +17,19 @@ from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation, get_transformation
 from upath import UPath
 
-from harpy.image._image import (
+from sparrow.image._image import (
     _get_spatial_element,
     add_labels_layer,
 )
-from harpy.image.segmentation._utils import (
+from sparrow.image.segmentation._utils import (
     _SEG_DTYPE,
     _add_depth_to_chunks_size,
     _check_boundary,
     _link_labels,
     _rechunk_overlap,
 )
-from harpy.shape._shape import add_shapes_layer
-from harpy.utils.pylogger import get_pylogger
+from sparrow.shape._shape import add_shapes_layer
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 

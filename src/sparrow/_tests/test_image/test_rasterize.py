@@ -1,7 +1,7 @@
 import numpy as np
 
-from harpy.image import rasterize
-from harpy.shape import add_shapes_layer
+from sparrow.image import rasterize
+from sparrow.shape import add_shapes_layer
 
 
 def test_rasterize(sdata_multi_c_no_backed):

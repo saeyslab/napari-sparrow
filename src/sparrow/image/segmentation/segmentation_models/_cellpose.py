@@ -5,7 +5,7 @@ from pathlib import Path
 from numpy.typing import NDArray
 from packaging import version
 
-from harpy.utils.pylogger import get_pylogger
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
@@ -15,7 +15,7 @@ try:
     TORCH_AVAILABLE = True
 except ImportError:
     log.warning(
-        "Module 'torch' not installed, please install 'torch' if you want to use the callable 'harpy.im.cellpose_callable' as model for 'harpy.im.segment'."
+        "Module 'torch' not installed, please install 'torch' if you want to use the callable 'sparrow.im.cellpose_callable' as model for 'sparrow.im.segment'."
     )
     TORCH_AVAILABLE = False
 
@@ -26,7 +26,7 @@ try:
     CELLPOSE_AVAILABLE = True
 except ImportError:
     log.warning(
-        "Module 'cellpose' not installed, please install 'cellpose' (https://github.com/MouseLand/cellpose) if you want to use the callable 'harpy.im.cellpose_callable' as model for 'harpy.im.segment'."
+        "Module 'cellpose' not installed, please install 'cellpose' (https://github.com/MouseLand/cellpose) if you want to use the callable 'sparrow.im.cellpose_callable' as model for 'sparrow.im.segment'."
     )
     CELLPOSE_AVAILABLE = False
 
@@ -53,7 +53,7 @@ def cellpose_callable(
     """
     Perform cell segmentation using the Cellpose model.
 
-    Should be passed to `model` parameter of `harpy.im.segment` for distributed processing.
+    Should be passed to `model` parameter of `sparrow.im.segment` for distributed processing.
 
     Parameters
     ----------
@@ -110,7 +110,7 @@ def cellpose_callable(
 
     See Also
     --------
-    harpy.im.segment : distributed segmentation using `Dask`.
+    sparrow.im.segment : distributed segmentation using `Dask`.
     """
     if channels is None:
         channels = [0, 0]
@@ -164,7 +164,7 @@ def cellpose_callable(
         "z_axis": 0 if do_3D_segmentation else None,
         "normalize": normalize,
         "invert": invert,
-        "rescale": None,  # not supported in harpy.
+        "rescale": None,  # not supported in sparrow.
         "diameter": diameter,
         "flow_threshold": flow_threshold,
         "cellprob_threshold": cellprob_threshold,

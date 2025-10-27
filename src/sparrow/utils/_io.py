@@ -10,7 +10,7 @@ from geopandas import GeoDataFrame
 from spatialdata import SpatialData, read_zarr
 from xarray import DataArray, DataTree
 
-from harpy.utils.pylogger import get_pylogger
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 

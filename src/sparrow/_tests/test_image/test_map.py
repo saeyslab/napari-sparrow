@@ -5,7 +5,7 @@ import pytest
 from numpy.typing import NDArray
 from spatialdata import SpatialData
 
-from harpy.image import _precondition, map_image
+from sparrow.image import _precondition, map_image
 
 
 def _multiply(image: NDArray, parameter: Any):

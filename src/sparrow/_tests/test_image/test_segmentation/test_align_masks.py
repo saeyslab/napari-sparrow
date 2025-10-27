@@ -1,6 +1,6 @@
 from spatialdata import SpatialData
 
-from harpy.image.segmentation._align_masks import align_labels_layers
+from sparrow.image.segmentation._align_masks import align_labels_layers
 
 
 def test_align_labels_layers(sdata_multi_c_no_backed: SpatialData):

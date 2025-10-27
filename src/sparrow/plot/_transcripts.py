@@ -9,11 +9,11 @@ import seaborn as sns
 from scipy.stats import pearsonr
 from spatialdata import SpatialData
 
-from harpy.image._image import _get_boundary, _get_spatial_element
-from harpy.plot import plot_shapes
-from harpy.utils._keys import _GENES_KEY, _RAW_COUNTS_KEY, _REGION_KEY
-from harpy.utils._transformations import _identity_check_transformations_points
-from harpy.utils.pylogger import get_pylogger
+from sparrow.image._image import _get_boundary, _get_spatial_element
+from sparrow.plot import plot_shapes
+from sparrow.utils._keys import _GENES_KEY, _RAW_COUNTS_KEY, _REGION_KEY
+from sparrow.utils._transformations import _identity_check_transformations_points
+from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
@@ -77,7 +77,7 @@ def analyse_genes_left_out(
 
     See Also
     --------
-    harpy.tb.allocate
+    sparrow.tb.allocate
     """
     # we need the segmentation_mask to calculate crd used during allocation step,
     # otherwise transcript counts in points layer of sdata (containing all transcripts)
@@ -120,7 +120,7 @@ def analyse_genes_left_out(
 
     if not missing_indices.empty:
         raise ValueError(
-            f"There are genes found in '.var' of table layer '{table_layer}' that are not found in the points layer '{points_layer}'. Please verify that allocation '(harpy.tb.allocation)' is performed using the correct points layer."
+            f"There are genes found in '.var' of table layer '{table_layer}' that are not found in the points layer '{points_layer}'. Please verify that allocation '(sparrow.tb.allocation)' is performed using the correct points layer."
         )
 
     raw_counts = _raw_counts[adata.var.index]
@@ -180,7 +180,7 @@ def transcript_density(
     """
     Visualize the transcript density layer.
 
-    This function wraps around the :func:`harpy.pl.plot_shapes` function to showcase transcript density.
+    This function wraps around the :func:`sparrow.pl.plot_shapes` function to showcase transcript density.
 
     Parameters
     ----------
@@ -210,8 +210,8 @@ def transcript_density(
 
     See Also
     --------
-    harpy.im.transcript_density
-    harpy.pl.plot_shapes
+    sparrow.im.transcript_density
+    sparrow.pl.plot_shapes
     """
     plot_shapes(
         sdata,

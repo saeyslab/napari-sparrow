@@ -1,6 +1,6 @@
 import numpy as np
 
-from harpy.image._normalize import normalize
+from sparrow.image._normalize import normalize
 
 
 def test_normalize(sdata_blobs):

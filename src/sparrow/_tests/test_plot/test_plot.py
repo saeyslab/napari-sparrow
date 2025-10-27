@@ -6,10 +6,10 @@ import numpy as np
 import pytest
 import scanpy as sc
 
-from harpy.image._image import add_image_layer, add_labels_layer
-from harpy.plot._plot import plot_image, plot_labels, plot_shapes
-from harpy.plot._sanity import sanity
-from harpy.shape._shape import add_shapes_layer
+from sparrow.image._image import add_image_layer, add_labels_layer
+from sparrow.plot._plot import plot_image, plot_labels, plot_shapes
+from sparrow.plot._sanity import sanity
+from sparrow.shape._shape import add_shapes_layer
 
 
 def test_plot_labels(sdata_multi_c_no_backed, tmp_path):
