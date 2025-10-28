@@ -280,7 +280,7 @@ class Preprocess(ProcessTable):
             adata.obs = adata.obs.drop(columns=[_CELL_INDEX])
 
         adata.layers[_RAW_COUNTS_KEY] = adata.X.copy()
-
+        
         if size_norm:
             adata.X = (adata.X.T * 100 / adata.obs[_CELLSIZE_KEY].values).T
             if issparse(adata.X):
@@ -300,12 +300,11 @@ class Preprocess(ProcessTable):
             raise ValueError(
                 "Please choose between scaling via 'sp.pp.scale' or normalization by q quantile, not both."
             )
-
         if scale:
             if adata.raw is None:
                 adata.raw = adata.copy()
             sc.pp.scale(adata, copy=False, layer=None, obsm=None, zero_center=True, max_value=max_value_scale)
-
+        
         if q is not None:
             if adata.raw is None:
                 adata.raw = adata.copy()

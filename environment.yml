@@ -1,4 +1,4 @@
-name: napari-sparrow
+name: napari-sparrow_arne
 channels:
   - pytorch
   - conda-forge
