@@ -1,5 +1,5 @@
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional,List
 
 import numpy as np
 import pandas as pd
@@ -30,6 +30,7 @@ def preprocess_transcriptomics(
     max_value_scale: int = 10,
     n_comps: int = 50,
     update_shapes_layers: bool = True,
+    shapes_layers_to_filter=None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -71,6 +72,8 @@ def preprocess_transcriptomics(
         Whether to filter the shapes layers associated with `labels_layer`.
         If set to `True`, cells that do not appear in resulting `output_layer` (with `_REGION_KEY` equal to `labels_layer`) will be removed from the shapes layers (via `_INSTANCE_KEY`) in the `sdata` object.
         Filtered shapes will be added to `sdata` with prefix 'filtered_low_counts'.
+    shapes_layers_to_filter
+        List of shapes layers to filter. If `None`, all shapes layers associated with `labels_layer` will be filtered, if update_shapes_layers is `True`.
     overwrite
         If True, overwrites the `output_layer` if it already exists in `sdata`.
 
@@ -115,6 +118,7 @@ def preprocess_transcriptomics(
         max_value_scale=max_value_scale,
         calculate_pca=True,
         update_shapes_layers=update_shapes_layers,
+        shapes_layers_to_filter=shapes_layers_to_filter,
         qc_kwargs={"percent_top": [2, 5]},
         filter_cells_kwargs={"min_counts": min_counts},
         filter_genes_kwargs={"min_cells": min_cells},
@@ -236,6 +240,8 @@ class Preprocess(ProcessTable):
         highly_variable_genes: bool = False,
         calculate_pca: bool = True,
         update_shapes_layers: bool = True,  # whether to update the shapes layer based on the items filtered out in sdata.tables[self.table_layer].
+        shapes_layers_to_filter: Optional[List[str]] = None,
+
         qc_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.pp.calculate_qc_metrics
         filter_cells_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.pp.filter_cells
         filter_genes_kwargs: Mapping[str, Any] = MappingProxyType({}),  # keyword arguments passed to sc.pp.filter_genes
@@ -346,6 +352,7 @@ class Preprocess(ProcessTable):
                     table_layer=output_layer,
                     labels_layer=_labels_layer,
                     prefix_filtered_shapes_layer="filtered_low_counts",
+                    shapes_layers_to_filter=shapes_layers_to_filter
                 )
 
         return self.sdata
