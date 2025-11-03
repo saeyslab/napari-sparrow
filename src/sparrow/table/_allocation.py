@@ -37,6 +37,7 @@ def allocate(
     name_gene_column: str = _GENES_KEY,
     append: bool = False,
     update_shapes_layers: bool = True,
+    shapes_layers_to_filter: list[str] | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -69,6 +70,8 @@ def allocate(
         Whether to filter the shapes layers associated with `labels_layer`.
         If set to `True`, cells that do not appear in resulting `output_layer` (with `_REGION_KEY` equal to `labels_layer`) will be removed from the shapes layers (via `_INSTANCE_KEY`) in the `sdata` object.
         Filtered shapes will be added to `sdata` with prefix 'filtered_segmentation'.
+    shapes_layers_to_filter
+        List of names of the shapes layers to filter. If None, and update_shapes_layers is True, all shapes layers in `sdata` that match the coordinate system of the labels layer will be filtered.
     overwrite
         If True, overwrites the `output_layer` if it already exists in `sdata`.
 
@@ -182,6 +185,7 @@ def allocate(
             table_layer=output_layer,
             labels_layer=labels_layer,
             prefix_filtered_shapes_layer="filtered_segmentation",
+            shapes_layers_to_filter=shapes_layers_to_filter,
         )
 
     return sdata

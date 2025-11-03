@@ -579,7 +579,7 @@ def _plot(
                 else:
                     adata_view = adata_view[adata_view.obs[_REGION_KEY] == region]
 
-            mask = adata_view.obs[_INSTANCE_KEY].isin(set(polygons.index.astype(int)))
+            mask = adata_view.obs[_INSTANCE_KEY].isin(set(polygons.index.astype(int)))#
             adata_view = adata_view[mask]
             # sort both adata and polygons on _INSTANCE_KEY
             sorted_index = adata_view.obs[_INSTANCE_KEY].sort_values().index
@@ -692,6 +692,7 @@ def _plot(
             polygons.plot(
                 ax=ax,
                 edgecolor="white",
+                facecolor='blue',
                 column=column,
                 linewidth=linewidth,
                 alpha=alpha,
@@ -714,7 +715,7 @@ def _plot(
                         polygons.plot(
                             ax=ax,
                             edgecolor="red",
-                            linewidth=linewidth,
+                            linewidth=linewidth*3,
                             alpha=alpha,
                             legend=True,
                             aspect=1,

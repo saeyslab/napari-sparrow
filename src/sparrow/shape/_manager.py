@@ -59,6 +59,7 @@ class ShapesLayerManager:
         table_layer: str,
         labels_layer: str,
         prefix_filtered_shapes_layer: str,
+        shapes_layers_to_filter=None,
     ) -> SpatialData:
         mask = sdata.tables[table_layer].obs[_REGION_KEY].isin([labels_layer])
         indexes_to_keep = sdata.tables[table_layer].obs[mask][_INSTANCE_KEY].values.astype(int)
@@ -70,8 +71,9 @@ class ShapesLayerManager:
                 "This would remove all shapes from sdata`. Skipping filtering step."
             )
             return sdata
-
-        for _shapes_layer in [*sdata.shapes]:
+        if shapes_layers_to_filter is None:
+            shapes_layers_to_filter = [*sdata.shapes]
+        for _shapes_layer in shapes_layers_to_filter:
             polygons = self.retrieve_data_from_sdata(sdata, name=_shapes_layer)
             polygons = self.get_polygons_from_input(polygons)
             # only filter shapes that are in same coordinate system as the labels layer
