@@ -57,6 +57,7 @@ def filter_shapes_layer(
     table_layer: str,
     labels_layer: str,
     prefix_filtered_shapes_layer: str,
+    shapes_layers_to_filter: list[str] | None = None
 ) -> SpatialData:
     """
     Filter shapes in a SpatialData object.
@@ -75,6 +76,8 @@ def filter_shapes_layer(
         The name of the labels layer.
     prefix_filtered_shapes_layer
         The prefix for the name of the new shapes layer consisting of the polygons that where filtered out from a shapes layer.
+    shapes_layers_to_filter
+        List of names of the shapes layers to filter. If None, all shapes layers in `sdata` that match the coordinate system of the labels layer will be filtered.
 
     Returns
     -------
@@ -86,6 +89,7 @@ def filter_shapes_layer(
         sdata,
         table_layer=table_layer,
         labels_layer=labels_layer,
+        shapes_layers_to_filter=shapes_layers_to_filter,
         prefix_filtered_shapes_layer=prefix_filtered_shapes_layer,
     )
     return sdata
