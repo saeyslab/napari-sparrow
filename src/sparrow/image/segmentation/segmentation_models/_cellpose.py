@@ -172,7 +172,7 @@ def cellpose_callable(
         "anisotropy": anisotropy,
         "stitch_threshold": stitch_threshold,
         "min_size": min_size,
-        "max_size_fraction": max_size_fraction,
+        #"max_size_fraction": max_size_fraction,
         "niter": niter,
         "augment": False,
         "tile_overlap": 0.1,
@@ -182,7 +182,7 @@ def cellpose_callable(
     # Add version-specific arguments
     if cellpose_version >= version.parse("3.1.1.1"):
         common_args["flow3D_smooth"] = flow3D_smooth
-    else:
+    elif do_3D_segmentation:
         common_args["dP_smooth"] = flow3D_smooth
 
     results = model.eval(**common_args)
