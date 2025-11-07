@@ -15,6 +15,60 @@ from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
 
+def read_xenium_transcripts(
+    sdata: SpatialData,
+    path_count_matrix: str | Path,
+    path_transform_matrix: str | Path | None = None,
+    pixelSize: float = 0.2125,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
+    overwrite: bool = False,
+) -> SpatialData:
+    """
+    Reads and adds Xenium transcript information to a SpatialData object.
+
+    Parameters
+    ----------
+    sdata
+        The SpatialData object to which the transcripts will be added.
+    path_count_matrix
+        Path to the file containing the transcripts information specific to Vizgen.
+        Expected to contain x, y coordinates and a gene name.
+        
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
+    path_transform_matrix
+        Path to the transformation matrix for the affine transformation.
+    pixelSize: float | None
+        Pixel size in microns. If provided, a scaling transformation matrix is created based on this value.
+        Ignored if `path_transform_matrix` is provided.
+    overwrite: bool, default=False
+        If True overwrites the `output_layer` (a points layer) if it already exists.
+
+    Returns
+    -------
+    The updated SpatialData object containing the transcripts.
+    """
+    args = (sdata, path_count_matrix)
+    kwargs = {
+        "column_x": 4,
+        "column_y": 5,
+        "column_gene": 3,
+        "delimiter": ",",
+        "pixelSize": pixelSize,
+        "header": 0,
+        "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
+    }
+
+    sdata = read_transcripts(*args, **kwargs)
+    return sdata
+
+
+
 
 def read_resolve_transcripts(
     sdata: SpatialData,
@@ -156,6 +210,7 @@ def read_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
     transform_matrix: str | Path | NDArray | None = None,
+    pixelSize: float | None = None,
     output_layer: str = "transcripts",
     overwrite: bool = False,
     debug: bool = False,
@@ -201,6 +256,9 @@ def read_transcripts(
         If True overwrites the `output_layer` (a points layer) if it already exists.
     debug
         If True, a sample of the data is processed for debugging purposes.
+    pixelSize: float | None
+        Pixel size in microns. If provided, a scaling transformation matrix is created based on this value.
+        Ignored if `path_transform_matrix` is provided.    
     column_x
         Column index of the X coordinate in the count matrix.
     column_y
@@ -277,13 +335,19 @@ def read_transcripts(
             )
 
     # Read the transformation matrix
-    if transform_matrix is None:
+    if path_transform_matrix is not  None:
+        transform_matrix = np.loadtxt(path_transform_matrix)
+        log.info(f"Transform matrix used:\n {transform_matrix}")
+
+    elif pixelSize is not None:
+        transform_matrix = np.eye(3)
+        transform_matrix[0, 0] = 1 / pixelSize  # Scaling in x
+        transform_matrix[1, 1] = 1 / pixelSize  # Scaling in y
+        log.info(f"Transform matrix based on pixelSize {pixelSize}µm:\n {transform_matrix}")
+        
+    else:
         log.info("No transform matrix given, will use identity matrix.")
         transform_matrix = np.identity(3)
-    elif isinstance(transform_matrix, Path | str):
-        transform_matrix = np.loadtxt(transform_matrix)
-
-    log.info(f"Transform matrix used:\n {transform_matrix}")
 
     if debug:
         n = 100000
