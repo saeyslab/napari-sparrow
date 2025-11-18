@@ -151,6 +151,51 @@ def read_stereoseq_transcripts(
     return sdata
 
 
+def read_cosmx_transcripts(
+    sdata: SpatialData,
+    path_count_matrix: str | Path,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
+    overwrite: bool = False,
+) -> SpatialData:
+    """
+    Reads and adds CosMx transcript information to a SpatialData object.
+
+    Parameters
+    ----------
+    sdata
+        The SpatialData object to which the transcripts will be added.
+    path_count_matrix
+        Path to the file containing the transcripts information specific to CosMx.
+        Expected to contain x, y, z coordinates and a gene name.
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
+    overwrite: bool, default=False
+        If True overwrites the `output_layer` (a points layer) if it already exists.
+
+    Returns
+    -------
+    The updated SpatialData object containing the transcripts.
+    """
+    args = (sdata, path_count_matrix)
+    kwargs = {
+        "column_x": 5,
+        "column_y": 6,
+        "column_z": 7,
+        "column_gene": 8,
+        "delimiter": ",",
+        "header": 0,
+        "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
+    }
+
+    sdata = read_transcripts(*args, **kwargs)
+    return sdata
+
+
 def read_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
@@ -259,7 +304,9 @@ def read_transcripts(
     def filter_names(ddf, column_gene, filter_name):
         # filter out control genes that you don't want ending up in the dataset
 
-        ddf = ddf[~ddf.iloc[:, column_gene].str.contains(filter_name, case=False, na=False)]
+        ddf = ddf[
+            ~ddf.iloc[:, column_gene].str.contains(filter_name, case=False, na=False)
+        ]
         return ddf
 
     if filter_gene_names:
@@ -290,7 +337,9 @@ def read_transcripts(
 
     # Function to repeat rows based on MIDCount value
     def repeat_rows(df):
-        repeat_df = df.reindex(df.index.repeat(df.iloc[:, column_midcount])).reset_index(drop=True)
+        repeat_df = df.reindex(
+            df.index.repeat(df.iloc[:, column_midcount])
+        ).reset_index(drop=True)
         return repeat_df
 
     # Apply the row repeat function if column_midcount is not None (e.g. for Stereoseq)
@@ -299,7 +348,9 @@ def read_transcripts(
 
     def transform_coordinates(df):
         micron_coordinates = df.iloc[:, [column_x, column_y]].values
-        micron_coordinates = np.column_stack((micron_coordinates, np.ones(len(micron_coordinates))))
+        micron_coordinates = np.column_stack(
+            (micron_coordinates, np.ones(len(micron_coordinates)))
+        )
         pixel_coordinates = np.dot(micron_coordinates, transform_matrix.T)[:, :2]
         result_df = df.iloc[:, [column_gene]].copy()
         result_df["pixel_x"] = pixel_coordinates[:, 0]
@@ -324,7 +375,9 @@ def read_transcripts(
     transformed_ddf = transformed_ddf[columns]
 
     if crd is not None:
-        transformed_ddf = transformed_ddf.query(f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}")
+        transformed_ddf = transformed_ddf.query(
+            f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}"
+        )
 
     sdata = add_points_layer(
         sdata,
