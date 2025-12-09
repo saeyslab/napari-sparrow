@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Union
 
 import dask.dataframe as dd
 import numpy as np
@@ -14,6 +15,7 @@ from sparrow.utils._keys import _GENES_KEY
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
+
 
 def read_xenium_transcripts(
     sdata: SpatialData,
@@ -34,7 +36,7 @@ def read_xenium_transcripts(
     path_count_matrix
         Path to the file containing the transcripts information specific to Vizgen.
         Expected to contain x, y coordinates and a gene name.
-        
+
     output_layer: str, default='transcripts'.
         Name of the points layer of the SpatialData object to which the transcripts will be added.
     to_coordinate_system
@@ -66,8 +68,6 @@ def read_xenium_transcripts(
 
     sdata = read_transcripts(*args, **kwargs)
     return sdata
-
-
 
 
 def read_resolve_transcripts(
@@ -258,7 +258,7 @@ def read_transcripts(
         If True, a sample of the data is processed for debugging purposes.
     pixelSize: float | None
         Pixel size in microns. If provided, a scaling transformation matrix is created based on this value.
-        Ignored if `path_transform_matrix` is provided.    
+        Ignored if `path_transform_matrix` is provided.
     column_x
         Column index of the X coordinate in the count matrix.
     column_y
@@ -319,7 +319,9 @@ def read_transcripts(
     def filter_names(ddf, column_gene, filter_name):
         # filter out control genes that you don't want ending up in the dataset
 
-        ddf = ddf[~ddf.iloc[:, column_gene].str.contains(filter_name, case=False, na=False)]
+        ddf = ddf[
+            ~ddf.iloc[:, column_gene].str.contains(filter_name, case=False, na=False)
+        ]
         return ddf
 
     if filter_gene_names:
@@ -335,19 +337,21 @@ def read_transcripts(
             )
 
     # Read the transformation matrix
-    if path_transform_matrix is not  None:
-        transform_matrix = np.loadtxt(path_transform_matrix)
+    if transform_matrix is None:
+        log.info("No transform matrix given, will use identity matrix.")
+        transform_matrix = np.identity(3)
+
+    elif isinstance(transform_matrix, Union[Path, str]):
+        transform_matrix = np.loadtxt(transform_matrix)
         log.info(f"Transform matrix used:\n {transform_matrix}")
 
     elif pixelSize is not None:
         transform_matrix = np.eye(3)
         transform_matrix[0, 0] = 1 / pixelSize  # Scaling in x
         transform_matrix[1, 1] = 1 / pixelSize  # Scaling in y
-        log.info(f"Transform matrix based on pixelSize {pixelSize}µm:\n {transform_matrix}")
-        
-    else:
-        log.info("No transform matrix given, will use identity matrix.")
-        transform_matrix = np.identity(3)
+        log.info(
+            f"Transform matrix based on pixelSize {pixelSize}µm:\n {transform_matrix}"
+        )
 
     if debug:
         n = 100000
@@ -356,7 +360,9 @@ def read_transcripts(
 
     # Function to repeat rows based on MIDCount value
     def repeat_rows(df):
-        repeat_df = df.reindex(df.index.repeat(df.iloc[:, column_midcount])).reset_index(drop=True)
+        repeat_df = df.reindex(
+            df.index.repeat(df.iloc[:, column_midcount])
+        ).reset_index(drop=True)
         return repeat_df
 
     # Apply the row repeat function if column_midcount is not None (e.g. for Stereoseq)
@@ -365,7 +371,9 @@ def read_transcripts(
 
     def transform_coordinates(df):
         micron_coordinates = df.iloc[:, [column_x, column_y]].values
-        micron_coordinates = np.column_stack((micron_coordinates, np.ones(len(micron_coordinates))))
+        micron_coordinates = np.column_stack(
+            (micron_coordinates, np.ones(len(micron_coordinates)))
+        )
         pixel_coordinates = np.dot(micron_coordinates, transform_matrix.T)[:, :2]
         result_df = df.iloc[:, [column_gene]].copy()
         result_df["pixel_x"] = pixel_coordinates[:, 0]
@@ -392,7 +400,9 @@ def read_transcripts(
     transformed_ddf = transformed_ddf.categorize(columns=[_GENES_KEY])
 
     if crd is not None:
-        transformed_ddf = transformed_ddf.query(f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}")
+        transformed_ddf = transformed_ddf.query(
+            f"{crd[0]} <= pixel_x < {crd[1]} and {crd[2]} <= pixel_y < {crd[3]}"
+        )
 
     sdata = add_points_layer(
         sdata,
