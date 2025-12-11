@@ -206,6 +206,51 @@ def read_stereoseq_transcripts(
     return sdata
 
 
+def read_cosmx_transcripts(
+    sdata: SpatialData,
+    path_count_matrix: str | Path,
+    output_layer: str = "transcripts",
+    to_coordinate_system: str = "global",
+    overwrite: bool = False,
+) -> SpatialData:
+    """
+    Reads and adds CosMx transcript information to a SpatialData object.
+
+    Parameters
+    ----------
+    sdata
+        The SpatialData object to which the transcripts will be added.
+    path_count_matrix
+        Path to the file containing the transcripts information specific to CosMx.
+        Expected to contain x, y, z coordinates and a gene name.
+    output_layer: str, default='transcripts'.
+        Name of the points layer of the SpatialData object to which the transcripts will be added.
+    to_coordinate_system
+        Coordinate system to which `output_layer` will be added.
+    overwrite: bool, default=False
+        If True overwrites the `output_layer` (a points layer) if it already exists.
+
+    Returns
+    -------
+    The updated SpatialData object containing the transcripts.
+    """
+    args = (sdata, path_count_matrix)
+    kwargs = {
+        "column_x": 5,
+        "column_y": 6,
+        "column_z": 7,
+        "column_gene": 8,
+        "delimiter": ",",
+        "header": 0,
+        "overwrite": overwrite,
+        "output_layer": output_layer,
+        "to_coordinate_system": to_coordinate_system,
+    }
+
+    sdata = read_transcripts(*args, **kwargs)
+    return sdata
+
+
 def read_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
