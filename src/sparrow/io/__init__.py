@@ -4,5 +4,6 @@ from ._transcripts import (
     read_stereoseq_transcripts,
     read_transcripts,
     read_vizgen_transcripts,
+    read_cosmx_transcripts,
 )
 from ._visium_hd import visium_hd
