@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any
 
 import xarray as xr
 from dask.array import Array
@@ -19,7 +20,7 @@ from sparrow.utils.pylogger import get_pylogger
 log = get_pylogger(__name__)
 
 
-def map_channels_zstacks(
+def map_image(
     sdata: SpatialData,
     img_layer: str,
     output_layer: str,
@@ -32,6 +33,7 @@ def map_channels_zstacks(
     to_coordinate_system: str = "global",
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
+    **kwargs: Any,
 ) -> SpatialData:
     """
     Apply a specified function to an image layer of a SpatialData object.
@@ -72,6 +74,9 @@ def map_channels_zstacks(
         Scale factors to apply for multiscale.
     overwrite
         If True, overwrites the output layer if it already exists in `sdata`.
+    kwargs
+        Additional keyword arguments to pass to :func:`dask.array.map_overlap` or :func:`dask.array.map_blocks`.
+        Ignored if `blockwise` is set to `False`.
 
     Returns
     -------
@@ -191,6 +196,7 @@ def map_channels_zstacks(
                 blockwise=blockwise,
                 dims=("c", "z", "y", "x"),
                 depth=depth,
+                **kwargs,
             )
             result_z.append(se_c_z)
         result.append(xr.concat(result_z, dim="z"))
@@ -272,7 +278,7 @@ def _precondition(
                         "'keys' should be a list, with only at uneven positions a list, e.g. [ 0, [0.5, 1.5], 1, [0.5, 1.5] ]."
                     )
             if isinstance(item, list):
-                sub_dict = {k: value for k in item}
+                sub_dict = dict.fromkeys(item, value)
                 result[previous_item] = sub_dict
             else:
                 result[item] = value
@@ -283,9 +289,9 @@ def _precondition(
         if isinstance(func, Callable):
             if not combine_z:
                 if fn_kwargs == {}:
-                    fn_kwargs = {key: fn_kwargs for key in z_slices}
+                    fn_kwargs = dict.fromkeys(z_slices, fn_kwargs)
             if not combine_c:
-                fn_kwargs = {key: fn_kwargs for key in channels}
+                fn_kwargs = dict.fromkeys(channels, fn_kwargs)
         else:
             keys_func = collect_keys_func(func)
             fn_kwargs = make_mapping(keys_func, {})
@@ -336,14 +342,14 @@ def _precondition(
                         f"'combine_z' is False, but not all 'z-slices' spefified in 'fn_kwargs'/'func' ({fn_kwargs}/{func}). "
                         f"Specifying z-slices ({z_slices})."
                     )
-                    fn_kwargs = {key: fn_kwargs for key in z_slices}
-                    func = {key: func for key in z_slices}
+                    fn_kwargs = dict.fromkeys(z_slices, fn_kwargs)
+                    func = dict.fromkeys(z_slices, func)
             log.info(
                 f"'combine_c' is False, but not all channels spefified in 'fn_kwargs'/'func' ({fn_kwargs}/{func}). "
                 f"Specifying channels ({channels})."
             )
-            fn_kwargs = {key: fn_kwargs for key in channels}
-            func = {key: func for key in channels}
+            fn_kwargs = dict.fromkeys(channels, fn_kwargs)
+            func = dict.fromkeys(channels, func)
 
         # case where we are subset of channels, but want to add z dimension
         elif not combine_z:
@@ -356,8 +362,8 @@ def _precondition(
                         f"'combine_z' is False, but not all 'z-slices' spefified in 'fn_kwargs'/'func' ({fn_kwargs}/{func}). "
                         f"Specifying z-slices ({z_slices})."
                     )
-                    fn_kwargs = {key: {z_slice: _value for z_slice in z_slices} for key, _value in fn_kwargs.items()}
-                    func = {key: {z_slice: _value for z_slice in z_slices} for key, _value in func.items()}
+                    fn_kwargs = {key: dict.fromkeys(z_slices, _value) for key, _value in fn_kwargs.items()}
+                    func = {key: dict.fromkeys(z_slices, _value) for key, _value in func.items()}
                     break
     elif not combine_z:
         if not (set(fn_kwargs.keys()).issubset(set(z_slices)) or set(z_slices).issubset(set(fn_kwargs.keys()))):
@@ -365,13 +371,13 @@ def _precondition(
                 f"'combine_z' is False, but not all 'z-slices' spefified in 'fn_kwargs'/'func' ({fn_kwargs}/{func}). "
                 f"Specifying z-slices ({z_slices})."
             )
-            fn_kwargs = {key: fn_kwargs for key in z_slices}
-            func = {key: func for key in z_slices}
+            fn_kwargs = dict.fromkeys(z_slices, fn_kwargs)
+            func = dict.fromkeys(z_slices, func)
     else:
         # sanity check
         assert isinstance(func, Callable)
-        assert (
-            keys_fn_kwargs is None
-        ), f"'combine_z' and 'combine_c' are both set to True, but it seems 'fn_kwargs' ({fn_kwargs}) contains specific parameters for different channels and z slices."
+        assert keys_fn_kwargs is None, (
+            f"'combine_z' and 'combine_c' are both set to True, but it seems 'fn_kwargs' ({fn_kwargs}) contains specific parameters for different channels and z slices."
+        )
 
     return fn_kwargs, func

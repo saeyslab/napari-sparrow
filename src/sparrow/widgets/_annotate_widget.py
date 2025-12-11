@@ -2,7 +2,8 @@
 
 import os
 import pathlib
-from typing import Any, Callable, Dict, List
+from collections.abc import Callable
+from typing import Any
 
 import napari
 import napari.layers
@@ -13,14 +14,14 @@ from napari.utils.notifications import show_info
 from spatialdata import SpatialData, read_zarr
 
 import sparrow.utils as utils
-from sparrow.pipeline import SparrowPipeline
+from sparrow.pipeline import sparrowPipeline
 
 log = utils.get_pylogger(__name__)
 
 
 def annotateImage(
     sdata: SpatialData,
-    pipeline: SparrowPipeline,
+    pipeline: sparrowPipeline,
 ) -> SpatialData:
     """Function representing the annotation step, this calls all the needed functions to annotate the cells with the celltype."""
     sdata = pipeline.annotate(sdata)
@@ -33,7 +34,7 @@ def annotateImage(
 
 
 @thread_worker(progress=True)
-def _annotation_worker(sdata: SpatialData, method: Callable, fn_kwargs: Dict[str, Any]) -> SpatialData:
+def _annotation_worker(sdata: SpatialData, method: Callable, fn_kwargs: dict[str, Any]) -> SpatialData:
     """Annotate data with marker genes in a thread worker"""
     return method(sdata, **fn_kwargs)
 
@@ -46,7 +47,7 @@ def annotate_widget(
     viewer: napari.Viewer,
     markers_file: pathlib.Path = pathlib.Path(""),
     delimiter: str = ",",
-    del_celltypes: List[str] = [],  # noqa: B006 # noqa: B006 # magicgui does not accept None
+    del_celltypes: list[str] = [],  # noqa: B006 # noqa: B006 # magicgui does not accept None
 ):
     """Function represents the annotation widget and is called by the wizard to create the widget."""
     # Check if a file was passed
@@ -84,7 +85,7 @@ def annotate_widget(
 
     def add_metadata(
         sdata: SpatialData,
-        pipeline: SparrowPipeline,
+        pipeline: sparrowPipeline,
         layer_name: str,
     ):
         """Add the metadata to the previous layer, this way it becomes available in the next steps."""

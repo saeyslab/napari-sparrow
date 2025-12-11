@@ -1,8 +1,15 @@
-import squidpy as sq
 from spatialdata import SpatialData
 
 from sparrow.table._table import ProcessTable, add_table_layer
 from sparrow.utils._keys import _ANNOTATION_KEY
+from sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
+
+try:
+    import squidpy as sq
+except ImportError:
+    log.warning("'squidpy' not installed, to use 'sparrow.tb.nhood_enrichment' please install this library.")
 
 
 def nhood_enrichment(

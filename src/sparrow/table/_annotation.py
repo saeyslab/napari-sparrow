@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 import os
+from collections.abc import Mapping
 from itertools import chain
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -115,7 +116,7 @@ def score_genes(
     else:
         if isinstance(path_marker_genes, pd.DataFrame):
             df_markers = path_marker_genes
-        elif isinstance(path_marker_genes, (str, Path)):
+        elif isinstance(path_marker_genes, str | Path):
             df_markers = pd.read_csv(path_marker_genes, index_col=0, delimiter=delimiter)
         else:
             raise ValueError("Please pass either a path to a .csv file, or a pandas Dataframe to 'path_marker_genes'.")
@@ -133,9 +134,9 @@ def score_genes(
                     genes.append(df_markers.index[row])
             genes_dict[i] = genes
 
-    assert (
-        _UNKNOWN_CELLTYPE_KEY not in genes_dict.keys()
-    ), f"Cell type {_UNKNOWN_CELLTYPE_KEY} is reserved for cells that could not be assigned a specific cell type"
+    assert _UNKNOWN_CELLTYPE_KEY not in genes_dict.keys(), (
+        f"Cell type {_UNKNOWN_CELLTYPE_KEY} is reserved for cells that could not be assigned a specific cell type"
+    )
 
     # sanity check
     unique_genes = {item for sublist in genes_dict.values() for item in sublist}
@@ -236,7 +237,7 @@ def score_genes_iter(
         cells in `sdata.tables[table_layer]` linked to other `labels_layer` (via the _REGION_KEY), will be removed from `sdata.tables[table_layer]`.
         If a list of labels layers is provided, they will therefore be scored together (e.g. multiple samples).
     table_layer
-        The table layer in `sdata` on which to perform annotation on. We assume the data is already preprocessed by e.g. `sp.tb.preprocess_transcriptomics`.
+        The table layer in `sdata` on which to perform annotation on. We assume the data is already preprocessed by e.g. `sparrow.tb.preprocess_transcriptomics`.
         Features should all have approximately same variance.
     output_layer
         The output table layer in `sdata` to which table layer with results of annotation will be written.
@@ -336,7 +337,7 @@ def _annotate_celltype_iter(
     if celltype_column in adata.obs:
         log.warning(f"Column '{celltype_column}' already a column in '.obs'. This column will be overwritten.")
 
-    if isinstance(path_marker_genes, (str, Path)):
+    if isinstance(path_marker_genes, str | Path):
         marker_genes = pd.read_csv(path_marker_genes, index_col=0, delimiter=delimiter)
     elif isinstance(path_marker_genes, pd.DataFrame):
         marker_genes = path_marker_genes
@@ -721,10 +722,10 @@ def cluster_cleanliness(
 
         celltypes_f = np.delete(celltypes, list(chain(*celltype_indexes.values())))  # type: ignore
         celltypes_f = np.append(celltypes_f, list(celltype_indexes.keys()))
-        color_dict = dict(zip(celltypes_f, adata.uns[f"{celltype_column}_colors"]))
+        color_dict = dict(zip(celltypes_f, adata.uns[f"{celltype_column}_colors"], strict=False))
 
     else:
-        color_dict = dict(zip(celltypes, adata.uns[f"{celltype_column}_colors"]))
+        color_dict = dict(zip(celltypes, adata.uns[f"{celltype_column}_colors"], strict=False))
 
     for i, name in enumerate(color_dict.keys()):
         color_dict[name] = colors[i]

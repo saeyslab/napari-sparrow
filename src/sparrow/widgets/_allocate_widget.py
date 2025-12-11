@@ -2,7 +2,8 @@
 
 import os
 import pathlib
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 import napari
 import napari.layers
@@ -13,16 +14,16 @@ from napari.utils.notifications import show_info
 from spatialdata import SpatialData, read_zarr
 
 import sparrow.utils as utils
-from sparrow.pipeline import SparrowPipeline
-from sparrow.plot._plot import _translate_polygons
+from sparrow.pipeline import sparrowPipeline
 from sparrow.shape._shape import add_shapes_layer
+from sparrow.utils.utils import _translate_polygons
 
 log = utils.get_pylogger(__name__)
 
 
 def allocateImage(
     sdata: SpatialData,
-    pipeline: SparrowPipeline,
+    pipeline: sparrowPipeline,
 ) -> SpatialData:
     """Function representing the allocation step, this calls all the needed functions to allocate the transcripts to the cells."""
     sdata = pipeline.allocate(sdata)
@@ -34,7 +35,7 @@ def allocateImage(
 def _allocation_worker(
     sdata: SpatialData,
     method: Callable,
-    fn_kwargs: Dict[str, Any],
+    fn_kwargs: dict[str, Any],
 ) -> SpatialData:
     """Allocate transcripts in a thread worker"""
     return method(sdata, **fn_kwargs)
@@ -54,8 +55,8 @@ def allocate_widget(
     column_y: int = 1,
     column_gene: int = 3,
     midcount: bool = False,
-    column_midcount: Optional[int] = None,
-    transform_matrix: Optional[pathlib.Path] = None,
+    column_midcount: int | None = None,
+    transform_matrix: pathlib.Path | None = None,
     min_counts: int = 10,
     min_cells: int = 5,
     size_normalization: bool = True,
@@ -131,7 +132,7 @@ def allocate_widget(
 
     worker = _allocation_worker(sdata, allocateImage, fn_kwargs=fn_kwargs)
 
-    def add_metadata(sdata: SpatialData, pipeline: SparrowPipeline, layer_name: str):
+    def add_metadata(sdata: SpatialData, pipeline: sparrowPipeline, layer_name: str):
         """Update the polygons, add anndata object to the metadata, so it can be viewed via napari spatialdata plugin, and it becomes visible in next steps."""
         try:
             # if the layer exists, update its data

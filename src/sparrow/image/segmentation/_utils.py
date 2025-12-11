@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import warnings
+from copy import deepcopy
+
 import dask
 import dask.array as da
 import numpy as np
+import scipy
 from dask.array import Array
 from dask.array.overlap import ensure_minimum_chunksize
 from dask_image.ndmeasure._utils import _label
@@ -19,13 +23,13 @@ _SEG_DTYPE = np.uint32
 def _rechunk_overlap(
     x: Array,
     depth: dict[int, int],
-    chunks: str | int | tuple[int, ...] | None = "auto",
+    chunks: str | int | tuple[int, ...] | None = None,
 ) -> Array:
     # rechunk, so that we ensure minimum overlap
 
-    assert (
-        len(depth) == x.ndim
-    ), f"Please provide depth value for every dimension of x ({x.ndim}). Provided depth was '{depth}'"
+    assert len(depth) == x.ndim, (
+        f"Please provide depth value for every dimension of x ({x.ndim}). Provided depth was '{depth}'"
+    )
 
     if chunks is not None:
         x = x.rechunk(chunks)
@@ -38,11 +42,11 @@ def _rechunk_overlap(
         if depth[i] != 0:
             if depth[i] > x.chunksize[i]:
                 log.warning(
-                    f"Depth for dimension {i} exceeds chunk size. Adjusting to a quarter of chunk size: {x.chunksize[i]/4}"
+                    f"Depth for dimension {i} exceeds chunk size. Adjusting to a quarter of chunk size: {x.chunksize[i] / 4}"
                 )
                 depth[i] = int(x.chunksize[i] // 4)
 
-    new_chunks = tuple(ensure_minimum_chunksize(size + 1, c) for size, c in zip(depth.values(), x.chunks))
+    new_chunks = tuple(ensure_minimum_chunksize(size + 1, c) for size, c in zip(depth.values(), x.chunks, strict=True))
 
     x = x.rechunk(new_chunks)  # this is a no-op if x.chunks == new_chunks
 
@@ -56,12 +60,14 @@ def _clean_up_masks(
     depth: dict[int, int],
 ) -> NDArray:
     total_blocks = block_info[0]["num-chunks"]
-    assert (
-        total_blocks[0] == 1
-    ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
+    assert total_blocks[0] == 1, (
+        "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
+    )
     total_blocks = total_blocks[1:]
     assert depth[0] == 0, "Depth not equal to 0 in z dimension is currently not supported."
     assert len(depth) == 3, "Please provide depth values for z,y and x."
+    depth = deepcopy(depth)
+    total_blocks = deepcopy(total_blocks)
 
     # remove z-dimension from depth
     depth[0] = depth[1]
@@ -72,9 +78,9 @@ def _clean_up_masks(
     y_start, y_stop = depth[0], block.shape[1] - depth[0]
     x_start, x_stop = depth[1], block.shape[2] - depth[1]
 
-    assert (
-        block_id[0] == 0
-    ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
+    assert block_id[0] == 0, (
+        "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
+    )
     block_id = block_id[1:]
 
     # get indices of all adjacent blocks
@@ -147,9 +153,9 @@ def _merge_masks(
 ) -> NDArray:
     # helper function to merge the chunks
 
-    assert (
-        num_blocks[0] == 1
-    ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
+    assert num_blocks[0] == 1, (
+        "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
+    )
 
     assert _depth[0] == 0, "Depth not equal to 0 in z dimension is currently not supported."
     assert len(_depth) == 3, "Please provide depth values for z,y and x."
@@ -412,7 +418,8 @@ def _across_block_label_iou(face, axis, iou_threshold):
     unique = np.unique(face)
     face0, face1 = np.split(face, 2, axis)
 
-    intersection = sk_metrics.confusion_matrix(face0.reshape(-1), face1.reshape(-1))
+    warnings.filterwarnings("ignore", message="A single label was found in 'y_true' and 'y_pred'")
+    intersection = sk_metrics.confusion_matrix(face0.reshape(-1), face1.reshape(-1), labels=unique)
     sum0 = intersection.sum(axis=0, keepdims=True)
     sum1 = intersection.sum(axis=1, keepdims=True)
 
@@ -449,7 +456,14 @@ def get_slices_and_axes(chunks, shape, depth):
 
 
 def _label_adjacency_graph(labels, nlabels, depth, iou_threshold):
-    all_mappings = [da.empty((2, 0), dtype=np.int32, chunks=1)]
+    all_mappings = [da.empty((2, 0), dtype=labels.dtype, chunks=1)]
+
+    @dask.delayed
+    def _to_csr_matrix(i, j, n):
+        """Using i and j as coo-format coordinates, return csr matrix."""
+        v = np.ones_like(i)
+        mat = scipy.sparse.coo_matrix((v, (i, j)), shape=(n, n), dtype=labels.dtype)
+        return mat.tocsr()
 
     slices_and_axes = get_slices_and_axes(labels.chunks, labels.shape, depth)
     for face_slice, axis in slices_and_axes:
@@ -458,6 +472,6 @@ def _label_adjacency_graph(labels, nlabels, depth, iou_threshold):
         all_mappings.append(mapped)
 
     i, j = da.concatenate(all_mappings, axis=1)
-
-    result = _label._to_csr_matrix(i, j, nlabels + 1)
+    i, j = i.astype(labels.dtype), j.astype(labels.dtype)
+    result = _to_csr_matrix(i, j, (nlabels + da.ones(1)).astype(nlabels.dtype)[0])
     return result

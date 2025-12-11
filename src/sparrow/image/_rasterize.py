@@ -28,7 +28,7 @@ def rasterize(
     output_layer: str,
     out_shape: tuple[int, int] | None = None,  # output shape in y, x.
     chunks: int | None = None,
-    client: Client = None,
+    client: Client | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
 ) -> SpatialData:
@@ -84,7 +84,7 @@ def rasterize(
     # only 2D polygons are suported.
     has_z = sdata.shapes[shapes_layer]["geometry"].apply(lambda geom: geom.has_z)
     if any(has_z):
-        raise ValueError("Shapes layer contains 3D polygons. " "This is currently not supported.")
+        raise ValueError("Shapes layer contains 3D polygons. This is currently not supported.")
 
     if any(sdata.shapes[shapes_layer].geometry.type == "Point"):
         raise ValueError(
@@ -104,9 +104,9 @@ def rasterize(
     y_min = y_min if y_min > 0 else 0
     x_min = x_min if x_min > 0 else 0
 
-    assert (
-        x_max > 0 and y_max > 0
-    ), f"The maximum of the bounding box of the shapes layer {shapes_layer} is negative. This is not allowed."
+    assert x_max > 0 and y_max > 0, (
+        f"The maximum of the bounding box of the shapes layer {shapes_layer} is negative. This is not allowed."
+    )
     shapes = sdata[shapes_layer].copy()
     shapes.index = shapes.index.values.astype(int)
     # set index name to this value, because otherwise reset_index could cause error, if _INSTANCE_KEY column already exists in the shapes layer
@@ -188,7 +188,7 @@ def rasterize(
     arr = da.block(blocks)
     # we choose to pad with zeros, not add a translation,
     # if shapes layer has a (large) offset (y_min!=0 or x_min!=0),
-    # it is therefore better, performance wise, to translate the shapes to the origina,
+    # it is therefore better, performance wise, to translate the shapes to the origin,
     # and add the offset as a translation to the shapes layer, so the labels layer does not need to be padded
     arr = da.pad(arr, pad_width=((y_min, 0), (x_min, 0)), mode="constant", constant_values=0)
     # rechunk to avoid irregular chunksize after padding
@@ -254,7 +254,7 @@ def _ensure_polygon_multipolygon(cell: Polygon | MultiPolygon | GeometryCollecti
     """
     cell = shapely.make_valid(cell)
 
-    if isinstance(cell, (Polygon, MultiPolygon)):
+    if isinstance(cell, Polygon | MultiPolygon):
         return cell
 
     if isinstance(cell, GeometryCollection):

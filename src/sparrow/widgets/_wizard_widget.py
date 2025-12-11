@@ -1,6 +1,5 @@
 """Napari widget for managing the other widgets and giving a general overview of the workflow."""
 
-
 from magicgui.widgets import ComboBox, Container, Label, TextEdit
 from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import QSizePolicy

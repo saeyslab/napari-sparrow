@@ -1,19 +1,20 @@
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any
 
 import napari
 import napari.layers
 import napari.types
 import napari.utils
 import numpy as np
-from xarray import DataTree
 from hydra import compose, initialize_config_dir
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
 from pkg_resources import resource_filename
 from spatialdata import SpatialData
+from xarray import DataTree
 
 from sparrow import utils
 from sparrow.image._image import _get_translation
@@ -34,7 +35,7 @@ def loadImage(
 @thread_worker(progress=True)  # TODO: show string with description of current step in the napari progress bar
 def _load_worker(
     method: Callable,
-    fn_kwargs: Dict[str, Any],
+    fn_kwargs: dict[str, Any],
 ) -> list[np.ndarray]:
     """Load image in a thread worker"""
     res = method(**fn_kwargs)
@@ -52,12 +53,12 @@ def load_widget(
     viewer: napari.Viewer,
     path_zarr: Path = Path(""),
     path_image: Path = Path(""),
-    image_layer: Optional[str] = utils.LOAD,
+    image_layer: str | None = utils.LOAD,
     output_dir: Path = Path(""),
-    x_min: Optional[str] = "",
-    x_max: Optional[str] = "",
-    y_min: Optional[str] = "",
-    y_max: Optional[str] = "",
+    x_min: str | None = "",
+    x_max: str | None = "",
+    y_min: str | None = "",
+    y_max: str | None = "",
 ):
     """Function represents the load widget and is called by the wizard to create the widget."""
     # get the default values for the configs
@@ -86,7 +87,7 @@ def load_widget(
 
     pipeline = SparrowPipeline(cfg, image_name=image_layer)
 
-    fn_kwargs: Dict[str, Any] = {"pipeline": pipeline}
+    fn_kwargs: dict[str, Any] = {"pipeline": pipeline}
 
     worker = _load_worker(method=loadImage, fn_kwargs=fn_kwargs)
 
@@ -97,10 +98,10 @@ def load_widget(
             layer = viewer.layers[layer_name]
             viewer.layers.remove(layer)
 
-            log.info(f"Refreshing { layer_name }")
+            log.info(f"Refreshing {layer_name}")
         except KeyError:
             # otherwise add it to the viewer
-            log.info(f"Adding { layer_name }")
+            log.info(f"Adding {layer_name}")
 
         offset_x, offset_y = _get_translation(sdata[pipeline.loaded_image_name])
 
@@ -123,7 +124,7 @@ def load_widget(
         viewer.layers[layer_name].metadata["pipeline"] = pipeline
         viewer.layers[layer_name].metadata["sdata"] = sdata
 
-        log.info(f"Added '{ layer_name }' layer")
+        log.info(f"Added '{layer_name}' layer")
 
         show_info("Loading finished")
 

@@ -1,24 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
-
-import dask.array as da
 import numpy as np
-from dask.array import Array
 from numpy.typing import NDArray
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
-from sparrow.image.segmentation._apply import apply_labels_layers
-from sparrow.image.segmentation._utils import (
-    _SEG_DTYPE,
-    _add_depth_to_chunks_size,
-    _check_boundary,
-    _clean_up_masks,
-    _merge_masks,
-    _rechunk_overlap,
-    _substract_depth_from_chunks_size,
-)
+from sparrow.image.segmentation._map import map_labels
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -28,8 +15,9 @@ def align_labels_layers(
     sdata: SpatialData,
     labels_layer_1: str,
     labels_layer_2: str,
+    threshold: float = 0.0,
     depth: tuple[int, int] | int = 100,
-    chunks: str | int | tuple[int, int] | None = "auto",
+    chunks: str | int | tuple[int, int] | None = None,
     output_labels_layer: str | None = None,
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
@@ -55,13 +43,16 @@ def align_labels_layers(
         The name of the first labels layer to align.
     labels_layer_2
         The name of the second labels layer to align.
+    threshold
+        Minimum required overlap between a label in `labels_layer_1` and any label in `labels_layer_2`.
+        If the overlap fraction is less than this threshold, the label is set to 0 in `output_labels_layer`.
     depth
         The depth around the boundary of each block to load when the array is split into blocks
         (for alignment). This ensures that the split isn't causing misalignment along the edges.
         Default is 100. Please set depth>cell size to avoid chunking effects.
     chunks
         The desired chunk size for the Dask computation in 'y' and 'x', or "auto" to allow the function to
-        choose an optimal chunk size based on the data. Default is "auto".
+        choose an optimal chunk size based on the data.
     output_labels_layer
         The name for the new labels layer generated after alignment. If None and overwrite is False,
         a ValueError is raised. If None and overwrite is True, 'labels_layer_1' will be overwritten
@@ -99,9 +90,11 @@ def align_labels_layers(
     --------
     >>> sdata = align_labels_layers(sdata, 'layer_1', 'layer_2', depth=(50, 50), overwrite=True)
     """
-    sdata = apply_labels_layers(
+    assert 0 <= threshold <= 1, "Threshold must be between 0 and 1 (inclusive)."
+    sdata = map_labels(
         sdata,
         func=_relabel_array_1_to_array_2_per_chunk,
+        threshold=threshold,
         labels_layers=[labels_layer_1, labels_layer_2],
         depth=depth,
         chunks=chunks,
@@ -117,101 +110,7 @@ def align_labels_layers(
     return sdata
 
 
-def _align_dask_arrays(
-    x_label_1: Array,
-    x_label_2: Array,
-    **kwargs: Any,  # keyword arguments to be passed to map_overlap/map_blocks
-):
-    # we will align labels of x_label_1 with labels of x_labels_2.
-
-    assert x_label_1.shape == x_label_2.shape, "Only arrays with same shape are currently supported."
-
-    chunks = kwargs.pop("chunks", None)
-    depth = kwargs.pop("depth", 100)
-    boundary = kwargs.pop("boundary", "reflect")
-
-    if isinstance(depth, int):
-        depth = {0: 0, 1: depth, 2: depth}
-    else:
-        assert len(depth) == x_label_1.ndim, f"Please provide depth for each dimension ({x_label_1.ndim})."
-        if x_label_1.ndim == 2:
-            depth = {0: 0, 1: depth[0], 2: depth[1]}
-
-    assert depth[0] == 0, "Depth not equal to 0 for 'z' dimension is not supported"
-
-    if chunks is None:
-        assert (
-            x_label_1.chunksize == x_label_2.chunksize
-        ), "If chunks is not specified, please ensure Dask arrays have the same chunksize."
-
-    _check_boundary(boundary)
-
-    _to_squeeze = False
-    if x_label_1.ndim == 2:
-        _to_squeeze = True
-        x_label_1 = x_label_1[None, ...]
-        x_label_2 = x_label_2[None, ...]
-
-    #  rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
-    x_label_1 = _rechunk_overlap(x_label_1, depth=depth, chunks=chunks)
-    x_label_2 = _rechunk_overlap(x_label_2, depth=depth, chunks=chunks)
-
-    assert (
-        x_label_1.numblocks[0] == 1
-    ), f"Expected the number of blocks in the Z-dimension to be `1`, found `{x_label_1.numblocks[0]}`."
-    assert (
-        x_label_2.numblocks[0] == 1
-    ), f"Expected the number of blocks in the Z-dimension to be `1`, found `{x_label_2.numblocks[0]}`."
-
-    # output_chunks can be derived from either x_label_1 or x_label_2
-    output_chunks = _add_depth_to_chunks_size(x_label_1.chunks, depth)
-
-    x_labels = da.map_overlap(
-        lambda m, f: _relabel_array_1_to_array_2_per_chunk(m, f),
-        x_label_1,
-        x_label_2,
-        dtype=_SEG_DTYPE,
-        allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-        chunks=output_chunks,  # e.g. ((1024+60, 1024+60, 452+60), (1024+60, 1024+60, 452+60) ),
-        depth=depth,
-        trim=False,
-        boundary="reflect",
-        # this reflect is useless for this use case, but clean_up_masks and _merge_masks only support
-        # results from map_overlap generated with "reflect", "nearest" and "constant"
-    )
-
-    x_labels = da.map_blocks(
-        _clean_up_masks,
-        x_labels,
-        dtype=_SEG_DTYPE,
-        depth=depth,
-    )
-
-    output_chunks = _substract_depth_from_chunks_size(x_labels.chunks, depth=depth)
-
-    x_labels = da.map_overlap(
-        _merge_masks,
-        x_labels,
-        dtype=_SEG_DTYPE,
-        num_blocks=x_labels.numblocks,
-        trim=False,
-        allow_rechunk=False,  # already dealed with correcting for case where depth > chunksize
-        chunks=output_chunks,  # e.g. ((7,) ,(1024, 1024, 452), (1024, 1024, 452), (1,) ),
-        depth=depth,
-        boundary="reflect",
-        _depth=depth,
-    )
-
-    x_labels = x_labels.rechunk(x_labels.chunksize)
-
-    # squeeze if a trivial dimension was added.
-    if _to_squeeze:
-        x_labels = x_labels.squeeze(0)
-
-    return x_labels
-
-
-def _relabel_array_1_to_array_2_per_chunk(array_1: NDArray, array_2: NDArray) -> NDArray:
+def _relabel_array_1_to_array_2_per_chunk(array_1: NDArray, array_2: NDArray, threshold: float = 0.0) -> NDArray:
     assert array_1.shape == array_2.shape
 
     new_array = np.zeros((array_1.shape), dtype=int)
@@ -221,7 +120,8 @@ def _relabel_array_1_to_array_2_per_chunk(array_1: NDArray, array_2: NDArray) ->
         if label == 0:
             continue  # Skip label 0 as it represents the background
 
-        positions = np.where(array_1 == label)
+        mask_label_array_1 = array_1 == label
+        positions = np.where(mask_label_array_1)
 
         overlapping_labels = array_2[positions]
 
@@ -233,9 +133,12 @@ def _relabel_array_1_to_array_2_per_chunk(array_1: NDArray, array_2: NDArray) ->
         # Find the label with the maximum area
         if label_areas:
             max_label = max(label_areas, key=label_areas.get)
+            max_area = label_areas[max_label]
+            # Only set new label if the max_label covers more than threshold of overlap
+            if max_area / mask_label_array_1.sum() >= threshold:
+                new_array[positions] = max_label
+            else:
+                new_array[positions] = 0
         else:
-            max_label = 0  # Set to 0 if there's no overlap
-
-        new_array[positions] = max_label
-
+            new_array[positions] = 0  # set to zero if there is no overlap
     return new_array

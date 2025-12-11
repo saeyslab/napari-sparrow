@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from __future__ import annotations
 
 import dask.array as da
 from scipy.ndimage import gaussian_filter
@@ -7,7 +7,6 @@ from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation
 
 from sparrow.image._image import _get_boundary, _get_spatial_element, add_image_layer
-from sparrow.utils._keys import _GENES_KEY
 from sparrow.utils._transformations import _identity_check_transformations_points
 from sparrow.utils.pylogger import get_pylogger
 
@@ -16,19 +15,18 @@ log = get_pylogger(__name__)
 
 def transcript_density(
     sdata: SpatialData,
-    img_layer: Optional[str] = "raw_image",
+    img_layer: str = "raw_image",
     points_layer: str = "transcripts",
-    n_sample: Optional[int] = 15000000,
+    n_sample: int | None = 15000000,
     name_x: str = "x",
     name_y: str = "y",
-    name_z: Optional[str] = None,
-    name_gene_column: str = _GENES_KEY,
-    z_index: Optional[int] = None,
+    name_z: str | None = None,
+    z_index: int | None = None,
     scaling_factor: float = 100,
     chunks: int = 1024,
-    crd: Optional[Tuple[int, int, int, int]] = None,
+    crd: tuple[int, int, int, int] | None = None,
     to_coordinate_system: str = "global",
-    scale_factors: Optional[ScaleFactors_t] = None,
+    scale_factors: ScaleFactors_t | None = None,
     output_layer: str = "transcript_density",
     overwrite: bool = False,
 ) -> SpatialData:
@@ -55,8 +53,6 @@ def transcript_density(
         Column name for y-coordinates of the transcripts in the points layer, by default "y".
     name_z
         Column name for z-coordinates of the transcripts in the points layer, by default None.
-    name_gene_column
-        Column name in the points_layer representing gene information.
     z_index
         The z index in the points layer for which to calculate transcript density. If set to None for a 3D points layer
         (and `name_z` is not equal to None), an y-x transcript density projection will be calculated.
@@ -127,7 +123,7 @@ def transcript_density(
                 f"The crd was updated from '{crd}' to '{_crd}'."
             )
         crd = _crd
-    ddf = ddf.query(f"{crd[0]} <= {name_x} < {crd[1] } and {crd[2]} <= {name_y} < {crd[3] }")
+    ddf = ddf.query(f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}")
 
     if z_index is not None:
         ddf = ddf.query(f"{name_z} == {z_index}")
@@ -141,9 +137,7 @@ def transcript_density(
             ddf = ddf.sample(frac=fraction)
             log.info("sampling finished")
 
-    counts_location_transcript = ddf.groupby([name_x, name_y]).count()[name_gene_column]
-
-    counts_location_transcript = counts_location_transcript.reset_index()
+    counts_location_transcript = ddf.groupby([name_x, name_y]).size().reset_index().rename(columns={0: "__count__"})
 
     # crd is set to img boundary if None
     counts_location_transcript[name_x] = counts_location_transcript[name_x] - crd[0]
@@ -171,9 +165,9 @@ def transcript_density(
 
     x_values = counts_location_transcript[name_x].values
     y_values = counts_location_transcript[name_y].values
-    gene_values = counts_location_transcript[name_gene_column].values
+    values = counts_location_transcript["__count__"].values
 
-    image = image.map_blocks(populate_chunk, x=x_values, y=y_values, values=gene_values, dtype=int)
+    image = image.map_blocks(populate_chunk, x=x_values, y=y_values, values=values, dtype=int)
 
     image = scaling_factor * (image / da.max(image))
 

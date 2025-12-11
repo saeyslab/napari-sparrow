@@ -14,6 +14,7 @@ logs
 .autoenv
 
 notebooks
+.mamba
 
 shell.nix
 .mamba
@@ -119,3 +120,6 @@ venv/
 
 # written by setuptools_scm
 **/_version.py
+
+# asv benchmarks
+.asv/**

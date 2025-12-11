@@ -4,6 +4,9 @@ from spatialdata import SpatialData, read_zarr
 from spatialdata.models._utils import MappingToCoordinateSystem_t
 
 from sparrow.utils._io import _incremental_io_on_disk
+from sparrow.utils.pylogger import get_pylogger
+
+log = get_pylogger(__name__)
 
 
 def add_points_layer(
@@ -49,7 +52,7 @@ def add_points_layer(
     if output_layer in [*sdata.points]:
         if sdata.is_backed():
             if overwrite:
-                sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=points)
+                sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=points, element_type="points")
             else:
                 raise ValueError(
                     f"Attempting to overwrite 'sdata.points[\"{output_layer}\"]', but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
@@ -61,6 +64,8 @@ def add_points_layer(
         sdata[output_layer] = points
         if sdata.is_backed():
             sdata.write_element(output_layer)
-            sdata = read_zarr(sdata.path)
-
+            del sdata[output_layer]
+            sdata_temp = read_zarr(sdata.path, selection=["points"])
+            sdata[output_layer] = sdata_temp[output_layer]
+            del sdata_temp
     return sdata

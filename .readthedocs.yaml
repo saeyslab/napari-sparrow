@@ -17,5 +17,4 @@ python:
     - method: pip
       path: .
       extra_requirements:
-        - docs
-        - clustering
+        - dev

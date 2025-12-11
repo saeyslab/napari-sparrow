@@ -1,16 +1,16 @@
 from spatialdata import SpatialData
 
-from sparrow.image import apply_labels_layers
+from sparrow.image import map_labels
 
 
-def test_apply_labels_layers(sdata_multi_c: SpatialData):
+def test_map_labels(sdata_multi_c_no_backed: SpatialData):
     def _copy(img):
         return img
 
     depth = (100, 120)
 
-    sdata_multi_c = apply_labels_layers(
-        sdata_multi_c,
+    sdata_multi_c_no_backed = map_labels(
+        sdata_multi_c_no_backed,
         func=_copy,
         labels_layers="masks_whole",
         output_labels_layer="masks_whole_copy",

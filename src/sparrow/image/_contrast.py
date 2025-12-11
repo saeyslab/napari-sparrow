@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 from numpy.typing import NDArray
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
-from sparrow.image._apply import map_channels_zstacks
 from sparrow.image._image import _get_spatial_element
+from sparrow.image._map import map_image
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -16,7 +16,7 @@ log = get_pylogger(__name__)
 try:
     import cv2
 except ImportError:
-    log.warning("'OpenCV (cv2)' not installed, to use 'sp.im.enhance_contrast' please install this library.")
+    log.warning("'OpenCV (cv2)' not installed, to use 'sparrow.im.enhance_contrast' please install this library.")
 
 
 def enhance_contrast(
@@ -131,14 +131,14 @@ def enhance_contrast(
         )
 
     if isinstance(contrast_clip, Iterable):
-        assert (
-            len(contrast_clip) == len(se.c.data)
-        ), f"If 'contrast_clip' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
-        fn_kwargs = {key: {"contrast_clip": value} for (key, value) in zip(se.c.data, contrast_clip)}
+        assert len(contrast_clip) == len(se.c.data), (
+            f"If 'contrast_clip' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
+        )
+        fn_kwargs = {key: {"contrast_clip": value} for (key, value) in zip(se.c.data, contrast_clip, strict=True)}
     else:
         fn_kwargs = {"contrast_clip": contrast_clip}
 
-    sdata = map_channels_zstacks(
+    sdata = map_image(
         sdata,
         img_layer=img_layer,
         output_layer=output_layer,
