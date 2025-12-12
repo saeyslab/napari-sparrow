@@ -4,6 +4,7 @@ from ._transcripts import (
     read_merscope_transcripts,
     read_resolve_transcripts,
     read_stereoseq_transcripts,
+    read_cosmx_transcripts,
     read_transcripts,
 )
 from ._visium_hd import visium_hd
@@ -15,6 +16,7 @@ __all__ = [
     "read_merscope_transcripts",
     "read_resolve_transcripts",
     "read_stereoseq_transcripts",
+    "read_cosmx_transcripts",
     "read_transcripts",
     "visium_hd",
     "xenium",
