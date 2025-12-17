@@ -10,7 +10,7 @@ try:
 
 except ImportError:
     log.warning(
-        "'joypy' not installed, to use 'sp.pl.ridgeplot_channel' and 'sp.pl.ridgeplot_channel_sample', please install this library."
+        "'joypy' not installed, to use 'sparrow.pl.ridgeplot_channel' and 'sparrow.pl.ridgeplot_channel_sample', please install this library."
     )
 
 

@@ -1,4 +1,6 @@
-from typing import Iterable
+from __future__ import annotations
+
+from collections.abc import Iterable
 
 import dask.array as da
 import numpy as np
@@ -6,8 +8,8 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import get_transformation
 
-from sparrow.image._apply import map_channels_zstacks
 from sparrow.image._image import _get_spatial_element, add_image_layer
+from sparrow.image._map import map_image
 
 
 def normalize(
@@ -75,14 +77,14 @@ def normalize(
     if isinstance(q_min, Iterable):
         if not isinstance(q_max, Iterable):
             raise ValueError("'q_min' must be an iterable if `q_max` is an iterable.")
-        assert (
-            len(q_min) == len(q_max) == len(se.c.data)
-        ), f"If 'q_min' and 'q_max' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
+        assert len(q_min) == len(q_max) == len(se.c.data), (
+            f"If 'q_min' and 'q_max' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
+        )
         fn_kwargs = {
             key: {"q_min": q_min_value, "q_max": q_max_value, "eps": eps, "internal_method": internal_method}
-            for (key, q_min_value, q_max_value) in zip(se.c.data, q_min, q_max)
+            for (key, q_min_value, q_max_value) in zip(se.c.data, q_min, q_max, strict=True)
         }
-        sdata = map_channels_zstacks(
+        sdata = map_image(
             sdata,
             img_layer=img_layer,
             output_layer=output_layer,

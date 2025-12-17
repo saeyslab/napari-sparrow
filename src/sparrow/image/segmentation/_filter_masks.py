@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
-from sparrow.image.segmentation._merge_masks import apply_labels_layers
+from sparrow.image.segmentation._map import map_labels
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -17,7 +17,7 @@ def filter_labels_layer(
     min_size: int = 10,
     max_size: int = 100000,
     depth: tuple[int, int] | int = 100,
-    chunks: str | int | tuple[int, int] | None = "auto",
+    chunks: str | int | tuple[int, int] | None = None,
     output_labels_layer: str | None = None,
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
@@ -42,7 +42,7 @@ def filter_labels_layer(
         Default is 100. Please set depth>cell diameter to avoid chunking effects.
     chunks
         The desired chunk size for the Dask computation, or "auto" to allow the function to
-        choose an optimal chunk size based on the data. Default is "auto".
+        choose an optimal chunk size based on the data.
     output_labels_layer
         The name of the output labels layer where results will be stored. This must be specified.
     output_shapes_layer
@@ -75,7 +75,7 @@ def filter_labels_layer(
             overwrite=True,
         )
     """
-    sdata = apply_labels_layers(
+    sdata = map_labels(
         sdata,
         labels_layers=[labels_layer],
         func=_filter_labels_block,

@@ -1,4 +1,4 @@
-"""" This file acts as a starting point for running the pipeline for single sample analysis. It can be run from any place with the command: 'sparrow'."""
+"""File acts as a starting point for running the pipeline for single sample analysis. It can be run from any place with the command: 'sparrow'."""
 
 import logging
 

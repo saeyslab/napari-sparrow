@@ -11,7 +11,7 @@ from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
 from sparrow.image._image import _get_spatial_element
-from sparrow.image.segmentation._apply import apply_labels_layers
+from sparrow.image.segmentation._map import map_labels
 from sparrow.image.segmentation._utils import _SEG_DTYPE, _rechunk_overlap
 from sparrow.utils.pylogger import get_pylogger
 
@@ -24,7 +24,7 @@ def merge_labels_layers(
     labels_layer_2: str,
     threshold: float = 0.5,
     depth: tuple[int, int] | int = 100,
-    chunks: str | int | tuple[int, int] | None = "auto",
+    chunks: str | int | tuple[int, int] | None = None,
     output_labels_layer: str | None = None,
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
@@ -87,7 +87,7 @@ def merge_labels_layers(
     datasets that may not fit entirely in memory. It is particularly useful in scenarios where two segmentation results
     need to be combined to achieve a more accurate or comprehensive segmentation outcome.
     """
-    sdata = apply_labels_layers(
+    sdata = map_labels(
         sdata,
         func=_merge_masks_block,
         labels_layers=[labels_layer_1, labels_layer_2],
@@ -112,7 +112,7 @@ def merge_labels_layers_nuclei(
     labels_layer_nuclei: str,
     threshold: float = 0.5,
     depth: tuple[int, int] | int = 100,
-    chunks: str | int | tuple[int, int] | None = "auto",
+    chunks: str | int | tuple[int, int] | None = None,
     output_labels_layer: str | None = None,
     output_shapes_layer: str | None = None,
     scale_factors: ScaleFactors_t | None = None,
@@ -124,7 +124,7 @@ def merge_labels_layers_nuclei(
     Merge labels layers using nuclei segmentation.
 
     Given a labels layer obtained from nuclei segmentation (`labels_layer_nuclei`),
-    and corresponding expanded nuclei (`labels_layer_nuclei_expanded`), e.g. obtained through `sp.im.expand_labels_layer`,
+    and corresponding expanded nuclei (`labels_layer_nuclei_expanded`), e.g. obtained through `sparrow.im.expand_labels_layer`,
     this function merges labels in labels layer `labels_layer_nuclei_expanded` with `labels_layer` in the SpatialData object,
     if corresponding nuclei in `labels_layer_nuclei` have less than `threshold` overlap with labels from `labels_layer`.
 
@@ -192,7 +192,7 @@ def merge_labels_layers_nuclei(
         f"Labels layer '{labels_layer_nuclei_expanded}' should contain same labels as '{labels_layer_nuclei}'.",
     )
 
-    sdata = apply_labels_layers(
+    sdata = map_labels(
         sdata,
         func=_merge_masks_nuclei_block,
         labels_layers=labels_layers,
@@ -245,7 +245,7 @@ def _merge_masks_nuclei_block(array_1: NDArray, array_2: NDArray, array_3: NDArr
     def _relabel_array(arr, original_values, new_values):
         relabeled_array = np.zeros_like(arr)
         assert original_values.shape == new_values.shape
-        for new_label, old_label in zip(new_values, original_values):
+        for new_label, old_label in zip(new_values, original_values, strict=True):
             relabeled_array[arr == old_label] = new_label
         return relabeled_array
 
@@ -285,7 +285,7 @@ def mask_to_original(
     labels_layer: str,
     original_labels_layers: list[str],
     depth: tuple[int, int] | int = 400,
-    chunks: str | int | tuple[int, int] | None = "auto",
+    chunks: str | int | tuple[int, int] | None = None,
 ) -> DataFrame:
     """
     Map to original.
@@ -364,7 +364,7 @@ def mask_to_original(
         depth = depth2
 
     if chunks is not None:
-        if not isinstance(chunks, (int, str)):
+        if not isinstance(chunks, int | str):
             assert len(chunks) == _x_label.ndim - 1, "Please (only) provide chunks for ( 'y', 'x')."
             chunks = (_x_label.shape[0], chunks[0], chunks[1])
 
@@ -372,9 +372,9 @@ def mask_to_original(
     for x_label in _labels_arrays:
         #  rechunk so that we ensure minimum chunksize, in order to control output_chunks sizes.
         x_label = _rechunk_overlap(x_label, depth=depth, chunks=chunks)
-        assert (
-            x_label.numblocks[0] == 1
-        ), f"Expected the number of blocks in the Z-dimension to be `1`, found `{x_label.numblocks[0]}`."
+        assert x_label.numblocks[0] == 1, (
+            f"Expected the number of blocks in the Z-dimension to be `1`, found `{x_label.numblocks[0]}`."
+        )
         rechunked_arrays.append(x_label)
 
     def _mask_to_original_chunks(
@@ -393,9 +393,9 @@ def mask_to_original(
             return list_2
 
         total_blocks = block_info[0]["num-chunks"]
-        assert (
-            total_blocks[0] == 1
-        ), "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
+        assert total_blocks[0] == 1, (
+            "Dask arrays chunked in z dimension are not supported. Please only chunk in y and x dimensions."
+        )
         assert depth[0] == 0, "Depth not equal to 0 in z dimension is currently not supported."
         assert len(depth) == 3, "Please provide depth values for z,y and x."
 

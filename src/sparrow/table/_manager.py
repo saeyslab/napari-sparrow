@@ -20,12 +20,12 @@ class TableLayerManager:
         overwrite: bool = False,
     ) -> SpatialData:
         if region is not None:
-            assert (
-                _REGION_KEY in adata.obs.columns
-            ), f"Provided 'AnnData' object should contain a column '{_REGION_KEY}' in 'adata.obs'. Linking the observations to a labels layer in 'sdata'."
-            assert (
-                _INSTANCE_KEY in adata.obs.columns
-            ), f"Provided 'AnnData' object should contain a column '{_INSTANCE_KEY}' in 'adata.obs'. Linking the observations to a labels layer in 'sdata'."
+            assert _REGION_KEY in adata.obs.columns, (
+                f"Provided 'AnnData' object should contain a column '{_REGION_KEY}' in 'adata.obs'. Linking the observations to a labels layer in 'sdata'."
+            )
+            assert _INSTANCE_KEY in adata.obs.columns, (
+                f"Provided 'AnnData' object should contain a column '{_INSTANCE_KEY}' in 'adata.obs'. Linking the observations to a labels layer in 'sdata'."
+            )
 
             # need to remove spatialdata_attrs, otherwise parsing gives error (TableModel.parse will add spatialdata_attrs back)
             if TableModel.ATTRS_KEY in adata.uns.keys():
@@ -45,11 +45,12 @@ class TableLayerManager:
                 adata,
             )
 
-        # given an adata.
         if output_layer in [*sdata.tables]:
             if sdata.is_backed():
                 if overwrite:
-                    sdata = _incremental_io_on_disk(sdata, output_layer=output_layer, element=adata)
+                    sdata = _incremental_io_on_disk(
+                        sdata, output_layer=output_layer, element=adata, element_type="tables"
+                    )
                 else:
                     raise ValueError(
                         f"Attempting to overwrite 'sdata.tables[\"{output_layer}\"]', but overwrite is set to False. Set overwrite to True to overwrite the .zarr store."
@@ -60,6 +61,9 @@ class TableLayerManager:
             sdata[output_layer] = adata
             if sdata.is_backed():
                 sdata.write_element(output_layer)
-                sdata = read_zarr(sdata.path)
+                del sdata[output_layer]
+                sdata_temp = read_zarr(sdata.path, selection=["tables"])
+                sdata[output_layer] = sdata_temp[output_layer]
+                del sdata_temp
 
         return sdata

@@ -21,13 +21,13 @@ contributions:
     # display_name is the name shown in the napari menu
     - command: sparrow.widgets.wizard_widget
       display_name: Wizard
-    # - command: napari-sparrow.widgets.clean_widget
+    # - command: sparrow.widgets.clean_widget
     #   display_name: Clean
-    # - command: napari-sparrow.widgets.segment_widget
+    # - command: sparrow.widgets.segment_widget
     #   display_name: Segment
-    # - command: napari-sparrow.widgets.allocate_widget
+    # - command: sparrow.widgets.allocate_widget
     #   display_name: Allocate
-    # - command: napari-sparrow.widgets.annotate_widget
+    # - command: sparrow.widgets.annotate_widget
     #   display_name: Annotate
-    # - command: napari-sparrow.widgets.visualize_widget
+    # - command: sparrow.widgets.visualize_widget
     #   display_name: Visualize

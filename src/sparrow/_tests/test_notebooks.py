@@ -28,7 +28,7 @@ def run_notebook(notebook_path, timeout=600):
         "SPArrOW_quickstart.ipynb",
     ],
 )
-def test_notebooks_harpy_transcriptomics(notebook):
+def test_notebooks_sparrow_transcriptomics(notebook):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
     run_notebook(os.path.join(root, "docs/tutorials/general", notebook))

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Tuple
-
 import dask.array as da
 import numpy as np
 import xarray as xr
@@ -22,7 +20,7 @@ log = get_pylogger(__name__)
 
 def _substract_translation_crd(
     spatial_image: DataArray,
-    crd=Tuple[int, int, int, int],
+    crd=tuple[int, int, int, int],
     to_coordinate_system: str = "global",
 ) -> tuple[int, int, int, int] | None:
     tx, ty = _get_translation(spatial_image, to_coordinate_system=to_coordinate_system)
@@ -67,7 +65,7 @@ def _get_translation(spatial_image: DataArray, to_coordinate_system: str = "glob
         )
     translation = transformations[to_coordinate_system]
 
-    if not isinstance(translation, (Sequence | Translation, Identity)):
+    if not isinstance(translation, Sequence | Translation | Identity):
         raise ValueError(
             f"Currently only transformations of type Translation are supported, "
             f"while transformation associated with {spatial_image} in coordinate system '{to_coordinate_system}' is of type {type(translation)}."
@@ -149,7 +147,7 @@ def _fix_dimensions(
 
     # check if the array already has the correct number of dimensions, if not add missing dimensions
     if len(array.shape) != len(dims):
-        raise ValueError(f"Dimension of array {array.shape} is not equal to dimension of provided dims { dims}")
+        raise ValueError(f"Dimension of array {array.shape} is not equal to dimension of provided dims {dims}")
     if len(array.shape) > 4:
         raise ValueError(f"Arrays with dimension larger than 4 are not supported, shape of array is {array.shape}")
 

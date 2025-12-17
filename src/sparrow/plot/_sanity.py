@@ -5,6 +5,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from dask.dataframe.core import DataFrame as DaskDataFrame
+from shapely.affinity import translate
 from spatialdata import SpatialData
 
 from sparrow.image._image import (
@@ -13,7 +14,7 @@ from sparrow.image._image import (
     _get_spatial_element,
     _unapply_transform,
 )
-from sparrow.plot._plot import _get_z_slice_polygons, _translate_polygons
+from sparrow.plot._plot import _get_translation_values_shapes, _get_z_slice_polygons
 from sparrow.shape import intersect_rectangles
 from sparrow.shape._shape import _extract_boundaries_from_geometry_collection
 from sparrow.utils._keys import _GENES_KEY
@@ -23,11 +24,11 @@ from sparrow.utils.pylogger import get_pylogger
 log = get_pylogger(__name__)
 
 
-def sanity_plot_transcripts_matrix(
+def sanity(
     sdata: SpatialData,
     img_layer: str | None = None,
     labels_layer: str | None = None,
-    points_layer: str = "transcripts",
+    points_layer: str | None = "transcripts",
     shapes_layer: str | None = None,
     channel: int | str | None = None,
     z_slice: float | None = None,
@@ -38,17 +39,19 @@ def sanity_plot_transcripts_matrix(
     name_z: str = "z",
     name_gene_column: str = _GENES_KEY,
     gene: str | None = None,
+    radius: str | None = None,
     crd: tuple[int, int, int, int] | None = None,
     to_coordinate_system: str = "global",
     figsize: tuple[int, int] | None = None,
     output: Path | str | None = None,
 ) -> None:
     """
-    Produce a sanity plot to visualize spatial transcriptomics data on top of an image.
+    Produce a sanity plot to visualize segmentation masks, and/or transcripts on top of an image.
 
-    This function plots a spatial image (e.g. microscopy or histology image) and overlays transcripts
-    and optionally cell boundaries to visually inspect the spatial alignment of the data.
-    This can be particularly useful to check data registration and alignment in spatial transcriptomics.
+    This function plots a spatial image (e.g. microscopy or histology image) and overlays transcripts and or
+    cell boundaries to visually inspect the spatial alignment of the data.
+    This can be particularly useful to check data registration and alignment in spatial transcriptomics,
+    or to inspect segmentation masks and cell numbers of specific regions.
 
     Parameters
     ----------
@@ -73,17 +76,20 @@ def sanity_plot_transcripts_matrix(
     plot_cell_number
         Whether to annotate cells with their numbers on the plot.
     n_sample
-        The number of transcripts to sample for plotting. Useful for large datasets. Ignored if `gene` is specified.
+        The number of transcripts to sample for plotting. Useful for large datasets. Ignored if `gene` is specified or if `points_layer` is `None`.
     name_x
-        Column name in the points_layer representing x-coordinates of transcripts.
+        Column name in the points_layer representing x-coordinates of transcripts. Ignored if `points_layer` is `None`.
     name_y
-        Column name in the points_layer representing y-coordinates of transcripts.
+        Column name in the points_layer representing y-coordinates of transcripts. Ignored if `points_layer` is `None`.
     name_z
-        Column name in the points_layer representing z-coordinates of transcripts.
+        Column name in the points_layer representing z-coordinates of transcripts. Ignored if `points_layer` is `None`.
     name_gene_column
-        Column name in the points_layer representing gene information.
+        Column name in the points_layer representing gene information. Ignored if `points_layer` is `None`.
     gene
-        Specific gene to filter and plot. If None, all genes are plotted.
+        Specific gene to filter and plot. If `None`, all genes are plotted. Ignored if `points_layer` is `None`.
+    radius
+        Column in the `shapes_layer` specifying the radius. The radius will be applied using `geometry.buffer` before plotting `shapes_layer`.
+        Useful when the `geometry` of the `shapes_layer` contains points instead of polygons.
     crd
         Coordinates to define a rectangular region for plotting as (xmin, xmax, ymin, ymax).
         If None, the entire image boundary is used.
@@ -119,7 +125,7 @@ def sanity_plot_transcripts_matrix(
     """
     if img_layer is not None and labels_layer is not None:
         raise ValueError(
-            "Both img_layer and labels_layer is not None. " "Please specify either img_layer or labels_layer, not both."
+            "Both img_layer and labels_layer is not None. Please specify either img_layer or labels_layer, not both."
         )
 
     # Choose the appropriate layer or default to the last image layer if none is specified.
@@ -206,7 +212,7 @@ def sanity_plot_transcripts_matrix(
             else:
                 log.info(
                     f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was added. "
-                    f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0]//2}) will be utilized."
+                    f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0] // 2}) will be utilized."
                 )
                 _se = _se[_se.shape[0] // 2, ...]
         _se = _se.squeeze()
@@ -220,40 +226,41 @@ def sanity_plot_transcripts_matrix(
     if not hasattr(sdata, "points"):
         raise AttributeError("Please first read transcripts in SpatialData object.")
 
-    _identity_check_transformations_points(sdata.points[points_layer], to_coordinate_system=to_coordinate_system)
+    if points_layer is not None:
+        _identity_check_transformations_points(sdata.points[points_layer], to_coordinate_system=to_coordinate_system)
 
-    in_df = sdata.points[points_layer]
+        in_df = sdata.points[points_layer]
 
-    # query first and then slicing gene is faster than vice versa
-    in_df = in_df.query(f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}")
+        # query first and then slicing gene is faster than vice versa
+        in_df = in_df.query(f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}")
 
-    if z_index is not None:
-        in_df = in_df.query(f"{name_z} == {z_index}")
+        if z_index is not None:
+            in_df = in_df.query(f"{name_z} == {z_index}")
 
-    if gene:
-        in_df = in_df[in_df[name_gene_column] == gene]
+        if gene:
+            in_df = in_df[in_df[name_gene_column] == gene]
 
-    # we do not sample a fraction of the transcripts if a specific gene is given
-    else:
-        size = len(in_df)
+        # we do not sample a fraction of the transcripts if a specific gene is given
+        else:
+            size = len(in_df)
 
-        log.info(f"size before sampling is {size}")
+            log.info(f"size before sampling is {size}")
 
-        if n_sample is not None and size > n_sample:
-            fraction = n_sample / size
-            in_df = in_df.sample(frac=fraction)
+            if n_sample is not None and size > n_sample:
+                fraction = n_sample / size
+                in_df = in_df.sample(frac=fraction)
 
-    if isinstance(in_df, DaskDataFrame):
-        in_df = in_df.compute()
+        if isinstance(in_df, DaskDataFrame):
+            in_df = in_df.compute()
 
-    log.info(f"Plotting {in_df.shape[0]} transcripts.")
+        log.info(f"Plotting {in_df.shape[0]} transcripts.")
 
-    if gene:
-        alpha = 0.5
-    else:
-        alpha = 0.2
+        if gene:
+            alpha = 0.5
+        else:
+            alpha = 0.2
 
-    ax.scatter(in_df[name_x], in_df[name_y], color="r", s=8, alpha=alpha)
+        ax.scatter(in_df[name_x], in_df[name_y], color="r", s=8, alpha=alpha)
 
     if shapes_layer is not None:
         polygons = sdata.shapes[shapes_layer]
@@ -264,9 +271,31 @@ def sanity_plot_transcripts_matrix(
         log.info("Selecting boundaries")
 
         if not polygons.empty:
-            # copy is necessary, otherwise, in memory shapes layer altered by performing a plot.
-            polygons = _translate_polygons(sdata.shapes[shapes_layer].copy(), to_coordinate_system=to_coordinate_system)
-            polygons = polygons.cx[crd[0] : crd[1], crd[2] : crd[3]]
+            if radius is not None:
+                if radius in polygons.columns:
+                    polygons = polygons.copy()
+                    polygons["geometry"] = polygons.geometry.buffer(polygons[radius])
+                else:
+                    log.warning(
+                        f"radius parameter was specified as '{radius}', but could not be found as a column of shapes layer '{shapes_layer}'. Will proceed "
+                        "plotting while ignoring radius parameter."
+                    )
+            x_translation, y_translation = _get_translation_values_shapes(
+                polygons, to_coordinate_system=to_coordinate_system
+            )
+            _crd_shapes = [
+                crd[0] - x_translation,
+                crd[1] - x_translation,
+                crd[2] - y_translation,
+                crd[3] - y_translation,
+            ]
+            polygons = polygons.cx[_crd_shapes[0] : _crd_shapes[1], _crd_shapes[2] : _crd_shapes[3]]
+            if x_translation != 0 or y_translation != 0:
+                polygons["geometry"] = polygons["geometry"].apply(
+                    lambda geom, x_trans=x_translation, y_trans=y_translation: translate(
+                        geom, xoff=x_trans, yoff=y_trans
+                    )
+                )
             if z_index is not None:
                 polygons = _get_z_slice_polygons(polygons, z_index=z_index)
 
@@ -316,7 +345,7 @@ def sanity_plot_transcripts_matrix(
     if img_layer_type:
         ax.set_title(f"{channel_name}={channel}")
 
-    if gene:
+    if points_layer is not None and gene is not None:
         ax.set_title(f"Transcripts and cell boundaries for gene: {gene}.")
 
     if output:

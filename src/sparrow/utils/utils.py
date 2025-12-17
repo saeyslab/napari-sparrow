@@ -10,20 +10,11 @@ import numpy as np
 from geopandas import GeoDataFrame
 from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
+from shapely.affinity import translate
 from shapely.geometry import LineString, MultiLineString
+from spatialdata import SpatialData
 from spatialdata.models import get_axes_names
 from xarray import DataArray, DataTree
-
-
-def _linestring_to_arrays(geometries):
-    arrays = []
-    for geometry in geometries:
-        if isinstance(geometry, LineString):
-            arrays.extend(list(geometry.coords))
-        elif isinstance(geometry, MultiLineString):
-            for item in geometry.geoms:
-                arrays.extend(list(item.coords))
-    return np.array(arrays)
 
 
 # https://github.com/scverse/napari-spatialdata/blob/main/src/napari_spatialdata/_viewer.py#L105
@@ -53,6 +44,24 @@ def _get_polygons_in_napari_format(df: GeoDataFrame) -> list:
     # this will only work for polygons and not for multipolygons
     # switch x,y positions of polygon indices, napari wants (y,x)
     polygons = _swap_coordinates(polygons)
+
+    return polygons
+
+
+def _translate_polygons(polygons: GeoDataFrame, to_coordinate_system: str = "global") -> GeoDataFrame:
+    # get the transformation defined on "global"
+    transformations = get_transformation(polygons, get_all=True)
+    if to_coordinate_system not in [*transformations]:
+        raise ValueError(
+            f"'Coordinate system {to_coordinate_system}' does not appear to be a coordinate system of the spatial element. "
+            f"Please choose a coordinate system from this list: {[*transformations]}."
+        )
+    transformation = transformations[to_coordinate_system]
+    x_translation, y_translation = _get_translation_values(transformation)
+    if x_translation != 0 or y_translation != 0:
+        polygons["geometry"] = polygons["geometry"].apply(
+            lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
+        )
 
     return polygons
 
@@ -112,8 +121,10 @@ def _get_uint_dtype(value: int) -> str:
     max_uint64 = np.iinfo(np.uint64).max
     max_uint32 = np.iinfo(np.uint32).max
     max_uint16 = np.iinfo(np.uint16).max
-
-    if max_uint16 >= value:
+    max_uint8 = np.iinfo(np.uint8).max
+    if max_uint8 >= value:
+        dtype = "uint8"
+    elif max_uint16 >= value:
         dtype = "uint16"
     elif max_uint32 >= value:
         dtype = "uint32"

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Tuple
 
 import dask.array as da
 import numpy as np
@@ -130,7 +130,7 @@ def create_sdata(
 
             assert dask_array.shape[0] == len(c_coords), (
                 "Length of c_coords should match number of channels provided, "
-                f"while provided c_coords is '{c_coords}' with len '{len( c_coords ) }', "
+                f"while provided c_coords is '{c_coords}' with len '{len(c_coords)}', "
                 f"and number of channels read from input is '{dask_array.shape[0]}'"
             )
 
@@ -158,7 +158,7 @@ def create_sdata(
             sdata,
             arr=dask_array,
             output_layer=img_layer,
-            chunks=chunks,
+            chunks=None,  # already rechunked in previous step. Also due to possible z projection the 'chunks' dimension can mismatch 'dims' parameter
             transformations={to_coordinate_system: transformation},
             scale_factors=scale_factors,
             c_coords=c_coords,
@@ -220,7 +220,7 @@ def _load_image_to_dask(
             # add z- dimension if we did a projection, we want (c,z,y,x)
             dask_array = dask_array[:, None, :, :]
 
-    elif isinstance(input, (np.ndarray, da.Array)):
+    elif isinstance(input, np.ndarray | da.Array):
         # make sure we have (c,z,y,x)
         array = _fix_dimensions(input, dims=dims)
         if isinstance(array, np.ndarray):
@@ -228,7 +228,7 @@ def _load_image_to_dask(
         else:
             dask_array = array
 
-    elif isinstance(input, (str, Path)):
+    elif isinstance(input, str | Path):
         if dims is not None:
             log.warning(f"dims parameter is equal to {dims}, but will be ignored when reading in images from a file")
         # make sure we have (c,z,y,x)
@@ -245,7 +245,7 @@ def _load_image_to_dask(
             dims = ["y", "x"]
             dask_array = _fix_dimensions(dask_array, dims=dims)
         else:
-            raise ValueError(f"Image has shape { dask_array.shape }, while (y, x) is required.")
+            raise ValueError(f"Image has shape {dask_array.shape}, while (y, x) is required.")
     else:
         raise ValueError(f"input of type {type(input)} not supported.")
 
@@ -265,7 +265,7 @@ def _load_image_to_dask(
         else:
             dask_array = dask_array.squeeze(1)
 
-    if isinstance(input, (str, Path)) and output_dir is not None:
+    if isinstance(input, str | Path) and output_dir is not None:
         name = os.path.splitext(os.path.basename(input))[0]
         output_zarr = os.path.join(output_dir, f"{name}.zarr")
         dask_array.to_zarr(output_zarr)
@@ -276,7 +276,7 @@ def _load_image_to_dask(
 
 def _fix_crd(
     crd: tuple[int, int, int, int],
-    shape_y_x=Tuple[int, int],
+    shape_y_x=tuple[int, int],
 ) -> tuple[int, int, int, int]:
     x1, x2, y1, y2 = crd
 

@@ -1,8 +1,7 @@
-from typing import List, Optional, Tuple
+from __future__ import annotations
 
 import dask.array as da
 import numpy as np
-import squidpy as sq
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 from spatialdata.transformations import Translation, get_transformation
@@ -21,24 +20,31 @@ try:
     import jax.numpy as jnp
     from basicpy import BaSiC
 except ImportError:
-    log.warning("'jax' or 'basicpy' not installed, to use 'sp.im.tiling_correction', please install these libraries.")
+    log.warning(
+        "'jax' or 'basicpy' not installed, to use 'sparrow.im.tiling_correction', please install these libraries."
+    )
 
 try:
     import cv2
 except ImportError:
-    log.warning("'OpenCV (cv2)' not installed, to use 'sp.im.tiling_correction' please install this library.")
+    log.warning("'OpenCV (cv2)' not installed, to use 'sparrow.im.tiling_correction' please install this library.")
+
+try:
+    import squidpy as sq
+except ImportError:
+    log.warning("'squidpy' not installed, to use 'sparrow.im.tiling_correction' please install this library.")
 
 
 def tiling_correction(
     sdata: SpatialData,
-    img_layer: Optional[str] = None,
+    img_layer: str | None = None,
     tile_size: int = 2144,
-    crd: Optional[Tuple[int, int, int, int]] = None,
+    crd: tuple[int, int, int, int] | None = None,
     to_coordinate_system: str = "global",
-    scale_factors: Optional[ScaleFactors_t] = None,
+    scale_factors: ScaleFactors_t | None = None,
     output_layer: str = "tiling_correction",
     overwrite: bool = False,
-) -> Tuple[SpatialData, List[np.ndarray]]:
+) -> tuple[SpatialData, list[np.ndarray]]:
     """
     Function corrects for the tiling effect that occurs in some image data (e.g. resolve data).
 
