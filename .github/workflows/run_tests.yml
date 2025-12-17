@@ -1,69 +1,79 @@
 name: Run tests
 
 on:
+  workflow_dispatch:
+
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: "0 5 1,15 * *"
+    branches:
+      - main
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    #pull_request:
+    #  branches:
+    #    - main
 
-defaults:
-  run:
-    # to fail on error in multiline statements (-e), in pipes (-o pipefail), and on unset variables (-u).
-    shell: bash -euo pipefail {0}
+    paths:
+      - "src/sparrow/**"
+      - ".github/workflows/run_tests.yml"
+
+env:
+  CACHE_NUMBER: 1 # increase to reset cache manually
 
 jobs:
   test:
     strategy:
       matrix:
-        include:
-          - os: ubuntu-latest
-            python: "3.10"
-          - os: ubuntu-latest
-            python: "3.12"
-          - os: ubuntu-latest
-            python: "3.12"
-            pip-flags: "--pre"
-            name: PRE-RELEASE DEPENDENCIES
+        os: [ubuntu-latest] #[ubuntu-latest, macos-latest]
+        python-version: ["3.10"]
     runs-on: ${{ matrix.os }}
 
-    name: ${{ matrix.name }} Python ${{ matrix.python }}
-
-    env:
-      OS: ${{ matrix.os }}
-      PYTHON: ${{ matrix.python }}
-
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v2
+
+      # these libraries enable testing on Qt on linux
+      - uses: tlambert03/setup-qt-libs@v1
+
+      - name: Setup Mambaforge
+        uses: conda-incubator/setup-miniconda@v2
         with:
-          filter: blob:none
-          fetch-depth: 0
+          miniforge-variant: Mambaforge
+          miniforge-version: latest
+          activate-environment: napari-sparrow
+          use-mamba: true
+          python-version: ${{ matrix.python-version }}
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Set cache environment variables
+        shell: bash -l {0}
+        run: |
+          CONDA_PREFIX=$(python -c "import sys; print(sys.prefix)")
+          echo "$CONDA_PREFIX"
+          echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
+
+      #- name: Set cache date
+      #  run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
+
+      - uses: actions/cache@v3
         with:
-          enable-cache: true
-          cache-dependency-glob: |
-            **/uv.lock
-            **/pyproject.toml
+          path: ${{ env.CONDA_PREFIX }}
+          key: conda-env-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('environment.yml') }}-${{ env.CACHE_NUMBER }}
+        id: cache
 
-      - name: Sync env (locked, --lock makes it fail immediatelly if uv.lock out of date with pyproject.toml)
-        run: uv sync --locked --extra dev --python ${{ matrix.python }}
+      - name: Update environment
+        run: mamba env update -n napari-sparrow -f environment.yml
+        if: steps.cache.outputs.cache-hit != 'true'
 
-      - name: run tests using uv and pytest (locked, no sync)
+      # this runs the platform-specific tests declared in tox.ini
+      - name: Test with tox
+        shell: bash -l {0}
+        run: |
+          conda activate napari-sparrow
+          pip install -e '.[testing]'
+          pip install tox tox-gh-actions
+          tox
         env:
-          MPLBACKEND: agg
           PLATFORM: ${{ matrix.os }}
-          DISPLAY: :42
-        run: uv run --no-sync pytest --cov harpy --cov-branch --cov-report=xml src/harpy/_tests
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
+      - name: Upload coverage.xml
+        uses: actions/upload-artifact@v2
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: saeyslab/harpy
+          name: coverage-report
+          path: coverage.xml
