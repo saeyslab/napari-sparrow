@@ -24,6 +24,7 @@ def analyse_genes_left_out(
     table_layer: str,
     points_layer: str = "transcripts",
     to_coordinate_system: str = "global",
+    counts_layer: str = None,
     name_x: str = "x",
     name_y: str = "y",
     name_gene_column: str = _GENES_KEY,
@@ -48,6 +49,8 @@ def analyse_genes_left_out(
         The layer in `sdata` containing transcript information.
     to_coordinate_system
         The coordinate system that holds `labels_layer` and `points_layer`.
+    counts_layer
+        The counts layer in `sdata.table` containing raw counts. This is by default `raw_counts`. If undefined, using `X`.
     name_x
         The column name representing the x-coordinate in `points_layer`.
     name_y
@@ -91,14 +94,13 @@ def analyse_genes_left_out(
         raise AttributeError(
             "Provided SpatialData object does not have the attribute 'points', please run allocation step before using this function."
         )
-
-    if not np.issubdtype(sdata.tables[table_layer].X.dtype, np.integer):
-        log.warning(
-            f"The count matrix of the provided table layer '{table_layer}', seems to be of type '{sdata.tables[table_layer].X.dtype}', "
-            "which could indicate that the analysis is being run on normalized counts, "
-            "please consider running this analysis before the counts in the AnnData object "
-            "are normalized (i.e. on the raw counts)."
-        )
+    if counts_layer is None:
+        if not np.issubdtype(sdata.tables[table_layer].X.dtype, np.integer):
+            log.warning(
+                "It seems that analysis is being run on an AnnData object containing normalized counts, "
+                "please consider defining a counts_layer containing the raw transcript counts (most likely raw_counts.) "
+                "are normalized (i.e. on the raw counts)."
+            )
 
     if labels_layer not in [*sdata.labels]:
         raise ValueError(f"labels_layer '{labels_layer}' is not a labels layer in `sdata`.")
@@ -124,8 +126,10 @@ def analyse_genes_left_out(
         )
 
     raw_counts = _raw_counts[adata.var.index]
-
-    filtered = pd.DataFrame(np.array(adata.X.sum(axis=0)).flatten() / raw_counts)
+    if counts_layer is None:
+        filtered = pd.DataFrame(np.array(adata.X.sum(axis=0)).flatten() / raw_counts)
+    else:
+        filtered = pd.DataFrame(np.array(adata.layers[counts_layer].sum(axis=0)).flatten() / raw_counts)
 
     filtered = filtered.rename(columns={0: "proportion_kept"})
     filtered[_RAW_COUNTS_KEY] = raw_counts
@@ -133,7 +137,7 @@ def analyse_genes_left_out(
 
     # first plot:
 
-    sns.scatterplot(data=filtered, y="proportion_kept", x=f"log_{_RAW_COUNTS_KEY}")
+    sns.jointplot(data=filtered, y="proportion_kept", x=f"log_{_RAW_COUNTS_KEY}")
     plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
     plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
     plt.xlim(left=-0.5, right=filtered[f"log_{_RAW_COUNTS_KEY}"].quantile(0.99))
@@ -147,12 +151,14 @@ def analyse_genes_left_out(
     # second plot:
 
     r, p = pearsonr(filtered[f"log_{_RAW_COUNTS_KEY}"], filtered["proportion_kept"])
-    sns.regplot(x=f"log_{_RAW_COUNTS_KEY}", y="proportion_kept", data=filtered)
+    sns.jointplot(x=f"log_{_RAW_COUNTS_KEY}", y="proportion_kept", data=filtered,kind='reg')
     ax = plt.gca()
     ax.text(0.7, 0.9, f"r={r:.2f}, p={p:.2g}", transform=ax.transAxes)
 
     plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
     plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
+    plt.ax_marg_x.axvline(x=filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color='green')
+    plt.ax_marg_y.axhline(y=filtered["proportion_kept"].median(), color="red")
 
     if output:
         plt.savefig(f"{output}_1", bbox_inches="tight")

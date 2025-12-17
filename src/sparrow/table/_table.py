@@ -226,6 +226,7 @@ def filter_on_size(
     min_size: int = 100,
     max_size: int = 100000,
     update_shapes_layers: bool = True,
+    shapes_layers_to_filter=None,
     cellsize_key=_CELLSIZE_KEY,
     overwrite: bool = False,
 ) -> SpatialData:
@@ -254,6 +255,8 @@ def filter_on_size(
         Whether to filter the shapes layers associated with `labels_layer`.
         If set to `True`, cells that do not appear in resulting `output_layer` (with `_REGION_KEY` equal to `labels_layer`) will be removed from the shapes layers (via `_INSTANCE_KEY`) in the `sdata` object.
         Filtered shapes will be added to `sdata` with prefix 'filtered_size'.
+    shapes_layers_to_filter
+        List of shapes layers to filter. If None, all shapes layers in same coordinate system as the `labels_layer` will be filtered, if `update_shapes_layers` is True.    
     cellsize_key
         Column in `sdata.tables[table_layer].obs` containing cell sizes.
     overwrite
@@ -287,6 +290,7 @@ def filter_on_size(
                 table_layer=output_layer,
                 labels_layer=_labels_layer,
                 prefix_filtered_shapes_layer="filtered_size",
+                shapes_layers_to_filter=shapes_layers_to_filter,
             )
 
     filtered = start - adata.shape[0]

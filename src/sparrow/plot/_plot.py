@@ -777,7 +777,8 @@ def plot(
             polygons.plot(
                 ax=ax,
                 edgecolor="white",
-                column="__column_value__" if is_categorical else column,
+                facecolor='blue',
+                column=column,
                 linewidth=linewidth,
                 alpha=alpha,
                 legend=legend,
@@ -814,7 +815,7 @@ def plot(
                         polygons.plot(
                             ax=ax,
                             edgecolor="red",
-                            linewidth=linewidth,
+                            linewidth=linewidth*3,
                             alpha=alpha,
                             legend=legend,
                             aspect=1,
