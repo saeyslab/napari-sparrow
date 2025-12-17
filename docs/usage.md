@@ -5,7 +5,7 @@
 There are some built-in datasets. For example to get data from a [Resolve](https://resolvebiosciences.com/) experiment on mouse liver:
 
 ```
-from harpy.datasets.registry import get_registry
+from sparrow.datasets.registry import get_registry
 
 registry=get_registry()
 path_image = registry.fetch( "transcriptomics/resolve/mouse/20272_slide1_A1-1_DAPI.tiff" )
@@ -15,8 +15,8 @@ path_coordinates = registry.fetch("transcriptomics/resolve/mouse/20272_slide1_A1
 And to download an example SpatialData object resulting from running the `SPArrOW` pipeline:
 
 ```
-import harpy as hp
-sdata=hp.datasets.resolve_example()
+import sparrow as sp
+sdata=sp.datasets.resolve_example()
 ```
 
 ### Jupyter notebooks
@@ -48,7 +48,7 @@ defaults:
   - override /hydra/launcher: submitit_local
 ```
 
-If harpy is run on a SLURM cluster, change this to:
+If sparrow is run on a SLURM cluster, change this to:
 
 ```yaml
 defaults:
@@ -69,7 +69,7 @@ assuming the RESOLVE mouse liver data is used.
 The RESOLVE mouse liver experiment is preconfigured in `configs/experiment/resolve_liver.yaml`, and can now be run from the CLI:
 
 ```bash
-harpy +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_harpy
+sparrow +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow
 ```
 
 Please update the _hydra.searchpath_ with the path to the `configs` folder downloaded locally.
@@ -77,7 +77,7 @@ Please update the _hydra.searchpath_ with the path to the `configs` folder downl
 All parameters can also be overwritten from the CLI, e.g. for the size of the min max filter:
 
 ```bash
-harpy +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_harpy clean.size_min_max_filter=35
+sparrow +experiment=resolve_liver hydra.searchpath="[/Path/to/local/configs]" task_name=results_sparrow clean.size_min_max_filter=35
 ```
 
-The default values for all parameters for each step of the pipeline can be found at `src/harpy/configs`.
+The default values for all parameters for each step of the pipeline can be found at `src/sparrow/configs`.

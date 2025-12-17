@@ -4,7 +4,6 @@
   :alt: Dambi banner
 ```
 
-Harpy is a library for highly-multiplexed microscopy image analysis with single-cell resolution.
 
 # A library for Spatial Transcriptomics Data Analysis.
 
@@ -57,12 +56,6 @@ Please see our [preprint](https://www.biorxiv.org/content/10.1101/2024.07.04.601
     Learn how to contribute to ``SPArrOW``.
 
 ```
-
-The Harpy Python package described here builds on the spatial transcriptomics analysis tool [SPArrOW](https://github.com/saeyslab/napari-sparrow).
-
-For spatial proteomics analysis, cite [the Harpy GitHub repository](https://github.com/saeyslab/harpy).
-
-For spatial transcriptomics analysis, see the [SPArrOW preprint](https://www.biorxiv.org/content/10.1101/2024.07.04.601829v1) for citation and to learn more.
 
 ```{toctree}
 :hidden: true

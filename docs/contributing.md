@@ -23,6 +23,14 @@ This development environment is supported for:
 - MacOS with an M1/M2 Pro
 - Windows 11
 
+## Testing
+
+To run unit tests, run the following from the root of the project:
+
+```bash
+pytest
+```
+
 Continuous integration will automatically run the tests on all pull requests.
 
 ### Type testing
