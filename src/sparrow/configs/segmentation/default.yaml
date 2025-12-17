@@ -1,6 +1,6 @@
 chunks: "auto"
 depth: null
-trim: False # True==squidpy algo for chunking, False==harpy algo
+trim: False # True==squidpy algo for chunking, False==SPArrOW algo
 
 small_size_vis: null
 crop_param: null

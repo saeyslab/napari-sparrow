@@ -28,7 +28,7 @@ def run_notebook(notebook_path, timeout=600):
         "SPArrOW_quickstart.ipynb",
     ],
 )
-def test_notebooks_harpy_transcriptomics(notebook):
+def test_notebooks_sparrow_transcriptomics(notebook):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
     run_notebook(os.path.join(root, "docs/tutorials/general", notebook))
@@ -73,46 +73,16 @@ def test_notebooks_coordinate_systems(notebook):
 
 @pytest.mark.skip
 @pytest.mark.skipif(
-    not importlib.util.find_spec("rasterio"),
-    reason="requires the rasterio library",
-)
-@pytest.mark.parametrize(
-    "notebook",
-    [
-        "Rasterize_and_vectorize.ipynb",
-    ],
-)
-def test_notebooks_rasterize_vectorize(notebook):
-    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
-
-    run_notebook(os.path.join(root, "docs/tutorials/advanced", notebook))
-
-
-@pytest.mark.skip
-@pytest.mark.parametrize(
-    "notebook",
-    [
-        "Harpy_aggregate_rasters.ipynb",
-    ],
-)
-def test_notebooks_aggregate_rasters(notebook):
-    root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
-
-    run_notebook(os.path.join(root, "docs/tutorials/advanced", notebook))
-
-
-@pytest.mark.skip
-@pytest.mark.skipif(
     not importlib.util.find_spec("cellpose") or not importlib.util.find_spec("basicpy"),
     reason="requires the cellpose and basicpy libraries",
 )
 @pytest.mark.parametrize(
     "notebook",
     [
-        "Harpy_how_to_start.ipynb",
+        "SPArrOW_how_to_start.ipynb",
     ],
 )
-def test_notebook_harpy_pipeline(notebook):
+def test_notebook_sparrow_pipeline(notebook):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
     run_notebook(os.path.join(root, "docs/tutorials/general", notebook))
