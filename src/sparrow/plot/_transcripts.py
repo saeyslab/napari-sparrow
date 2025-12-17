@@ -122,7 +122,7 @@ def analyse_genes_left_out(
 
     if not missing_indices.empty:
         raise ValueError(
-            f"There are genes found in '.var' of table layer '{table_layer}' that are not found in the points layer '{points_layer}'. Please verify that allocation '(sp.tb.allocation)' is performed using the correct points layer."
+            f"There are genes found in '.var' of table layer '{table_layer}' that are not found in the points layer '{points_layer}'. Please verify that allocation '(sparrow.tb.allocation)' is performed using the correct points layer."
         )
 
     raw_counts = _raw_counts[adata.var.index]
@@ -186,7 +186,7 @@ def transcript_density(
     """
     Visualize the transcript density layer.
 
-    This function wraps around the `plot_shapes` function to showcase transcript density.
+    This function wraps around the :func:`sparrow.pl.plot_shapes` function to showcase transcript density.
 
     Parameters
     ----------
@@ -217,6 +217,7 @@ def transcript_density(
     See Also
     --------
     sparrow.im.transcript_density
+    sparrow.pl.plot_shapes
     """
     plot_shapes(
         sdata,

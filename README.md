@@ -53,3 +53,23 @@ If you encounter any problems, please [file an issue] along with a detailed desc
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
 [PyPI]: https://pypi.org/
+
+## Cite us
+
+Our article currently is available as preprint. You can cite us as follows: 
+@article{pollaris2024sparrow,
+
+  title={SPArrOW: a flexible, interactive and scalable pipeline for spatial transcriptomics analysis},
+  
+  author={Pollaris, Lotte and Vanneste, Bavo and Rombaut, Benjamin and Defauw, Arne and Vernaillen, Frank and Mortier, Julien and Vanhenden, Wout and Martens, Liesbet and Thon{\'e}, Tinne and Hastir, Jean-Francois and others},
+  
+  journal={bioRxiv},
+  
+  pages={2024--07},
+  
+  year={2024},
+  
+  publisher={Cold Spring Harbor Laboratory}
+}
+
+Code to replicate the analysis of the paper can be found here: https://github.com/lopollar/SPArrOW_scripts

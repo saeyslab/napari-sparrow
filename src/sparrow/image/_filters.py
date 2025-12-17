@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import dask.array as da
 import numpy as np
@@ -9,7 +9,7 @@ from dask_image.ndfilters import gaussian_filter, maximum_filter, minimum_filter
 from spatialdata import SpatialData
 from spatialdata.models.models import ScaleFactors_t
 
-from sparrow.image._apply import _get_spatial_element, map_channels_zstacks
+from sparrow.image._map import _get_spatial_element, map_image
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -85,7 +85,7 @@ def min_max_filtering(
             if size_min_max_filter % 2 == 0:
                 log.warning(
                     f"Provided value for min max filter size is even ('{size_min_max_filter}'). "
-                    f"To prevent unexpected output, we set min max filter to '{size_min_max_filter +1}'."
+                    f"To prevent unexpected output, we set min max filter to '{size_min_max_filter + 1}'."
                 )
                 return size_min_max_filter + 1
             else:
@@ -131,14 +131,21 @@ def min_max_filtering(
     se = _get_spatial_element(sdata, img_layer)
 
     if isinstance(size_min_max_filter, Iterable):
-        assert (
-            len(size_min_max_filter) == len(se.c.data)
-        ), f"If 'size_min_max_filter' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
-        fn_kwargs = {key: {"size_min_max_filter": value} for (key, value) in zip(se.c.data, size_min_max_filter)}
+        assert len(size_min_max_filter) == len(se.c.data), (
+            f"If 'size_min_max_filter' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
+        )
+        fn_kwargs = {
+            key: {"size_min_max_filter": value}
+            for (key, value) in zip(
+                se.c.data,
+                size_min_max_filter,
+                strict=True,
+            )
+        }
     else:
         fn_kwargs = {"size_min_max_filter": size_min_max_filter}
 
-    sdata = map_channels_zstacks(
+    sdata = map_image(
         sdata,
         img_layer=img_layer,
         output_layer=output_layer,
@@ -251,14 +258,14 @@ def gaussian_filtering(
     se = _get_spatial_element(sdata, img_layer)
 
     if isinstance(sigma, Iterable):
-        assert len(sigma) == len(
-            se.c.data
-        ), f"If 'sigma' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
-        fn_kwargs = {key: {"sigma": value} for (key, value) in zip(se.c.data, sigma)}
+        assert len(sigma) == len(se.c.data), (
+            f"If 'sigma' is provided as a list, it should match the number of channels in '{se}' ({len(se.c.data)})"
+        )
+        fn_kwargs = {key: {"sigma": value} for (key, value) in zip(se.c.data, sigma, strict=True)}
     else:
         fn_kwargs = {"sigma": sigma}
 
-    sdata = map_channels_zstacks(
+    sdata = map_image(
         sdata,
         img_layer=img_layer,
         output_layer=output_layer,

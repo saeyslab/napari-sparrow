@@ -1,5 +1,7 @@
+from __future__ import annotations
+
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import dask.array as da
 import numpy as np
@@ -67,9 +69,9 @@ def bounding_box_query(
     labels_layer = _fix_name(labels_layer)
     crd = _crd_to_iterable_of_iterables(crd)
     to_coordinate_system = _fix_name(to_coordinate_system)
-    assert (
-        len(labels_layer) == len(crd) == len(to_coordinate_system)
-    ), "The number of 'labels_layer', 'crd' and 'to_coordinate_system' specified should all be equal."
+    assert len(labels_layer) == len(crd) == len(to_coordinate_system), (
+        "The number of 'labels_layer', 'crd' and 'to_coordinate_system' specified should all be equal."
+    )
 
     sdata_queried = SpatialData()
     # back resulting sdata to zarr store if output is specified
@@ -79,7 +81,7 @@ def bounding_box_query(
     # first add queried labels layer to sdata, so we do not have to query them + calculate unique labels in them len[*sdata.tables] times.
     labels_ids = []
     # labels_layer_queried=[]
-    for _labels_layer, _crd, _to_coordinate_system in zip(labels_layer, crd, to_coordinate_system):
+    for _labels_layer, _crd, _to_coordinate_system in zip(labels_layer, crd, to_coordinate_system, strict=True):
         se = _get_spatial_element(sdata, layer=_labels_layer)
 
         if _crd is None:
@@ -120,7 +122,11 @@ def bounding_box_query(
         remove = np.ones(len(adata), dtype=bool)
 
         for _labels_layer, _crd, _to_coordinate_system, _labels_id in zip(
-            labels_layer, crd, to_coordinate_system, labels_ids
+            labels_layer,
+            crd,
+            to_coordinate_system,
+            labels_ids,
+            strict=True,
         ):
             # the code also handles case when labels layer does not annotate the table
             # (i.e. _labels_layer not in adata.obs[_REGION_KEY].values), because remove already set to True for all instances.

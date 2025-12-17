@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable
+from types import MappingProxyType
+from typing import Any
 
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from geopandas.geodataframe import GeoDataFrame
 from geopandas.geoseries import GeoSeries
+from matplotlib.axes import Axes
 from scipy.sparse import issparse
 from shapely.affinity import translate
 from spatialdata import SpatialData
@@ -46,17 +50,18 @@ def plot_image(
     z_slice
         The z_slice to visualize in case of 3D (c,z,y,x) image.
     crd
-        The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+        The coordinates for the region of interest in the format `(xmin, xmax, ymin, ymax)`. If `None`, the entire image is considered, by default `None`.
     to_coordinate_system
         Coordinate system to plot.
     output
         Path to save the plot. If not provided, plot will be displayed.
     **kwargs
-        Additional arguments to be passed to the `sp.pl.plot_shapes` function.
+        Additional arguments to be passed to the :func:`sparrow.pl.plot_shapes` function.
 
     See Also
     --------
     sparrow.pl.plot_shapes
+    sparrow.pl.plot
     """
     plot_shapes(
         sdata,
@@ -92,17 +97,18 @@ def plot_labels(
     z_slice
         The z_slice to visualize in case of 3D (c,z,y,x) labels.
     crd
-        The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+        The coordinates for the region of interest in the format `(xmin, xmax, ymin, ymax)`. If `None`, the entire image is considered, by default `None`.
     to_coordinate_system
         Coordinate system to plot.
     output
         Path to save the plot. If not provided, plot will be displayed.
     **kwargs
-        Additional arguments to be passed to the `sp.pl.plot_shapes` function.
+        Additional arguments to be passed to the :func:`sparrow.pl.plot_shapes` function.
 
     See Also
     --------
     sparrow.pl.plot_shapes
+    sparrow.pl.plot
     """
     plot_shapes(
         sdata,
@@ -129,22 +135,29 @@ def plot_shapes(
     channel: int | str | Iterable[int] | Iterable[str] | None = None,
     z_slice: float | None = None,
     alpha: float = 0.5,
+    legend: bool = True,
+    radius: str | None = None,
     crd: tuple[int, int, int, int] | None = None,
     to_coordinate_system: str = "global",
     vmin: float | None = None,
     vmax: float | None = None,
     vmin_img: float | None = None,
     vmax_img: float | None = None,
+    colorbar: bool = False,
     shapes_layer_filtered: str | Iterable[str] | None = None,
     img_title: bool = False,
     shapes_title: bool = False,
     channel_title: bool = True,
     aspect: str = "equal",
     figsize: tuple[int, int] | None = None,
+    fig_kwargs: Mapping[str, Any] = MappingProxyType({}),
     output: str | Path | None = None,
 ) -> None:
     """
-    Plot shapes and/or images/labels from a SpatialData object.
+    Plots a SpatialData object.
+
+    This function support plotting of a raster (`img_layer` or `labels_layer`), together with a `shapes_layer` respresenting (cell) boundaries.
+    These shapes can be colored if a `table_layer` and a `column` is specified.
 
     The number of provided `img_layer` or `labels_layer` and `shapes_layer` should be equal if both are iterables and if their length is greater than 1.
 
@@ -188,8 +201,10 @@ def plot_shapes(
         Labels layer(s) to be plotted.
         Displayed as columns in the plot, if multiple are provided.
     shapes_layer
-        Specifies which shapes to plot. If set to None, no shapes_layer is plotted.
-        Displayed as columns in the plot, if multiple are provided.
+        Specifies which shapes to plot. Default is 'segmentation_mask_boundaries'. If set to None, no shapes_layer is plot.
+        Can be colored by `column` in `sdata.tables[table_layer].obs` or `sdata.tables[table_layer].var`.
+        For this the index of the `shapes_layer` will be matched with `sdata.tables[table_layer].obs[_INSTANCE_KEY]` for those observations for which
+        `sdata.tables[table_layer].obs[_REGION_KEY]` equals `region` (if `region` is not `None`).
     table_layer
         Table layer to be plotted (i.e. to base cell colors on) if `column` is specified.
     column
@@ -208,8 +223,15 @@ def plot_shapes(
         The z_slice to visualize in case of 3D (c,z,y,x) image/polygons.
         If no z_slice is specified and `img_layer` or `labels_layer` is 3D, a max projection along the z-axis will be performed.
         If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
+    alpha
+        Transparency level for the cells, given by the alpha parameter of matplotlib.
+    legend
+        Whether to plot a legend. Ignored if column is `None`.
+    radius
+        Column in the `shapes_layer` specifying the radius. The radius will be applied using `geometry.buffer` before plotting `shapes_layer`.
+        Useful when the `geometry` of the `shapes_layer` contains points instead of polygons.
     crd
-        The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+        The coordinates for the region of interest in the format `(xmin, xmax, ymin, ymax)`. If `None`, the entire image is considered, by default `None`.
     to_coordinate_system
         Coordinate system to plot.
     vmin
@@ -220,6 +242,8 @@ def plot_shapes(
         Lower bound for plotting of `img_layer` or `labels_layer`.
     vmax_img
         Upper bound for plotting of `img_layer` or `labels_layer`.
+    colorbar
+        Whether to add a colorbar for raster data.
     shapes_layer_filtered
         Extra shapes layers to plot. E.g. shapes filtered out in previous preprocessing steps.
     img_title
@@ -232,7 +256,9 @@ def plot_shapes(
     aspect
         Aspect ratio for the plot.
     figsize
-        Size of the figure for plotting. If not provided, a default size is used based on the number of columns and rows.
+        Size of the figure for plotting, passed to `.pyplot.figure`. If not provided, a default size is used based on the number of columns and rows.
+    fig_kwargs
+        Keyword arguments passed to the `.pyplot.figure` call. E.g. `dpi`.
     output
         Path to save the plot. If not provided, plot will be displayed.
 
@@ -257,10 +283,14 @@ def plot_shapes(
     -----
     - This function offers advanced visualization options for `sdata` with support for multiple image layers, labels layers shape layers, and channels.
     - Either `img_layer` or `labels_layer` should be specified, not both.
+
+    See Also
+    --------
+    sparrow.pl.plot
     """
     if img_layer is not None and labels_layer is not None:
         raise ValueError(
-            "Both img_layer and labels_layer is not None. " "Please specify either img_layer or labels_layer, not both."
+            "Both img_layer and labels_layer is not None. Please specify either img_layer or labels_layer, not both."
         )
 
     if column is not None and table_layer is None:
@@ -320,12 +350,20 @@ def plot_shapes(
 
     nr_of_rows = len(channels)
 
-    if figsize is None:
+    if figsize is None and "figsize" not in fig_kwargs.keys():
         figsize = (
             10 * nr_of_columns,
             10 * nr_of_rows,
         )
-    fig, axes = plt.subplots(nr_of_rows, nr_of_columns, figsize=figsize)
+    if "figsize" in fig_kwargs.keys():
+        figsize = fig_kwargs.pop("figsize")
+
+    fig, axes = plt.subplots(
+        nr_of_rows,
+        nr_of_columns,
+        figsize=figsize,
+        **fig_kwargs,
+    )
 
     # Flattening axes to make iteration easier
     if nr_of_rows == 1 and nr_of_columns == 1:
@@ -337,8 +375,8 @@ def plot_shapes(
 
     idx = 0
     for _channel in channels:
-        for _layer, _shapes_layer in zip(layer, shapes_layer):
-            _plot(
+        for _layer, _shapes_layer in zip(layer, shapes_layer, strict=True):
+            plot(
                 sdata,
                 axes[idx],
                 img_layer=_layer if img_layer_type else None,
@@ -352,12 +390,15 @@ def plot_shapes(
                 channel=_channel,
                 z_slice=z_slice,
                 alpha=alpha,
+                legend=legend,
+                radius=radius,
                 crd=crd,
                 to_coordinate_system=to_coordinate_system,
                 vmin=vmin,
                 vmax=vmax,
                 vmin_img=vmin_img,
                 vmax_img=vmax_img,
+                colorbar=colorbar,
                 shapes_layer_filtered=shapes_layer_filtered,
                 img_title=img_title,
                 shapes_title=shapes_title,
@@ -375,9 +416,9 @@ def plot_shapes(
     plt.close()
 
 
-def _plot(
+def plot(
     sdata: SpatialData,
-    ax: plt.Axes,
+    ax: Axes,
     img_layer: str | None = None,
     labels_layer: str | None = None,
     shapes_layer: str | None = "segmentation_mask_boundaries",
@@ -389,33 +430,42 @@ def _plot(
     channel: int | str | None = None,
     z_slice: float | None = None,
     alpha: float = 0.5,
+    legend: bool = True,
+    radius: str | None = None,
     crd: tuple[int, int, int, int] | None = None,
     to_coordinate_system: str = "global",
     vmin: float | None = None,
     vmax: float | None = None,
     vmin_img: float | None = None,
     vmax_img: float | None = None,
+    colorbar: bool = False,
     shapes_layer_filtered: str | Iterable[str] | None = None,
     img_title: bool = False,
     shapes_title: bool = False,
     channel_title: bool = True,
     aspect: str = "equal",
-) -> plt.Axes:
+) -> Axes:
     """
     Plots a SpatialData object.
+
+    This function support plotting of a raster (`img_layer` or `labels_layer`), together with a `shapes_layer` respresenting (cell) boundaries.
+    These shapes can be colored if a `table_layer` and a `column` is specified.
 
     Parameters
     ----------
     sdata
         Data containing spatial information for plotting.
     ax
-        Axes object to plot on.
+       Matplotlib axes object to plot on.
     img_layer
         Image layer to be plotted. By default, the last added image layer is plotted.
     labels_layer
         Labels layer to be plotted.
     shapes_layer
         Specifies which shapes to plot. Default is 'segmentation_mask_boundaries'. If set to None, no shapes_layer is plot.
+        Can be colored by `column` in `sdata.tables[table_layer].obs` or `sdata.tables[table_layer].var`.
+        For this the index of the `shapes_layer` will be matched with `sdata.tables[table_layer].obs[_INSTANCE_KEY]` for those observations for which
+        `sdata.tables[table_layer].obs[_REGION_KEY]` equals `region` (if `region` is not `None`).
     table_layer
         Table layer to be plotted (i.e. to base cell colors on) if `column` is specified.
     column
@@ -435,8 +485,13 @@ def _plot(
         If no z_slice is specified and `shapes_layer` is 3D, all polygons in all z-stacks will be plotted.
     alpha
         Transparency level for the cells, given by the alpha parameter of matplotlib.
+    legend
+        Whether to plot a legend. Ignored if column is `None`.
+    radius
+        Column in the `shapes_layer` specifying the radius. The radius will be applied using `geometry.buffer` before plotting `shapes_layer`.
+        Useful when the `geometry` of the `shapes_layer` contains points instead of polygons.
     crd
-        The coordinates for the region of interest in the format (xmin, xmax, ymin, ymax). If None, the entire image is considered, by default None.
+        The coordinates for the region of interest in the format `(xmin, xmax, ymin, ymax)`. If `None`, the entire image is considered, by default `None`.
     to_coordinate_system
         Coordinate system to plot.
     vmin
@@ -447,6 +502,8 @@ def _plot(
         Lower bound for plotting of `img_layer` or `labels_layer`.
     vmax_img
         Upper bound for plotting of `img_layer` or `labels_layer`.
+    colorbar
+        Whether to add a colorbar for raster data.
     shapes_layer_filtered
         Extra shapes layers to plot. E.g. shapes filtered out in previous preprocessing steps.
     img_title
@@ -461,7 +518,7 @@ def _plot(
 
     Returns
     -------
-    The axes with the plotted SpatialData.
+    The Axes object.
 
     Raises
     ------
@@ -486,7 +543,7 @@ def _plot(
     """
     if img_layer is not None and labels_layer is not None:
         raise ValueError(
-            "Both img_layer and labels_layer is not None. " "Please specify either img_layer or labels_layer, not both."
+            "Both img_layer and labels_layer is not None. Please specify either img_layer or labels_layer, not both."
         )
 
     if column is not None and table_layer is None:
@@ -553,14 +610,35 @@ def _plot(
 
     polygons = None
     if shapes_layer is not None and not sdata.shapes[shapes_layer].empty:
-        # copy is necessary, otherwise, in memory shapes layer altered by performing a plot.
-        polygons = _translate_polygons(
-            sdata.shapes[shapes_layer].copy(), to_coordinate_system=to_coordinate_system
-        )  # TODO: this translation is slow if we have a lot of polygons. fix this by getting the translation, altering the crd, then do the cx, and then the translation for visualization purposes.
-        polygons = polygons.cx[crd[0] : crd[1], crd[2] : crd[3]]
+        polygons = sdata.shapes[shapes_layer]
+        if radius is not None:
+            if radius in polygons.columns:
+                polygons = polygons.copy()
+                polygons["geometry"] = polygons.geometry.buffer(polygons[radius])
+            else:
+                log.warning(
+                    f"radius parameter was specified as '{radius}', but could not be found as a column of shapes layer '{shapes_layer}'. Will proceed "
+                    "plotting while ignoring radius parameter."
+                )
+        x_translation, y_translation = _get_translation_values_shapes(
+            polygons=polygons, to_coordinate_system=to_coordinate_system
+        )
+        _crd_shapes = [
+            crd[0] - x_translation,
+            crd[1] - x_translation,
+            crd[2] - y_translation,
+            crd[3] - y_translation,
+        ]
+        polygons = polygons.cx[_crd_shapes[0] : _crd_shapes[1], _crd_shapes[2] : _crd_shapes[3]]  # .cx generates a copy
+        if x_translation != 0 or y_translation != 0:
+            # The latter is slow, so first do cx, then translate
+            polygons["geometry"] = polygons["geometry"].apply(
+                lambda geom, x_trans=x_translation, y_trans=y_translation: translate(geom, xoff=x_trans, yoff=y_trans)
+            )
         if z_index is not None:
             polygons = _get_z_slice_polygons(polygons, z_index=z_index)
 
+    is_categorical = False
     if polygons is not None and column is not None:
         if not polygons.empty:
             adata_view = sdata.tables[table_layer]
@@ -593,7 +671,7 @@ def _plot(
             mask_polygons = polygons.index.isin(adata_view.obs[_INSTANCE_KEY])
             if (~mask_polygons).any():
                 log.warning(
-                    f"There are '{sum( ~mask_polygons )}' cells in provided shapes_layer '{shapes_layer}' not found in 'sdata.tables[{table_layer}]' (linked through '{_INSTANCE_KEY}'), these cells will not be plotted."
+                    f"There are '{sum(~mask_polygons)}' cells in provided shapes_layer '{shapes_layer}' not found in 'sdata.tables[{table_layer}]' (linked through '{_INSTANCE_KEY}'), these cells will not be plotted."
                 )
                 polygons = polygons[mask_polygons]
 
@@ -604,6 +682,10 @@ def _plot(
                     N=len(adata_view.uns[column + "_colors"]),
                 )
             if column in adata_view.obs.columns:
+                if pd.api.types.is_categorical_dtype(adata_view.obs[column]):
+                    is_categorical = True
+                else:
+                    is_categorical = False
                 column = adata_view.obs[[column]].values.flatten()
             elif column in adata_view.var.index:
                 column = adata_view.X[:, np.where(adata_view.var.index == column)[0][0]]
@@ -672,7 +754,7 @@ def _plot(
             else:
                 log.info(
                     f"Layer '{layer}' has 3 spatial dimensions, but no z-slice was specified. "
-                    f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0]//2}) will be utilized."
+                    f"By default the z-slice located at the midpoint of the z-dimension ({_se.shape[0] // 2}) will be utilized."
                 )
                 _se = _se[_se.shape[0] // 2, ...]
 
@@ -682,13 +764,16 @@ def _plot(
         cmap=cmap_layer,
         robust=True,
         ax=ax,
-        add_colorbar=False,
+        add_colorbar=colorbar,
         vmin=vmin_img,
         vmax=vmax_img,
     )
 
     if polygons is not None:
         if not polygons.empty:
+            if is_categorical:
+                polygons["__column_value__"] = column
+                polygons["__column_value__"] = polygons["__column_value__"].astype("category")
             polygons.plot(
                 ax=ax,
                 edgecolor="white",
@@ -696,7 +781,7 @@ def _plot(
                 column=column,
                 linewidth=linewidth,
                 alpha=alpha,
-                legend=True,
+                legend=legend,
                 aspect=1,
                 cmap=cmap,
                 vmax=vmax,  # np.percentile(column,vmax),
@@ -707,8 +792,23 @@ def _plot(
         if shapes_layer_filtered is not None:
             for i in shapes_layer_filtered:
                 if not sdata.shapes[i].empty:
-                    polygons = _translate_polygons(sdata.shapes[i].copy(), to_coordinate_system=to_coordinate_system)
-                    polygons = polygons.cx[crd[0] : crd[1], crd[2] : crd[3]]
+                    x_translation, y_translation = _get_translation_values_shapes(
+                        sdata.shapes[i], to_coordinate_system=to_coordinate_system
+                    )
+                    _crd_shapes = [
+                        crd[0] - x_translation,
+                        crd[1] - x_translation,
+                        crd[2] - y_translation,
+                        crd[3] - y_translation,
+                    ]
+                    polygons = sdata.shapes[i].cx[_crd_shapes[0] : _crd_shapes[1], _crd_shapes[2] : _crd_shapes[3]]
+                    if x_translation != 0 or y_translation != 0:
+                        polygons = polygons.copy()  # copy is necessary, we do not want to alter in memory shapes layer
+                        polygons["geometry"] = polygons["geometry"].apply(
+                            lambda geom, x_trans=x_translation, y_trans=y_translation: translate(
+                                geom, xoff=x_trans, yoff=y_trans
+                            )
+                        )
                     if z_index is not None:
                         polygons = _get_z_slice_polygons(polygons, z_index=z_index)
                     if not polygons.empty:
@@ -717,7 +817,7 @@ def _plot(
                             edgecolor="red",
                             linewidth=linewidth*3,
                             alpha=alpha,
-                            legend=True,
+                            legend=legend,
                             aspect=1,
                             cmap="gray",
                         )
@@ -774,7 +874,9 @@ def _get_z_slice_polygons(polygons: GeoDataFrame, z_index: int) -> GeoDataFrame:
     return polygons[polygons["geometry"].apply(_get_z_slice, args=(z_index,))]
 
 
-def _translate_polygons(polygons: GeoDataFrame, to_coordinate_system: str = "global") -> GeoDataFrame:
+def _get_translation_values_shapes(
+    polygons: GeoDataFrame, to_coordinate_system: str = "global"
+) -> tuple[float | int, float | int]:
     # get the transformation defined on "global"
     transformations = get_transformation(polygons, get_all=True)
     if to_coordinate_system not in [*transformations]:
@@ -784,9 +886,4 @@ def _translate_polygons(polygons: GeoDataFrame, to_coordinate_system: str = "glo
         )
     transformation = transformations[to_coordinate_system]
     x_translation, y_translation = _get_translation_values(transformation)
-    if x_translation != 0 or y_translation != 0:
-        polygons["geometry"] = polygons["geometry"].apply(
-            lambda geom: translate(geom, xoff=x_translation, yoff=y_translation)
-        )
-
-    return polygons
+    return x_translation, y_translation

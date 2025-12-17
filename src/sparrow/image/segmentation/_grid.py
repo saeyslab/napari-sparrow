@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 import geopandas as gpd
 import numpy as np
 from dask.distributed import Client
@@ -19,10 +21,10 @@ def add_grid_labels_layer(
     size: int,  # radius of the hexagon, or size length of the square.
     output_shapes_layer: str,  # shapes layer corresponding to the labels layer
     output_labels_layer: str,
-    grid_type: str = "hexagon",  # can be either "hexagon" or "square".
+    grid_type: Literal["hexagon", "square"] = "hexagon",  # can be either "hexagon" or "square".
     offset: tuple[int, int] = (0, 0),  # we recommend setting a non-zero offset via a translation.
     chunks: int | None = None,
-    client: Client = None,
+    client: Client | None = None,
     transformations: MappingToCoordinateSystem_t | None = None,
     scale_factors: ScaleFactors_t | None = None,
     overwrite: bool = False,
@@ -52,8 +54,8 @@ def add_grid_labels_layer(
     chunks
         Specifies the chunk size for Dask arrays when calculating the labels layer.
     client
-        A Dask `Client` instance, which will be passed to 'sp.im.rasterize' (function which rasterizes the generated `output_shapes_layer`) if specified.
-        Refer to the 'sp.im.rasterize' docstring for further details.
+        A Dask `Client` instance, which will be passed to 'sparrow.im.rasterize' (function which rasterizes the generated `output_shapes_layer`) if specified.
+        Refer to the 'sparrow.im.rasterize' docstring for further details.
     transformations
         Transformations that will be added to the resulting `output_shapes_layer` and `output_labels_layer`.
     scale_factors
@@ -95,7 +97,7 @@ def add_grid_labels_layer(
         sdata=sdata,
         shapes_layer=output_shapes_layer,
         output_layer=output_labels_layer,
-        out_shape=tuple(a + b for a, b in zip(shape, offset)),
+        out_shape=tuple(a + b for a, b in zip(shape, offset, strict=True)),
         chunks=chunks,
         client=client,
         scale_factors=scale_factors,

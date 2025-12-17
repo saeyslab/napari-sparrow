@@ -4,7 +4,6 @@
   :alt: Dambi banner
 ```
 
-<br><br>
 
 # A library for Spatial Transcriptomics Data Analysis.
 

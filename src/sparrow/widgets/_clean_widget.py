@@ -5,18 +5,19 @@ The goal of cleaning is to improve the image quality so that subsequent image se
 """
 
 import os
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import napari
 import napari.layers
 import napari.types
 import napari.utils
 import numpy as np
-from xarray import DataTree
 from magicgui import magic_factory
 from napari.qt.threading import thread_worker
 from napari.utils.notifications import show_info
 from spatialdata import SpatialData, read_zarr
+from xarray import DataTree
 
 from sparrow import utils as utils
 from sparrow.image._image import _get_translation
@@ -39,7 +40,7 @@ def cleanImage(
 def _clean_worker(
     sdata: SpatialData,
     method: Callable,
-    fn_kwargs: Dict[str, Any],
+    fn_kwargs: dict[str, Any],
 ) -> SpatialData:
     """Clean image in a thread worker"""
     res = method(sdata, **fn_kwargs)
@@ -51,13 +52,13 @@ def _clean_worker(
 def clean_widget(
     viewer: napari.Viewer,
     image: napari.layers.Image,
-    subset: Optional[napari.layers.Shapes] = None,
+    subset: napari.layers.Shapes | None = None,
     tiling_correction_step: bool = True,
     tile_size: int = 2144,
     min_max_filtering_step: bool = True,
-    size_min_max_filter: List[int] = [85],  # noqa: B006 # magicgui does not accept None as default.
+    size_min_max_filter: list[int] = [85],  # noqa: B006 # magicgui does not accept None as default.
     contrast_enhancing_step: bool = True,
-    contrast_clip: List[float] = [3.5],  # noqa: B006
+    contrast_clip: list[float] = [3.5],  # noqa: B006
 ):
     """Function represents the clean widget and is called by the wizard to create the widget."""
     contrast_clip = contrast_clip.copy()
@@ -110,7 +111,7 @@ def clean_widget(
     if pipeline.cfg.clean.crop_param is None:
         pipeline.cfg.clean.small_size_vis = [0, 20000, 0, 20000]
 
-    fn_kwargs: Dict[str, Any] = {
+    fn_kwargs: dict[str, Any] = {
         "pipeline": pipeline,
     }
 

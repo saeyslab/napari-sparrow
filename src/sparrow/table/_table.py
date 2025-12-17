@@ -1,4 +1,6 @@
-from typing import Dict, Iterable, Tuple
+from __future__ import annotations
+
+from collections.abc import Iterable
 
 import numpy as np
 from anndata import AnnData
@@ -35,14 +37,14 @@ class ProcessTable:
         if sdata.tables == {}:
             raise ValueError(
                 "Provided SpatialData object 'sdata' does not contain any 'tables'. "
-                "Please create tables via e.g. 'sp.tb.allocation' or 'sp.tb.allocation_intensity' functions."
+                "Please create tables via e.g. 'sparrow.tb.allocation' or 'sparrow.tb.allocation_intensity' functions."
             )
 
         if labels_layer is not None:
             if sdata.labels == {}:
                 raise ValueError(
                     "Provided SpatialData object 'sdata' does not contain 'labels'. "
-                    "Please create a labels layer via e.g. 'sp.im.segment'."
+                    "Please create a labels layer via e.g. 'sparrow.im.segment'."
                 )
             labels_layer = (
                 list(labels_layer)
@@ -76,9 +78,9 @@ class ProcessTable:
             ), f"'{_INSTANCE_KEY}' is not unique for '{_REGION_KEY}' == '{_layer}'. Please make sure these are unique."
 
     def _validate(self):
-        assert (
-            self.sdata.tables[self.table_layer].obs[_INSTANCE_KEY].is_unique
-        ), f"'{_INSTANCE_KEY}' is not unique. Please make sure these are unique, or specify a 'labels_layer' via '{_REGION_KEY}'."
+        assert self.sdata.tables[self.table_layer].obs[_INSTANCE_KEY].is_unique, (
+            f"'{_INSTANCE_KEY}' is not unique. Please make sure these are unique, or specify a 'labels_layer' via '{_REGION_KEY}'."
+        )
 
     def _validated_table_layer(self):
         """Validate if the specified table layer exists in the SpatialData object."""
@@ -161,7 +163,7 @@ def correct_marker_genes(
     labels_layer: list[str],
     table_layer: str,
     output_layer: str,
-    celltype_correction_dict: Dict[str, Tuple[float, float]],
+    celltype_correction_dict: dict[str, tuple[float, float]],
     overwrite: bool = False,
 ) -> SpatialData:
     """
@@ -230,7 +232,7 @@ def filter_on_size(
 ) -> SpatialData:
     """Returns the updated SpatialData object.
 
-    All cells with a size outside of the min and max size range are removed using the `cellsize_key` in `.obs`. Run e.g. `sp.tb.preprocess_transcriptomics` or `sp.tb.preprocess_proteomics` to obtain cell sizes.
+    All cells with a size outside of the min and max size range are removed using the `cellsize_key` in `.obs`. Run e.g. `sparrow.tb.preprocess_transcriptomics` or `sparrow.tb.preprocess_proteomics` to obtain cell sizes.
 
     Parameters
     ----------

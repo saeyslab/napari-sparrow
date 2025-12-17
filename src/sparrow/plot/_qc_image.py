@@ -1,12 +1,22 @@
 """Calculate various image quality metrics"""
 
+from collections.abc import Mapping
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any
+
+import dask
+import dask.array as da
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import skimage as ski
+from matplotlib.axes import Axes
+from spatialdata import SpatialData
 
 from sparrow.image import normalize
+from sparrow.image._image import _get_spatial_element
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -16,8 +26,104 @@ try:
 
 except ImportError:
     log.warning(
-        "'textalloc' not installed, to use 'sp.pl.group_snr_ratio' and 'sp.pl.snr_ratio', please install this library."
+        "'textalloc' not installed, to use 'sparrow.pl.group_snr_ratio' and 'sparrow.pl.snr_ratio', please install this library."
     )
+
+
+def histogram(
+    sdata: SpatialData,
+    img_layer: str,
+    channel: str,
+    bins: int,
+    range: tuple[float, float] | None = None,
+    ax: Axes = None,
+    output: str | Path = None,
+    fig_kwargs: dict[str, Any] = MappingProxyType({}),  # kwargs passed to plt.figure, e.g. dpi, figsize
+    bar_kwargs: Mapping[str, Any] = MappingProxyType({}),  # kwargs passed to ax.bar, e.g. color and alpha
+    **kwargs,
+) -> Axes:
+    """
+    Generate and visualize a histogram for a specified image channel within an image of a `SpatialData` object.
+
+    Parameters
+    ----------
+    sdata
+        The input `SpatialData` object containing the image data.
+    img_layer
+        The name of the image layer within `sdata` to analyze.
+    channel
+        The specific channel of the image data to use for the histogram.
+    bins
+        The number of bins for the histogram.
+    range
+        The range of values for the histogram as `(min, max)`.
+        If not provided, range is simply `(dask.array.nanmin(...), dask.array.nanmax(...))` thus excluding NaN.
+        Values outside the range are ignored.
+    fig_kwargs
+        Additional keyword arguments passed to `plt.figure`, such as `dpi` or `figsize`. Ignored if `ax` is `None`.
+    bar_kwargs
+        Additional keyword arguments passed to `ax.bar`, such as `color` or `alpha`.
+    ax
+        An existing axes object to plot the histogram. If `None`, a new figure and axes will be created.
+    output
+        The path to save the generated plot. If `None`, the plot will not be saved.
+    **kwargs
+        Additional keyword arguments passed to :func:`dask.array.histogram`.
+
+    Returns
+    -------
+        The axes object containing the histogram plot.
+
+    Raises
+    ------
+    AssertionError
+        If `img_layer` is not found in `sdata.images`.
+
+    Examples
+    --------
+    >>> ax = histogram(
+    ...     sdata,
+    ...     img_layer="raw_image_crop_preprocessed",
+    ...     channel="Anti Rabbit (PE C1)",
+    ...     bins=100,
+    ...     range=(0, 1.0),
+    ...     fig_kwargs={"figsize": (5, 5)},
+    ...     bar_kwargs={"color": "blue", "alpha": 0.7},
+    ...     output="histogram.png"
+    ... )
+    """
+    assert img_layer in sdata.images, f"'{img_layer}' not found in 'sdata.images'."
+    se = _get_spatial_element(sdata, layer=img_layer)
+
+    array = se.data[se.c.data.tolist().index(channel)]
+
+    if range is None:
+        range = (da.nanmin(array), da.nanmax(array))
+
+    hist, bin_edges = da.histogram(array, bins=bins, range=range, **kwargs)
+
+    hist, bin_edges = dask.compute(hist, bin_edges)
+
+    # Create axes if not provided
+    if ax is None:
+        fig, ax = plt.subplots(**fig_kwargs)
+
+    # Plot
+    bar_kwargs = dict(bar_kwargs)
+    fig_kwargs = dict(fig_kwargs)
+    color = bar_kwargs.pop("color", "blue")
+    alpha = bar_kwargs.pop("alpha", 0.7)
+    align = bar_kwargs.pop("align", "edge")
+
+    ax.bar(bin_edges[:-1], hist, width=(bin_edges[1] - bin_edges[0]), align=align, alpha=alpha, color=color)
+    ax.set_xlabel("Intensity")
+    ax.set_ylabel("Frequency")
+    ax.set_title(channel)
+
+    if output is not None:
+        fig.savefig(output)
+
+    return ax
 
 
 def calculate_snr(img, nbins=65536):
@@ -37,7 +143,7 @@ def calculate_snr(img, nbins=65536):
 def calculate_snr_ratio(
     sdata,
     table_name="table",
-    image="raw_image",
+    image_names=None,
     block_size=10000,
     channel_names=None,
     cycles=None,
@@ -46,6 +152,8 @@ def calculate_snr_ratio(
     log.debug("Calculating SNR ratio")
     data = []
     table = sdata[table_name]
+    if image_names is None:
+        image_names = sdata.images
     if channel_names is None:
         channel_names = table.var_names
     if cycles:
@@ -55,8 +163,8 @@ def calculate_snr_ratio(
             cycles = cycles
     else:
         cycles = [None] * len(channel_names)
-    for image in sdata.images:
-        for cycle, channel_name in zip(cycles, channel_names):
+    for image in image_names:
+        for cycle, channel_name in zip(cycles, channel_names, strict=True):
             float_block = sdata[image].sel(c=channel_name).data.rechunk(block_size)
             img = float_block.compute()
             snr, signal = calculate_snr(img)
@@ -68,7 +176,7 @@ def calculate_snr_ratio(
     return df_img
 
 
-def snr_ratio(sdata, ax=None, loglog=True, color="black", groupby=None, **kwargs):
+def snr_ratio(sdata, ax=None, loglog=True, color="black", **kwargs):
     """Plot the signal to noise ratio. On the x-axis is the signal intensity and on the y-axis is the SNR-ratio"""
     log.debug("Plotting SNR ratio")
     if ax is None:
@@ -79,8 +187,6 @@ def snr_ratio(sdata, ax=None, loglog=True, color="black", groupby=None, **kwargs
         ax.set_yscale("log", base=2)
 
     # group by "channel" and take the mean of "image" and "cycle"
-    if groupby is None:
-        groupby = ["channel"]
     df_img = df_img.groupby(["channel"]).mean(numeric_only=True)
     # sort by channel
     df_img = df_img.sort_values("channel")
@@ -90,7 +196,7 @@ def snr_ratio(sdata, ax=None, loglog=True, color="black", groupby=None, **kwargs
         cmap = sns.color_palette("viridis", n_colors=len(df_img["cycle"].unique()), as_cmap=True)
         df_img["cycle"] = get_hexes(df_img["cycle"], palette=palette)
     log.debug(df_img.head())
-    _plot_snr_ratio(df_img, ax, color, text_list=sdata.table.var_names)
+    _plot_snr_ratio(df_img, ax, color, text_list=df_img.index.values)
     ax.set_xlabel("Signal intensity")
     ax.set_ylabel("Signal-to-noise ratio")
     # cbar_ax = fig.add_axes([1, 0.1, 0.02, 0.8])
@@ -149,7 +255,7 @@ def group_snr_ratio(sdata, groupby, ax=None, loglog=True, color="black", **kwarg
         df_img["cycle"] = get_hexes(df_img["cycle"], palette=palette)
 
     # Iterate over unique samples and create separate plots
-    for ax, sample in zip(axs.flatten(), df_img.index.levels[0]):
+    for ax, sample in zip(axs.flatten(), df_img.index.levels[0], strict=True):
         if loglog:
             ax.set_xscale("log", base=2)
             ax.set_yscale("log", base=2)
@@ -157,7 +263,7 @@ def group_snr_ratio(sdata, groupby, ax=None, loglog=True, color="black", **kwarg
         sample_df = df_img.loc[sample]
         #     ax = axs[i // 2, i % 2]  # Get the correct subplot
         ax.set_title(sample)
-        _plot_snr_ratio(sample_df, ax, color, text_list=sdata.table.var_names)
+        _plot_snr_ratio(sample_df, ax, color, text_list=sample_df.index.values)
         ax.set_xlabel("Signal intensity")
         ax.set_ylabel("Signal-to-noise ratio")
 
@@ -237,7 +343,7 @@ def calculate_mean_norm(sdata, overwrite=False, c_mask=None, key="normalized_", 
 def get_hexes(col, palette="Set1"):
     if isinstance(palette, str):
         palette = sns.color_palette(palette, n_colors=len(col.unique()))
-    lut = dict(zip(col.unique().astype(str), palette.as_hex()))
+    lut = dict(zip(col.unique().astype(str), palette.as_hex(), strict=True))
     return col.astype(str).map(lut)
 
 
@@ -266,7 +372,27 @@ def snr_clustermap(sdata, signal_threshold=None, fill_value=0, **kwargs):
 def make_cols_colors(df, palettes=None):
     df = df.copy()
     if palettes is None:
-        palettes = [f"Set{i+1}" for i in range(len(df.columns))]
-    for c, p in zip(df.columns, palettes):
+        palettes = [f"Set{i + 1}" for i in range(len(df.columns))]
+    for c, p in zip(df.columns, palettes, strict=True):
         df[c] = get_hexes(df[c], palette=p)
     return df
+
+
+def marker_supervenn(markers_per_image: dict[str, list[str]]):
+    from supervenn import supervenn
+
+    image_names = markers_per_image.keys()
+    marker_set_per_image = [set(v) for v in markers_per_image.values()]
+    plot = supervenn(marker_set_per_image, set_annotations=list(image_names))
+
+    # change axis labels of plot
+    axes = plot.axes
+    axes["main"].set_ylabel("Samples")
+    axes["main"].set_xlabel("Marker names")
+
+    return plot
+
+
+def supervenn_of_images(sdata: SpatialData):
+    markers_per_image = {image: sdata[image].coords["c"].to_numpy().tolist() for image in sdata.images}
+    return marker_supervenn(markers_per_image)

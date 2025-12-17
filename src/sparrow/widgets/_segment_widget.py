@@ -1,8 +1,9 @@
 """Napari widget for cell segmentation of cleaned spatial transcriptomics microscopy images."""
 
 import os
+from collections.abc import Callable
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import napari
 import napari.layers
@@ -15,7 +16,7 @@ from spatialdata import SpatialData, read_zarr
 
 import sparrow.utils as utils
 from sparrow.pipeline import SparrowPipeline
-from sparrow.plot._plot import _translate_polygons
+from sparrow.utils.utils import _translate_polygons
 
 log = utils.get_pylogger(__name__)
 
@@ -39,7 +40,7 @@ def segmentImage(
 def _segmentation_worker(
     sdata: SpatialData,
     method: Callable,
-    fn_kwargs: Dict[str, Any],
+    fn_kwargs: dict[str, Any],
 ) -> SpatialData:
     """Segment image in a thread worker"""
     return method(sdata, **fn_kwargs)
@@ -52,15 +53,15 @@ def _segmentation_worker(
 )
 def segment_widget(
     viewer: napari.Viewer,
-    image: Optional[napari.layers.Image] = None,
-    subset: Optional[napari.layers.Shapes] = None,
+    image: napari.layers.Image | None = None,
+    subset: napari.layers.Shapes | None = None,
     device: str = "cpu",
     min_size: int = 80,
     flow_threshold: float = 0.8,
     diameter: int = 50,
     cellprob_threshold: int = -2,
     model_type: ModelOption = ModelOption.nuclei,
-    channels: List[int] = [1, 0],  # noqa: B006 # magicgui does not accept None
+    channels: list[int] = [1, 0],  # noqa: B006 # magicgui does not accept None
     expand_radius: int = 0,
     chunks: int = 2048,
     depth: int = 100,
@@ -70,7 +71,7 @@ def segment_widget(
     if image is None:
         raise ValueError("Please select an image")
 
-    fn_kwargs: Dict[str, Any] = {}
+    fn_kwargs: dict[str, Any] = {}
 
     pipeline = viewer.layers[utils.CLEAN].metadata["pipeline"]
 

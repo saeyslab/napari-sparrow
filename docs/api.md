@@ -21,11 +21,14 @@ I/O.
 .. autosummary::
     :toctree: generated
 
-    io.create_sdata
+    io.merscope
+    io.xenium
+    io.visium_hd
     io.read_transcripts
     io.read_resolve_transcripts
-    io.read_vizgen_transcripts
+    io.read_merscope_transcripts
     io.read_stereoseq_transcripts
+    io.create_sdata
 
 ```
 
@@ -43,7 +46,7 @@ Operations on image and labels layers.
 
     im.add_image_layer
     im.add_labels_layer
-    im.map_channels_zstacks
+    im.map_image
     im.tiling_correction
     im.enhance_contrast
     im.normalize
@@ -53,17 +56,17 @@ Operations on image and labels layers.
     im.combine
     im.segment
     im.segment_points
+    im.cellpose_callable
+    im.baysor_callable
     im.add_grid_labels_layer
     im.expand_labels_layer
     im.align_labels_layers
-    im.apply_labels_layers
+    im.map_labels
     im.filter_labels_layer
     im.merge_labels_layers
     im.merge_labels_layers_nuclei
     im.rasterize
     im.mask_to_original
-    im.pixel_clustering_preprocess
-    im.flowsom
 ```
 
 ## Shape
@@ -78,6 +81,7 @@ Operations on shapes (polygons) layers.
 .. autosummary::
     :toctree: generated
 
+    sh.vectorize
     sh.add_shapes_layer
     sh.filter_shapes_layer
     sh.create_voronoi_boundaries
@@ -109,10 +113,6 @@ Operations on table (`AnnData` object) layers.
     tb.cluster_cleanliness
     tb.nhood_enrichment
     tb.add_regionprop_features
-    tb.cluster_intensity
-    tb.cell_clustering_preprocess
-    tb.flowsom
-    tb.weighted_channel_expression
 ```
 
 ## Points
@@ -144,9 +144,11 @@ Plotting functions.
 .. autosummary::
     :toctree: generated
 
+    pl.plot
     pl.plot_image
     pl.plot_shapes
     pl.plot_labels
+    pl.histogram
     pl.tiling_correction
     pl.flatfield
     pl.segment
@@ -183,7 +185,7 @@ Plotting functions.
 .. autosummary::
     :toctree: generated
 
-    pl.sanity_plot_transcripts_matrix
+    pl.sanity
     pl.analyse_genes_left_out
     pl.transcript_density
     pl.preprocess_transcriptomics
@@ -206,6 +208,7 @@ Utility functions.
     :toctree: generated
 
     utils.bounding_box_query
+    utils.RasterAggregator
 ```
 
 ## Datasets
@@ -220,13 +223,10 @@ Dataset loaders.
 .. autosummary::
     :toctree: generated
 
-    datasets.cluster_blobs
-    datasets.multisample_blobs
-    datasets.pixie_example
-    datasets.macsima_example
-    datasets.mibi_example
-    datasets.vectra_example
     datasets.resolve_example
+    datasets.merscope_example
+    datasets.xenium_example
+    datasets.visium_hd_example
     datasets.get_registry
     datasets.get_spatialdata_registry
 ```
