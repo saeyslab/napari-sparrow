@@ -14,7 +14,7 @@ from napari.utils.notifications import show_info
 from spatialdata import SpatialData, read_zarr
 
 import sparrow.utils as utils
-from sparrow.pipeline import sparrowPipeline
+from sparrow.pipeline import SparrowPipeline
 from sparrow.shape._shape import add_shapes_layer
 from sparrow.utils.utils import _translate_polygons
 
@@ -23,7 +23,7 @@ log = utils.get_pylogger(__name__)
 
 def allocateImage(
     sdata: SpatialData,
-    pipeline: sparrowPipeline,
+    pipeline: SparrowPipeline,
 ) -> SpatialData:
     """Function representing the allocation step, this calls all the needed functions to allocate the transcripts to the cells."""
     sdata = pipeline.allocate(sdata)
@@ -77,13 +77,17 @@ def allocate_widget(
     try:
         segment_layer = viewer.layers[utils.SEGMENT]
     except KeyError as err:
-        raise RuntimeError(f"Layer with name '{utils.SEGMENT}' is not available") from err
+        raise RuntimeError(
+            f"Layer with name '{utils.SEGMENT}' is not available"
+        ) from err
 
     try:
         pipeline = segment_layer.metadata["pipeline"]
         shapes = segment_layer.metadata["shapes"]
     except KeyError as err:
-        raise RuntimeError("Please run segmentation step before running allocation step.") from err
+        raise RuntimeError(
+            "Please run segmentation step before running allocation step."
+        ) from err
 
     # need to load it back from zarr store, because otherwise not able to overwrite it
     sdata = read_zarr(pipeline.cfg.paths.sdata)
@@ -91,7 +95,9 @@ def allocate_widget(
     # need to add original unfiltered shapes to sdata object at the beginning of the allocation step.
     # otherwise polygons that were filtered out would not be available any more if you do a rerun of the allocation step.
     for shapes_name in [*shapes]:
-        sdata = add_shapes_layer(sdata, input=shapes[shapes_name], output_layer=shapes_name, overwrite=True)
+        sdata = add_shapes_layer(
+            sdata, input=shapes[shapes_name], output_layer=shapes_name, overwrite=True
+        )
 
     # napari widget does not support the type Optional[int], therefore only choose whether there is a header or not,
     # and do same for midcount column
@@ -132,7 +138,7 @@ def allocate_widget(
 
     worker = _allocation_worker(sdata, allocateImage, fn_kwargs=fn_kwargs)
 
-    def add_metadata(sdata: SpatialData, pipeline: sparrowPipeline, layer_name: str):
+    def add_metadata(sdata: SpatialData, pipeline: SparrowPipeline, layer_name: str):
         """Update the polygons, add anndata object to the metadata, so it can be viewed via napari spatialdata plugin, and it becomes visible in next steps."""
         try:
             # if the layer exists, update its data
@@ -143,14 +149,19 @@ def allocate_widget(
         except KeyError:
             log.info(f"Layer '{layer_name}' does not exist.")
 
-        polygons = _translate_polygons(sdata.shapes[pipeline.shapes_layer_name].copy(), to_coordinate_system="global")
+        polygons = _translate_polygons(
+            sdata.shapes[pipeline.shapes_layer_name].copy(),
+            to_coordinate_system="global",
+        )
 
         polygons = utils._get_polygons_in_napari_format(df=polygons)
 
         # we add the polygons again in this step, because some of them are filtered out in the allocate step
         # (i.e. due to size of polygons etc). If we do not update the polygons here, napari complains because
         # number of polygons does not match any more with e.g. number of polygons with a leiden cluster assigned.
-        show_info("Adding updated segmentation shapes, this can be slow on large images...")
+        show_info(
+            "Adding updated segmentation shapes, this can be slow on large images..."
+        )
         viewer.add_shapes(
             polygons,
             name=layer_name,
@@ -170,7 +181,9 @@ def allocate_widget(
 
         utils._export_config(
             pipeline.cfg.allocate,
-            os.path.join(pipeline.cfg.paths.output_dir, "configs", "allocate", "plugin.yaml"),
+            os.path.join(
+                pipeline.cfg.paths.output_dir, "configs", "allocate", "plugin.yaml"
+            ),
         )
 
         show_info("Allocation finished")
@@ -178,7 +191,9 @@ def allocate_widget(
         # Options for napari-spatialData plugin
         viewer.scale_bar.visible = True
 
-    worker.returned.connect(lambda data: add_metadata(data, pipeline, f"{utils.ALLOCATION}"))
+    worker.returned.connect(
+        lambda data: add_metadata(data, pipeline, f"{utils.ALLOCATION}")
+    )
     show_info("Allocation started")
     worker.start()
 
