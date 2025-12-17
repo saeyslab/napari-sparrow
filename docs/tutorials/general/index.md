@@ -7,6 +7,5 @@ On a normal laptop without GPU support, the how to start tutorial takes around 5
 .. toctree::
     :maxdepth: 1
 
-    SPArrOW_quickstart.ipynb
     SPArrOW_how_to_start.ipynb
 ```
