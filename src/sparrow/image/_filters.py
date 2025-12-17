@@ -112,6 +112,7 @@ def min_max_filtering(
 
         # Apply the maximum filter
         max_of_min_t = maximum_filter(minimum_t, size_min_max_filter)
+
         image = image - max_of_min_t
 
         if image_dim == 3:

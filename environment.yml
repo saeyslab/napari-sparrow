@@ -1,4 +1,4 @@
-name: napari-sparrow_arne
+name: napari-sparrow
 channels:
   - conda-forge
 dependencies:
