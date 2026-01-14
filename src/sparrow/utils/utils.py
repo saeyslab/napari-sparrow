@@ -11,10 +11,11 @@ from geopandas import GeoDataFrame
 from omegaconf import OmegaConf
 from omegaconf.dictconfig import DictConfig
 from shapely.affinity import translate
-from shapely.geometry import LineString, MultiLineString
-from spatialdata import SpatialData
 from spatialdata.models import get_axes_names
+from spatialdata.transformations import get_transformation
 from xarray import DataArray, DataTree
+
+from sparrow.utils._transformations import _get_translation_values
 
 
 # https://github.com/scverse/napari-spatialdata/blob/main/src/napari_spatialdata/_viewer.py#L105
@@ -40,7 +41,9 @@ def _get_polygons_in_napari_format(df: GeoDataFrame) -> list:
         for i in range(
             0, len(df)
         ):  # This can be removed once napari is sped up in the plotting. It changes the shapes only very slightly
-            polygons.append(list(df.geometry.iloc[i].exterior.simplify(tolerance=2).coords))
+            polygons.append(
+                list(df.geometry.iloc[i].exterior.simplify(tolerance=2).coords)
+            )
     # this will only work for polygons and not for multipolygons
     # switch x,y positions of polygon indices, napari wants (y,x)
     polygons = _swap_coordinates(polygons)
@@ -48,7 +51,9 @@ def _get_polygons_in_napari_format(df: GeoDataFrame) -> list:
     return polygons
 
 
-def _translate_polygons(polygons: GeoDataFrame, to_coordinate_system: str = "global") -> GeoDataFrame:
+def _translate_polygons(
+    polygons: GeoDataFrame, to_coordinate_system: str = "global"
+) -> GeoDataFrame:
     # get the transformation defined on "global"
     transformations = get_transformation(polygons, get_all=True)
     if to_coordinate_system not in [*transformations]:
@@ -131,5 +136,7 @@ def _get_uint_dtype(value: int) -> str:
     elif max_uint64 >= value:
         dtype = "uint64"
     else:
-        raise ValueError(f"Maximum cell number is {value}. Values higher than {max_uint64} are not supported.")
+        raise ValueError(
+            f"Maximum cell number is {value}. Values higher than {max_uint64} are not supported."
+        )
     return dtype
