@@ -103,18 +103,26 @@ def analyse_genes_left_out(
             )
 
     if labels_layer not in [*sdata.labels]:
-        raise ValueError(f"labels_layer '{labels_layer}' is not a labels layer in `sdata`.")
+        raise ValueError(
+            f"labels_layer '{labels_layer}' is not a labels layer in `sdata`."
+        )
 
     se = _get_spatial_element(sdata, layer=labels_layer)
     crd = _get_boundary(se, to_coordinate_system=to_coordinate_system)
 
-    adata = sdata.tables[table_layer][sdata.tables[table_layer].obs[_REGION_KEY] == labels_layer]
+    adata = sdata.tables[table_layer][
+        sdata.tables[table_layer].obs[_REGION_KEY] == labels_layer
+    ]
 
     ddf = sdata.points[points_layer]
 
-    _identity_check_transformations_points(ddf, to_coordinate_system=to_coordinate_system)
+    _identity_check_transformations_points(
+        ddf, to_coordinate_system=to_coordinate_system
+    )
 
-    ddf = ddf.query(f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}")
+    ddf = ddf.query(
+        f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}"
+    )
 
     _raw_counts = ddf.groupby(name_gene_column).size().compute()
 
@@ -129,7 +137,9 @@ def analyse_genes_left_out(
     if counts_layer is None:
         filtered = pd.DataFrame(np.array(adata.X.sum(axis=0)).flatten() / raw_counts)
     else:
-        filtered = pd.DataFrame(np.array(adata.layers[counts_layer].sum(axis=0)).flatten() / raw_counts)
+        filtered = pd.DataFrame(
+            np.array(adata.layers[counts_layer].sum(axis=0)).flatten() / raw_counts
+        )
 
     filtered = filtered.rename(columns={0: "proportion_kept"})
     filtered[_RAW_COUNTS_KEY] = raw_counts
@@ -138,7 +148,9 @@ def analyse_genes_left_out(
     # first plot:
 
     sns.jointplot(data=filtered, y="proportion_kept", x=f"log_{_RAW_COUNTS_KEY}")
-    plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
+    plt.axvline(
+        filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed"
+    )
     plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
     plt.xlim(left=-0.5, right=filtered[f"log_{_RAW_COUNTS_KEY}"].quantile(0.99))
 
@@ -151,14 +163,16 @@ def analyse_genes_left_out(
     # second plot:
 
     r, p = pearsonr(filtered[f"log_{_RAW_COUNTS_KEY}"], filtered["proportion_kept"])
-    sns.jointplot(x=f"log_{_RAW_COUNTS_KEY}", y="proportion_kept", data=filtered,kind='reg')
+    sns.jointplot(
+        x=f"log_{_RAW_COUNTS_KEY}", y="proportion_kept", data=filtered, kind="reg"
+    )
     ax = plt.gca()
     ax.text(0.7, 0.9, f"r={r:.2f}, p={p:.2g}", transform=ax.transAxes)
 
-    plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
+    plt.axvline(
+        filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed"
+    )
     plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
-    plt.ax_marg_x.axvline(x=filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color='green')
-    plt.ax_marg_y.axhline(y=filtered["proportion_kept"].median(), color="red")
 
     if output:
         plt.savefig(f"{output}_1", bbox_inches="tight")
