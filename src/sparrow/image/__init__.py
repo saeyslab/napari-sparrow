@@ -18,3 +18,6 @@ from .segmentation._merge_masks import (
     merge_labels_layers_nuclei,
 )
 from .segmentation._segmentation import segment, segment_points
+from .segmentation.segmentation_models._baysor import baysor_callable
+from .segmentation.segmentation_models._cellpose import cellpose_callable
+

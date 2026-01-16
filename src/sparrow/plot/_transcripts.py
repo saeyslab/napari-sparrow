@@ -135,36 +135,79 @@ def analyse_genes_left_out(
     filtered[_RAW_COUNTS_KEY] = raw_counts
     filtered[f"log_{_RAW_COUNTS_KEY}"] = np.log(filtered[_RAW_COUNTS_KEY])
 
-    # first plot:
+    #1) first plot:
 
-    sns.jointplot(data=filtered, y="proportion_kept", x=f"log_{_RAW_COUNTS_KEY}")
-    plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
-    plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
-    plt.xlim(left=-0.5, right=filtered[f"log_{_RAW_COUNTS_KEY}"].quantile(0.99))
+    g = sns.jointplot(
+        data=filtered,
+        y="proportion_kept",
+        x=f"log_{_RAW_COUNTS_KEY}",
+    )
+
+    # Main joint axis
+    ax = g.ax_joint
+
+    # Median lines on joint plot
+    ax.axvline(
+        filtered[f"log_{_RAW_COUNTS_KEY}"].median(),
+        color="green",
+        linestyle="dashed",
+    )
+    ax.axhline(
+        filtered["proportion_kept"].median(),
+        color="red",
+        linestyle="dashed",
+    )
+
+    # Median lines on marginal plots
+    g.ax_marg_x.axvline(
+        filtered[f"log_{_RAW_COUNTS_KEY}"].median(),
+        color="green",
+    )
+    g.ax_marg_y.axhline(
+        filtered["proportion_kept"].median(),
+        color="red",
+    )
+
+    # X limits must be set on the joint axis
+    ax.set_xlim(
+        left=-0.5,
+        right=filtered[f"log_{_RAW_COUNTS_KEY}"].quantile(0.99),
+    )
 
     if output:
-        plt.savefig(f"{output}_0", bbox_inches="tight")
+        g.figure.savefig(f"{output}_0", bbox_inches="tight")
     else:
         plt.show()
-    plt.close()
 
-    # second plot:
+    plt.close(g.figure)
+
+
+    # 2) second plot:
 
     r, p = pearsonr(filtered[f"log_{_RAW_COUNTS_KEY}"], filtered["proportion_kept"])
-    sns.jointplot(x=f"log_{_RAW_COUNTS_KEY}", y="proportion_kept", data=filtered,kind='reg')
-    ax = plt.gca()
+    g=sns.jointplot(
+        x=f"log_{_RAW_COUNTS_KEY}",
+        y="proportion_kept",
+        data=filtered,kind='reg',
+        )
+    # Main axis
+    ax = g.ax_joint
     ax.text(0.7, 0.9, f"r={r:.2f}, p={p:.2g}", transform=ax.transAxes)
 
-    plt.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
-    plt.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
-    plt.ax_marg_x.axvline(x=filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color='green')
-    plt.ax_marg_y.axhline(y=filtered["proportion_kept"].median(), color="red")
+
+    # Add marginal lines
+    g.ax_marg_x.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color='green')
+    g.ax_marg_y.axhline(filtered["proportion_kept"].median(), color='red')
+
+    # Add joint dashed lines
+    ax.axvline(filtered[f"log_{_RAW_COUNTS_KEY}"].median(), color="green", linestyle="dashed")
+    ax.axhline(filtered["proportion_kept"].median(), color="red", linestyle="dashed")
 
     if output:
-        plt.savefig(f"{output}_1", bbox_inches="tight")
+        g.figure.savefig(f"{output}_1", bbox_inches="tight")
     else:
         plt.show()
-    plt.close()
+    plt.close(g.figure)
 
     log.info(
         f"The ten genes with the highest proportion of transcripts filtered out in the "
