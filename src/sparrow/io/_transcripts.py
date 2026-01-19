@@ -209,6 +209,7 @@ def read_stereoseq_transcripts(
 def read_cosmx_transcripts(
     sdata: SpatialData,
     path_count_matrix: str | Path,
+    transform_matrix: str | Path | NDArray | None = None,
     output_layer: str = "transcripts",
     to_coordinate_system: str = "global",
     overwrite: bool = False,
@@ -223,18 +224,27 @@ def read_cosmx_transcripts(
     path_count_matrix
         Path to the file containing the transcripts information specific to CosMx.
         Expected to contain x, y, z coordinates and a gene name.
-    output_layer: str, default='transcripts'.
+    output_layer
         Name of the points layer of the SpatialData object to which the transcripts will be added.
+    transform_matrix
+        This `numpy` array should contain a 3x3 transformation matrix for the affine transformation.
+        The matrix defines the linear transformation to be applied to the coordinates of the transcripts before adding it as a points layer to `sdata`.
+        E.g.:
+        | Sx  0  Tx |
+        |  0  Sy  Ty |
+        |  0   0   1 |
+        If no transform matrix is specified, the identity matrix will be used.
+        If `transform_matrix` is specified as a path to a file, it will be read via `numpy.loadtext`.
     to_coordinate_system
         Coordinate system to which `output_layer` will be added.
-    overwrite: bool, default=False
+    overwrite
         If True overwrites the `output_layer` (a points layer) if it already exists.
 
     Returns
     -------
     The updated SpatialData object containing the transcripts.
     """
-    args = (sdata, path_count_matrix)
+    args = (sdata, path_count_matrix, transform_matrix)
     kwargs = {
         "column_x": 5,
         "column_y": 6,
