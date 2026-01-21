@@ -45,6 +45,9 @@ def get_registry(path: str | Path | None = None) -> Pooch:
             "transcriptomics/visium_hd/mouse/visium_hd_mouse_small_intestine.zip": "791938dc972d4b42b255673c08dcb3948ebb66c60eabd1483c2fdb67f001256b",
             "proteomics/mibi_tof/sdata_multi_channel.zarr.zip": "930fd2574666b90d5d6660ad8b52d47afffc9522704b9e6fef39d11c9cfff06e",
             "proteomics/macsima/sdata_multi_channel.zarr.zip": "26187fe62b75c3411f948cbcea52abd24b318992509e768c2ed2f55ddcb99f28",
+            "transcriptomics/xenium/Xenium_V1_humanLung_Cancer_FFPE/Xenium_V1_humanLung_Cancer_FFPE_he_image.ome.tif": "0348c3aeac4be3770fd3385a0cd99c3948b25b8d5e2d853add6c95e07a8baaf1",
+            "transcriptomics/xenium/Xenium_V1_humanLung_Cancer_FFPE/Xenium_V1_humanLung_Cancer_FFPE_he_imagealignment.csv": "9b8e47bf81ca1aa447dc01a476ba6315cdf9ea66d7abb357d91e06ccf67735a7",
+            "transcriptomics/xenium/Xenium_V1_humanLung_Cancer_FFPE/Xenium_V1_humanLung_Cancer_FFPE_outs.zip": "865c3805a959b51514555300df61328fc05055b939b9bece43522b8918314e1d",
         },
     )
     return registry
