@@ -272,7 +272,7 @@ class Preprocess(ProcessTable):
 
             # Filter cells and genes
             if filter_cells:
-                for key, value in filter_cells_kwargs:
+                for key, value in filter_cells_kwargs.items():
                     # filter_cells accepts only one of the optional parameters at a time
                     sc.pp.filter_cells(adata, inplace=True, copy=False, **{key: value})
             if filter_genes:
