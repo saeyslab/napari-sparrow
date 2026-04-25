@@ -62,7 +62,9 @@ def cluster_cleanliness(
         .fillna(0)
     )
     stacked_norm = stacked.div(stacked.sum(axis=1), axis=0)
-    stacked_norm.columns = list(sdata.tables[table_layer].obs[_ANNOTATION_KEY].cat.categories)
+    stacked_norm.columns = list(
+        sdata.tables[table_layer].obs[_ANNOTATION_KEY].cat.categories
+    )
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
     if color_dict:
@@ -84,16 +86,6 @@ def cluster_cleanliness(
     plt.close(fig)
 
     # Tissue image with cells colored by cell type.
-    plot_shapes(
-        sdata=sdata,
-        table_layer=table_layer,
-        img_layer=img_layer,
-        column=celltype_column,
-        alpha=0.8,
-        shapes_layer=shapes_layer,
-        output=output + f"_{celltype_column}" if output else None,
-    )
-
     plot_shapes(
         sdata=sdata,
         table_layer=table_layer,

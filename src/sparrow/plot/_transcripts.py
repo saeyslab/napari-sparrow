@@ -103,18 +103,26 @@ def analyse_genes_left_out(
             )
 
     if labels_layer not in [*sdata.labels]:
-        raise ValueError(f"labels_layer '{labels_layer}' is not a labels layer in `sdata`.")
+        raise ValueError(
+            f"labels_layer '{labels_layer}' is not a labels layer in `sdata`."
+        )
 
     se = _get_spatial_element(sdata, layer=labels_layer)
     crd = _get_boundary(se, to_coordinate_system=to_coordinate_system)
 
-    adata = sdata.tables[table_layer][sdata.tables[table_layer].obs[_REGION_KEY] == labels_layer]
+    adata = sdata.tables[table_layer][
+        sdata.tables[table_layer].obs[_REGION_KEY] == labels_layer
+    ]
 
     ddf = sdata.points[points_layer]
 
-    _identity_check_transformations_points(ddf, to_coordinate_system=to_coordinate_system)
+    _identity_check_transformations_points(
+        ddf, to_coordinate_system=to_coordinate_system
+    )
 
-    ddf = ddf.query(f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}")
+    ddf = ddf.query(
+        f"{crd[0]} <= {name_x} < {crd[1]} and {crd[2]} <= {name_y} < {crd[3]}"
+    )
 
     _raw_counts = ddf.groupby(name_gene_column).size().compute()
 
@@ -129,7 +137,9 @@ def analyse_genes_left_out(
     if counts_layer is None:
         filtered = pd.DataFrame(np.array(adata.X.sum(axis=0)).flatten() / raw_counts)
     else:
-        filtered = pd.DataFrame(np.array(adata.layers[counts_layer].sum(axis=0)).flatten() / raw_counts)
+        filtered = pd.DataFrame(
+            np.array(adata.layers[counts_layer].sum(axis=0)).flatten() / raw_counts
+        )
 
     filtered = filtered.rename(columns={0: "proportion_kept"})
     filtered[_RAW_COUNTS_KEY] = raw_counts
