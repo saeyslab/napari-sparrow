@@ -27,6 +27,7 @@ def preprocess_transcriptomics(
     output_layer: str,
     percent_top: tuple[int, ...] = (2, 5),
     min_counts: int = 10,
+    min_genes: int = 0,
     min_cells: int = 5,
     size_norm: bool = True,
     highly_variable_genes: bool = False,
@@ -62,6 +63,8 @@ def preprocess_transcriptomics(
         List of ranks (where genes are ranked by expression) at which the cumulative proportion of expression will be reported as a percentage.
         Passed to `scanpy.pp.calculate_qc_metrics`.
     min_counts
+        Minimum number of counts a cell should contain to be kept (passed to `scanpy.pp.filter_cells`).
+    min_genes
         Minimum number of genes a cell should contain to be kept (passed to `scanpy.pp.filter_cells`).
     min_cells
         Minimum number of cells a gene should be in to be kept (passed to `scanpy.pp.filter_genes`).
@@ -126,8 +129,8 @@ def preprocess_transcriptomics(
         calculate_pca=True,
         update_shapes_layers=update_shapes_layers,
         shapes_layers_to_filter=shapes_layers_to_filter,
-        qc_kwargs={"percent_top": [2, 5]},
-        filter_cells_kwargs={"min_counts": min_counts},
+        qc_kwargs={"percent_top": percent_top},
+        filter_cells_kwargs={"min_counts": min_counts, "min_genes": min_genes},
         filter_genes_kwargs={"min_cells": min_cells},
         pca_kwargs={"n_comps": n_comps},
         overwrite=overwrite,
