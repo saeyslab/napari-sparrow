@@ -63,6 +63,8 @@ def preprocess_transcriptomics(
         List of ranks (where genes are ranked by expression) at which the cumulative proportion of expression will be reported as a percentage.
         Passed to `scanpy.pp.calculate_qc_metrics`.
     min_counts
+        Minimum number of counts a cell should contain to be kept (passed to `scanpy.pp.filter_cells`).
+    min_genes
         Minimum number of genes a cell should contain to be kept (passed to `scanpy.pp.filter_cells`).
     min_cells
         Minimum number of cells a gene should be in to be kept (passed to `scanpy.pp.filter_genes`).
