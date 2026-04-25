@@ -127,7 +127,7 @@ def preprocess_transcriptomics(
         calculate_pca=True,
         update_shapes_layers=update_shapes_layers,
         shapes_layers_to_filter=shapes_layers_to_filter,
-        qc_kwargs={"percent_top": [2, 5]},
+        qc_kwargs={"percent_top": percent_top},
         filter_cells_kwargs={"min_counts": min_counts, "min_genes": min_genes},
         filter_genes_kwargs={"min_cells": min_cells},
         pca_kwargs={"n_comps": n_comps},
