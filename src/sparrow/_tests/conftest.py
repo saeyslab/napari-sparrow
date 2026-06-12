@@ -9,10 +9,22 @@ from omegaconf import DictConfig
 from spatialdata import read_zarr
 from spatialdata.datasets import blobs
 
-from sparrow.datasets.pixie_example import pixie_example
-from sparrow.datasets.proteomics import mibi_example
 from sparrow.datasets.registry import get_registry
-from sparrow.datasets.transcriptomics import resolve_example, resolve_example_multiple_coordinate_systems
+from sparrow.datasets.transcriptomics import (
+    resolve_example,
+    resolve_example_multiple_coordinate_systems,
+    visium_hd_example_custom_binning,
+)
+
+try:
+    from sparrow.datasets.pixie_example import pixie_example
+except ImportError:
+    pixie_example = None  # type: ignore[assignment]
+
+try:
+    from sparrow.datasets.proteomics import mibi_example
+except ImportError:
+    mibi_example = None  # type: ignore[assignment]
 
 
 @pytest.fixture(scope="function")
@@ -63,6 +75,8 @@ def cfg_pipeline(cfg_pipeline_global, tmp_path):
 
 @pytest.fixture
 def sdata_multi_c(tmpdir):
+    if mibi_example is None:
+        pytest.skip("sparrow.datasets.proteomics not available")
     sdata = mibi_example()
     # backing store for specific unit test
     sdata.write(os.path.join(tmpdir, "sdata.zarr"))
@@ -72,6 +86,8 @@ def sdata_multi_c(tmpdir):
 
 @pytest.fixture
 def sdata_multi_c_no_backed():
+    if mibi_example is None:
+        pytest.skip("sparrow.datasets.proteomics not available")
     sdata = mibi_example()
     yield sdata
 
@@ -113,6 +129,8 @@ def sdata():
 
 @pytest.fixture
 def sdata_pixie():
+    if pixie_example is None:
+        pytest.skip("sparrow.datasets.pixie_example not available")
     sdata = pixie_example()
     yield sdata
 
