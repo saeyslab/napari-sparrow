@@ -10,13 +10,6 @@ from .transcriptomics import (
 )
 
 __all__ = [
-    "cluster_blobs",
-    "multisample_blobs",
-    "pixie_example",
-    "macsima_example",
-    "macsima_tonsil",
-    "mibi_example",
-    "vectra_example",
     "get_ome_registry",
     "get_registry",
     "get_spatialdata_registry",
