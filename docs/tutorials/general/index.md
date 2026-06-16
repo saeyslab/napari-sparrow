@@ -9,4 +9,6 @@ On a normal laptop without GPU support, the how to start tutorial takes around 5
 
     SPArrOW_how_to_start.ipynb
     Merscope_tutorial.ipynb
+    CosMx_tutorial.ipynb
+    visiumhd_tutorial.ipynb
 ```

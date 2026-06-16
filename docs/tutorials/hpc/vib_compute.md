@@ -1,4 +1,4 @@
-# High Performance Computing on the VIB Data Core Compute.
+# High Performance Computing on the VIB Data Core Compute
 
 ## Set up environment
 
