@@ -8,4 +8,6 @@ They are intended for users who are already familiar with the basics of `SPArrOW
     :maxdepth: 1
 
     coordinate_systems.ipynb
+    retrain_cellpose_sparrow_tutorial.ipynb
+    xenium_multistaining_tutorial.ipynb
 ```

@@ -46,7 +46,6 @@ Operations on image and labels layers.
 
     im.add_image_layer
     im.add_labels_layer
-    im.map_image
     im.tiling_correction
     im.enhance_contrast
     im.normalize
@@ -61,7 +60,6 @@ Operations on image and labels layers.
     im.add_grid_labels_layer
     im.expand_labels_layer
     im.align_labels_layers
-    im.map_labels
     im.filter_labels_layer
     im.merge_labels_layers
     im.merge_labels_layers_nuclei
@@ -144,11 +142,9 @@ Plotting functions.
 .. autosummary::
     :toctree: generated
 
-    pl.plot
     pl.plot_image
     pl.plot_shapes
     pl.plot_labels
-    pl.histogram
     pl.tiling_correction
     pl.flatfield
     pl.segment
@@ -224,8 +220,6 @@ Dataset loaders.
     :toctree: generated
 
     datasets.resolve_example
-    datasets.merscope_example
-    datasets.xenium_example
     datasets.visium_hd_example
     datasets.get_registry
     datasets.get_spatialdata_registry
