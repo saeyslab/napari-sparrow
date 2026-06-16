@@ -128,6 +128,31 @@ def sdata():
 
 
 @pytest.fixture
+def sdata_blobs():
+    # Define the channel names used by tests that rely on blob image fixtures.
+    # These names must match the c_coords passed to blobs() so that .sel(c=channel_name) works.
+    c_coords = [
+        "nucleus",
+        "lineage_0",
+        "lineage_1",
+        "lineage_2",
+        "lineage_3",
+        "lineage_4",
+        "lineage_5",
+        "lineage_6",
+        "lineage_7",
+        "lineage_8",
+        "lineage_9",
+    ]
+    sdata = blobs(length=64, n_channels=len(c_coords), c_coords=c_coords)
+    # blobs() stores table var_names as "channel_{name}_sum" by default, but tests and
+    # calculate_snr_ratio look up channels by bare name (e.g. "nucleus").
+    # Renaming the index makes table.var_names consistent with the image channel names.
+    sdata["table"].var.index = c_coords
+    yield sdata
+
+
+@pytest.fixture
 def sdata_pixie():
     if pixie_example is None:
         pytest.skip("sparrow.datasets.pixie_example not available")

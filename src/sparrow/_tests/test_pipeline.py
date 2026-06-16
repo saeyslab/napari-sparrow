@@ -8,9 +8,12 @@ from hydra.core.hydra_config import HydraConfig
 from sparrow.single import main
 
 
+# Skip the full pipeline test when any of its required optional libraries are absent.
 @pytest.mark.skipif(
-    not importlib.util.find_spec("cellpose") or not importlib.util.find_spec("basicpy"),
-    reason="requires the cellpose and basicpy libraries",
+    not importlib.util.find_spec("cellpose")
+    or not importlib.util.find_spec("basicpy")
+    or not importlib.util.find_spec("squidpy"),
+    reason="requires the cellpose, basicpy and squidpy libraries",
 )
 def test_pipeline(cfg_pipeline):
     HydraConfig().set_config(cfg_pipeline)

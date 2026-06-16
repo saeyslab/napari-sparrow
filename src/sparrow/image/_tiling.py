@@ -32,6 +32,10 @@ except ImportError:
 try:
     import squidpy as sq
 except ImportError:
+    # Assign None so that the name 'sq' always exists in module scope.
+    # Without this, any reference to sq inside tiling_correction would raise
+    # NameError instead of a clear ImportError with installation instructions.
+    sq = None  # type: ignore[assignment]
     log.warning("'squidpy' not installed, to use 'sparrow.im.tiling_correction' please install this library.")
 
 
@@ -87,6 +91,15 @@ def tiling_correction(
     to stitch tiles together. It manages the pre- and post-processing of data, translation of coordinates,
     and addition of corrected image results back to the `sdata` object.
     """
+    # Guard against sq being None (squidpy not installed) before any sq usage below.
+    # Raising ImportError here gives a clear actionable message instead of an
+    # AttributeError or NameError deep inside the function body.
+    if sq is None:
+        raise ImportError(
+            "'squidpy' is required for tiling_correction. "
+            "Install it with: pip install squidpy"
+        )
+
     if img_layer is None:
         img_layer = [*sdata.images][-1]
         log.warning(

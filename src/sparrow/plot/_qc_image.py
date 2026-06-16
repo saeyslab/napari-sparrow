@@ -25,6 +25,10 @@ try:
     import textalloc as ta
 
 except ImportError:
+    # Assign None so that 'ta' always exists in module scope.
+    # Without this, calling _plot_snr_ratio when textalloc is absent would raise
+    # NameError instead of falling back to the built-in annotate path below.
+    ta = None  # type: ignore[assignment]
     log.warning(
         "'textalloc' not installed, to use 'sparrow.pl.group_snr_ratio' and 'sparrow.pl.snr_ratio', please install this library."
     )
@@ -164,8 +168,12 @@ def calculate_snr_ratio(
     else:
         cycles = [None] * len(channel_names)
     for image in image_names:
+        # Use _get_spatial_element instead of sdata[image] directly so that multiscale
+        # images (DataTree / blobs_multiscale_image) are resolved to a plain DataArray.
+        # sdata[image] on a multiscale image returns a DataTree which has no .sel() or .data.
+        se = _get_spatial_element(sdata, layer=image)
         for cycle, channel_name in zip(cycles, channel_names, strict=True):
-            float_block = sdata[image].sel(c=channel_name).data.rechunk(block_size)
+            float_block = se.sel(c=channel_name).data.rechunk(block_size)
             img = float_block.compute()
             snr, signal = calculate_snr(img)
             if signal_threshold and signal < signal_threshold:
@@ -228,7 +236,15 @@ def _plot_snr_ratio(df, ax, color, text_list):
         # use textalloc to add channel names
     x = df["signal"]
     y = df["snr"]
-    ta.allocate(ax, x=x, y=y, text_list=text_list, x_scatter=x, y_scatter=y)
+    # Use textalloc for non-overlapping label placement if the library is available
+    if ta is not None:
+        ta.allocate(ax, x=x, y=y, text_list=text_list, x_scatter=x, y_scatter=y)
+    # If the textalloc library is absent, fall back to plain ax.annotate so the function still works without it.
+    # This will place labels directly at their data coordinates (signal, snr), 
+    # which may result in overlapping labels in dense plots, but ensures that all labels are shown.
+    else:
+        for xi, yi, label in zip(x, y, text_list):
+            ax.annotate(label, (xi, yi))
     # ax.set_xlabel("Signal intensity")
     # ax.set_ylabel("Signal-to-noise ratio")
     return ax
