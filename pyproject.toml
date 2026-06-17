@@ -30,7 +30,7 @@ dependencies = [
     "spatialdata==0.4.0",
     "numpy<2",
     "distributed",
-    "spatialdata-io>=0.5.0,<0.6.0",
+    "spatialdata-io>=0.6.0",
     "scanpy>=1.9.1",
     "voronoi-diagram-for-polygons>=0.1.6",
     "rasterio>=1.3.2",
@@ -75,6 +75,14 @@ testing = [
     "pytest-cov",
     "tox",
     "nbconvert",
+]
+notebooks = [
+    "ipykernel>=6.29",
+    "jupyter>=1.0.0",
+    "notebook>=7.0.0",
+    "nbformat>=5.10.0",
+    "nbconvert>=7.0.0",
+    "ipython>=8.6.0",
 ]
 tiling = [
     "jax>=0.4.6,<=0.4.23",
