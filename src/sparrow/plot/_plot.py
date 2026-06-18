@@ -35,7 +35,7 @@ def plot_image(
     to_coordinate_system: str = "global",
     output: str | Path | None = None,
     **kwargs: dict[str, Any],
-) -> None:
+) -> Axes | np.ndarray:
     """
     Plot an image based on given parameters.
 
@@ -58,12 +58,18 @@ def plot_image(
     **kwargs
         Additional arguments to be passed to the :func:`sparrow.pl.plot_shapes` function.
 
+    Returns
+    -------
+    matplotlib.axes.Axes or numpy.ndarray
+        The matplotlib axes object(s) used for the plot, which can be customized after plotting.
+
     See Also
     --------
     sparrow.pl.plot_shapes
     sparrow.pl.plot
     """
-    plot_shapes(
+    # Delegate to the shared plotting implementation and return the created axes object.
+    return plot_shapes(
         sdata,
         img_layer=img_layer,
         shapes_layer=None,
@@ -84,7 +90,7 @@ def plot_labels(
     to_coordinate_system: str = "global",
     output: str | Path | None = None,
     **kwargs: dict[str, Any],
-) -> None:
+) -> Axes | np.ndarray:
     """
     Plot a labels layer (masks) based on given parameters.
 
@@ -105,12 +111,18 @@ def plot_labels(
     **kwargs
         Additional arguments to be passed to the :func:`sparrow.pl.plot_shapes` function.
 
+    Returns
+    -------
+    matplotlib.axes.Axes or numpy.ndarray
+        The matplotlib axes object(s) used for the plot, which can be customized after plotting.
+
     See Also
     --------
     sparrow.pl.plot_shapes
     sparrow.pl.plot
     """
-    plot_shapes(
+    # Delegate to the shared plotting implementation and return the created axes object.
+    return plot_shapes(
         sdata,
         labels_layer=labels_layer,
         shapes_layer=None,
@@ -152,7 +164,7 @@ def plot_shapes(
     figsize: tuple[int, int] | None = None,
     fig_kwargs: Mapping[str, Any] = MappingProxyType({}),
     output: str | Path | None = None,
-) -> None:
+) -> Axes | np.ndarray:
     """
     Plots a SpatialData object.
 
@@ -261,6 +273,11 @@ def plot_shapes(
         Keyword arguments passed to the `.pyplot.figure` call. E.g. `dpi`.
     output
         Path to save the plot. If not provided, plot will be displayed.
+
+    Returns
+    -------
+    matplotlib.axes.Axes or numpy.ndarray
+        The matplotlib axes object(s) used for the plot, which can be customized after plotting.
 
     Raises
     ------
@@ -407,13 +424,19 @@ def plot_shapes(
             )
             idx += 1
 
+    # Tighten the layout before optionally saving or displaying the figure.
     plt.tight_layout()
-    # Save the plot to output
+
+    # Save the plot to output when requested. If no output path is given,
+    # return the axes for the caller to customize and display themselves.
     if output:
         fig.savefig(output)
-    else:
-        plt.show()
-    plt.close()
+
+    # Return the matplotlib axes object(s) for post-processing by the caller.
+    if nr_of_rows == 1 and nr_of_columns == 1:
+        return axes[0]
+
+    return axes
 
 
 def plot(
