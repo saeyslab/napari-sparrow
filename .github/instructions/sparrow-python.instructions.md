@@ -7,6 +7,9 @@ applyTo: "**/*.py"
 
 ## Commenting & Annotation (Highest Priority)
 
+If you are trying to adjust Jupyter Notebooks in the repository, check if the adjustments actually stuck. If they did not stick, either find a way to make them stick or show the code changes in the Copilot chat.
+
+
 Every meaningful line of code **must** have at least one comment line directly above it explaining what the code is doing. This is the single most important rule in this codebase.
 
 ```python
