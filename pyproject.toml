@@ -74,8 +74,9 @@ testing = [
     "pytest-cov",
     "tox",
     "nbconvert",
+    "torch"
 ]
-notebooks = [
+notebook = [
     "ipykernel>=6.29",
     "jupyter>=1.0.0",
     "notebook>=7.0.0",
@@ -105,6 +106,9 @@ docs = [
     "ipython>=8.6.0",
     "sphinx-copybutton",
 ]
+dev = [
+    "sparrow[testing,notebook]"
+]
 
 [project.scripts]
 sparrow = "sparrow.single:main"
@@ -114,6 +118,25 @@ sparrow = "sparrow:napari.yaml"
 
 [tool.uv.build-backend]
 source-dir = "src"
+
+[tool.uv.sources]
+# Route torch to the CUDA 12.4 index on Windows/Linux (GPU systems), CPU-only index on macOS.
+# The "explicit = true" flag ensures these indexes are only used for packages listed here,
+# so other packages continue to resolve from PyPI as normal.
+torch = [
+    { index = "pytorch-cu124", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+    { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.coverage.run]
 omit = ["src/sparrow/_tests/*", "experiments/*", "src/sparrow/widgets/*" ]
