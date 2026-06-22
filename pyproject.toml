@@ -106,8 +106,11 @@ docs = [
     "ipython>=8.6.0",
     "sphinx-copybutton",
 ]
+riox = [
+  "rioxarray>=0.15.0"
+]
 dev = [
-    "sparrow[testing,notebook]"
+    "sparrow[testing,notebook,riox]"
 ]
 
 [project.scripts]
