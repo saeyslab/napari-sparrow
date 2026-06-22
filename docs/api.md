@@ -28,6 +28,7 @@ I/O.
     io.read_resolve_transcripts
     io.read_merscope_transcripts
     io.read_stereoseq_transcripts
+    io.read_cosmx_transcripts
     io.create_sdata
 
 ```
@@ -46,6 +47,8 @@ Operations on image and labels layers.
 
     im.add_image_layer
     im.add_labels_layer
+    im.map_image
+    im.map_labels
     im.tiling_correction
     im.enhance_contrast
     im.normalize
@@ -83,6 +86,7 @@ Operations on shapes (polygons) layers.
     sh.add_shapes_layer
     sh.filter_shapes_layer
     sh.create_voronoi_boundaries
+    sh.intersect_rectangles
 ```
 
 ## Table
@@ -99,6 +103,7 @@ Operations on table (`AnnData` object) layers.
 
     tb.add_table_layer
     tb.allocate
+    tb.bin_counts
     tb.allocate_intensity
     tb.preprocess_transcriptomics
     tb.preprocess_proteomics
@@ -165,10 +170,16 @@ Plotting functions.
     pl.snr_clustermap
     pl.signal_clustermap
     pl.clustermap
+    pl.histogram
+    pl.marker_supervenn
+    pl.supervenn_of_images
 
     pl.segmentation_coverage
     pl.segmentation_size_boxplot
     pl.segments_per_area
+
+    pl.plot_adata
+    pl.ridgeplot_channel
 ```
 
 ### Transcriptomics plots
@@ -220,7 +231,11 @@ Dataset loaders.
     :toctree: generated
 
     datasets.resolve_example
+    datasets.merscope_example
+    datasets.xenium_example
     datasets.visium_hd_example
+    datasets.vizgen_example
     datasets.get_registry
+    datasets.get_ome_registry
     datasets.get_spatialdata_registry
 ```
