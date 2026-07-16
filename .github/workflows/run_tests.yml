@@ -14,6 +14,8 @@ on:
     paths:
       - "src/sparrow/**"
       - ".github/workflows/run_tests.yml"
+      - ".gitmodules"               # if the submodule URL changes, we need to re-run the tests to make sure the new submodule is valid
+      - ".readthedocs.yaml"         # if the docs build config changes, we need to re-run the tests to make sure the new config is valid
 
 env:
   CACHE_NUMBER: 1 # increase to reset cache manually
@@ -27,7 +29,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive     # tells GitHub Actions to fetch all submodules and keep following submodules inside submodules
+          lfs: true                 # When enabled, checkout attempts to download the real LFS content instead of leaving those pointer files behind.
 
       # these libraries enable testing on Qt on linux
       - uses: tlambert03/setup-qt-libs@v1
@@ -77,3 +82,20 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+      
+      # The explicit git -C docs/tutorials lfs pull is useful even with lfs: true,
+      # because it makes the submodule behavior clear and fails early if the LFS payload is unavailable.
+      - name: Pull tutorial LFS content
+        shell: bash
+        run: git -C docs/tutorials lfs pull
+      
+      # Validate that the tutorial content is present and that there are no unresolved Git LFS pointer files
+      - name: Validate tutorial content
+        shell: bash
+        run: |
+          test -f docs/tutorials/general/SPArrOW_how_to_start.ipynb
+      
+          if grep -R -n "version https://git-lfs.github.com/spec/v1" docs/tutorials; then
+            echo "Unresolved Git LFS pointer files found"
+            exit 1
+          fi

@@ -1,0 +1,62 @@
+name: Build documentation
+
+# Validate documentation changes in pull requests and on the main branch.
+# Manual runs are useful when testing Read the Docs or tutorial changes.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Documentation only needs read access to the repository and its public submodule.
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      # The tutorials are a Git submodule. LFS is enabled because the notebooks
+      # and media in that submodule are stored outside its normal Git objects.
+      - name: Check out repository and tutorials
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: true
+
+      # Explicitly pull LFS content in the submodule. This is kept separate from
+      # checkout so a missing or unavailable LFS object fails at a clear point.
+      - name: Pull tutorial LFS content
+        shell: bash
+        run: git -C docs/tutorials lfs pull
+
+      # Sphinx/MyST-NB needs actual notebook JSON, not Git LFS pointer files.
+      - name: Check for unresolved LFS pointers
+        shell: bash
+        run: |
+          if grep -R -n "version https://git-lfs.github.com/spec/v1" docs/tutorials; then
+            echo "Unresolved Git LFS pointer files found"
+            exit 1
+          fi
+
+      # Use the same Python version as the documentation environment.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Install the package and its documentation extra so Sphinx can import
+      # the project and load all configured documentation extensions.
+      - name: Install documentation dependencies
+        run: python -m pip install -e ".[docs]"
+
+      # Building the HTML documentation
+      # --keep-going reports all warnings before failing, which makes broken links and missing tutorial files easier to fix.
+      - name: Build documentation
+        run: |
+          python -m sphinx -T --keep-going \
+            -b html \
+            docs \
+            docs/_build/html

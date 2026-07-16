@@ -5,6 +5,20 @@ build:
   os: ubuntu-24.04
   tools:
     python: "3.11.15"
+  apt_packages:
+    - git-lfs
+  jobs:
+    post_checkout:
+      # install git lfs and pull the large files for the tutorials submodule
+      # This way Sphinx can actually process the notebook JSONs
+      - git -C docs/tutorials lfs install --local
+      - git -C docs/tutorials lfs pull
+      # check for unresolved git lfs pointer files in the tutorials submodule
+      - |
+        if grep -R -n "version https://git-lfs.github.com/spec/v1" docs/tutorials; then
+          echo "Unresolved Git LFS pointer files found"
+          exit 1
+        fi
 
 conda:
   environment: environment.yml
@@ -23,5 +37,4 @@ python:
     - method: pip
       path: .
       extra_requirements:
-        - dev
         - docs
