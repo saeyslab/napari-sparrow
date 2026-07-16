@@ -58,4 +58,4 @@ ipython kernel install --user --name napari-sparrow --display-name "napari-sparr
 
 Now on [https://compute.vib.be](https://compute.vib.be/pun/sys/dashboard/batch_connect/sys/jupyter-gpu/session_contexts/new), start a JupyterLab on GPU (select Python 3.10); check the conda environment box; select Mamba as the system wide Conda Module; fill in `napari-sparrow` as the name of the Custom Conda Environment.
 
-You should now be able to run the notebook [SPArrOW_quickstart.ipynb](../general/SPArrOW_quickstart.ipynb) in an interactive session on the VIB compute cluster.
+You should now be able to run the notebook [SPArrOW How To Start tutorial](../general/SPArrOW_how_to_start.ipynb) in an interactive session on the VIB compute cluster.

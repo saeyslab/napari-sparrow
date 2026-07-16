@@ -22,12 +22,6 @@ def run_notebook(notebook_path, timeout=600):
     not importlib.util.find_spec("cellpose"),
     reason="requires the cellpose library",
 )
-@pytest.mark.parametrize(
-    "notebook",
-    [
-        "SPArrOW_quickstart.ipynb",
-    ],
-)
 def test_notebooks_sparrow_transcriptomics(notebook):
     root = str(pyrootutils.setup_root(os.getcwd(), dotenv=True, pythonpath=True))
 
