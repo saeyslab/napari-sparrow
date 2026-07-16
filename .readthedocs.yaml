@@ -1,5 +1,6 @@
 # https://docs.readthedocs.io/en/stable/config-file/v2.html
 version: 2
+
 build:
   os: ubuntu-24.04
   tools:
@@ -7,6 +8,11 @@ build:
 
 conda:
   environment: environment.yml
+
+submodules:
+  include:
+    - docs/tutorials
+  recursive: false    # only needed if harpy_notebooks itself has submodules
 
 sphinx:
   configuration: docs/conf.py
@@ -17,4 +23,5 @@ python:
     - method: pip
       path: .
       extra_requirements:
+        - dev
         - docs
