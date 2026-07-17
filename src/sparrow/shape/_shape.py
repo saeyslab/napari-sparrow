@@ -168,9 +168,8 @@ def intersect_rectangles(rect1: list[int | float], rect2: list[int | float]) -> 
 
     Returns
     -------
-    Optional[List[int | float]]
-        List representing the intersection rectangle [x_min, x_max, y_min, y_max],
-        or None if the rectangles do not overlap.
+    List representing the intersection rectangle [x_min, x_max, y_min, y_max],
+    or None if the rectangles do not overlap.
     """
     overlap_x = not (rect1[1] <= rect2[0] or rect2[1] <= rect1[0])
     overlap_y = not (rect1[3] <= rect2[2] or rect2[3] <= rect1[2])

@@ -60,8 +60,7 @@ def plot_image(
 
     Returns
     -------
-    matplotlib.axes.Axes or numpy.ndarray
-        The matplotlib axes object(s) used for the plot, which can be customized after plotting.
+    The matplotlib axes object(s) used for the plot, which can be customized after plotting.
 
     See Also
     --------
@@ -113,8 +112,7 @@ def plot_labels(
 
     Returns
     -------
-    matplotlib.axes.Axes or numpy.ndarray
-        The matplotlib axes object(s) used for the plot, which can be customized after plotting.
+    The matplotlib axes object(s) used for the plot, which can be customized after plotting.
 
     See Also
     --------
@@ -276,8 +274,7 @@ def plot_shapes(
 
     Returns
     -------
-    matplotlib.axes.Axes or numpy.ndarray
-        The matplotlib axes object(s) used for the plot, which can be customized after plotting.
+    The matplotlib axes object(s) used for the plot, which can be customized after plotting.
 
     Raises
     ------
