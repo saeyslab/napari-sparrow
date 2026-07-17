@@ -159,9 +159,6 @@ Plotting functions.
 
 ```{eval-rst}
 
-.. module:: sparrow.pl
-.. currentmodule:: sparrow
-
 .. autosummary::
     :toctree: generated
 
@@ -185,9 +182,6 @@ Plotting functions.
 ### Transcriptomics plots
 
 ```{eval-rst}
-
-.. module:: sparrow.pl
-.. currentmodule:: sparrow
 
 .. autosummary::
     :toctree: generated
