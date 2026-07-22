@@ -2,50 +2,48 @@
 
 ## Setting up a development environment
 
-First clone the GitHub repo and set it as the current directory:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and clone the GitHub repository:
 
 ```bash
 git clone https://github.com/saeyslab/napari-sparrow.git
 cd napari-sparrow
 ```
 
-Create a conda virtual environment as explained [here](./installation.md) and install `SPArrOW`.
+The project requires Python 3.11.15. Create the virtual environment and install the development dependencies:
 
 ```bash
-conda activate napari-sparrow
-pip install -e '.[testing,docs]'
+uv python install 3.11.15
+uv venv --python 3.11.15
+uv sync --extra dev
 ```
 
-This development environment is supported for:
-
-- CentOS
-- Ubuntu
-- MacOS with an M1/M2 Pro
-- Windows 11
+The `dev` extra includes the testing, notebook, and `rioxarray` dependencies. Use `uv run` to execute commands in the project environment without activating it.
 
 ## Testing
 
 To run unit tests, run the following from the root of the project:
 
 ```bash
-pytest
+uv run --no-sync pytest
 ```
 
 Continuous integration will automatically run the tests on all pull requests.
 
-### Type testing
+## Automated checks
 
-Do a type test:
+Install pre-commit as a uv-managed tool and enable the repository hooks:
 
-```
-mypy --ignore-missing-imports src/
-```
-
-## Automated commit checks
-
-Install a pre-commit hook to run all configured checks in `.pre-commit-config.yaml`:
-
-```
+```bash
+uv tool install pre-commit
 pre-commit install
-pre-commit run -a
+pre-commit run --all-files
+```
+
+## Documentation contributions
+
+The HTML build is only needed when changing or validating the documentation. Add the `docs` extra to the development environment, then build the local HTML documentation:
+
+```bash
+uv sync --extra dev --extra docs
+uv run --no-sync python -m sphinx -T --keep-going -b html docs docs/_build/html
 ```
