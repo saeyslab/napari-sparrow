@@ -8,7 +8,7 @@ build:
   apt_packages:
     - git-lfs
   jobs:
-    post_checkout:
+    pre_build:
       # install git lfs and pull the large files for the tutorials submodule
       # This way Sphinx can actually process the notebook JSONs
       - git -C docs/tutorials lfs install --local
