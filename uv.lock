@@ -4137,6 +4137,7 @@ tiling = [
     { name = "basicpy" },
     { name = "jax" },
     { name = "jaxlib" },
+    { name = "opencv-python" },
 ]
 
 [package.metadata]
@@ -4178,6 +4179,7 @@ requires-dist = [
     { name = "numpy", specifier = "<2" },
     { name = "omegaconf", specifier = "==2.3.0" },
     { name = "opencv-python", marker = "extra == 'testing'" },
+    { name = "opencv-python", marker = "extra == 'tiling'" },
     { name = "pyarrow", specifier = "<=21.0.0" },
     { name = "pyrootutils" },
     { name = "pytest", marker = "extra == 'testing'" },

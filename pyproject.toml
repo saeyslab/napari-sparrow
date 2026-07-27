@@ -88,6 +88,7 @@ tiling = [
     "jax>=0.4.6,<=0.4.23",
     "jaxlib>=0.4.6,<=0.4.23",
     "basicpy==1.0.0",
+    "opencv-python",
 ]
 cli = [
     "hydra-core>=1.2.0",

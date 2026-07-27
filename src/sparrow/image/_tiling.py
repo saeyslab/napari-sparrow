@@ -17,26 +17,43 @@ from sparrow.utils.pylogger import get_pylogger
 log = get_pylogger(__name__)
 
 try:
-    import jax.numpy as jnp
     from basicpy import BaSiC
 except ImportError:
+    # Assign None to BaSiC to avoid NameError in the function signature, but ignore type checking for this assignment.
+    # Without assigning None, the function could later fail with an unclear NameError when it tried to use BaSiC
+    BaSiC = None  # type: ignore[assignment,misc]
     log.warning(
-        "'jax' or 'basicpy' not installed, to use 'sparrow.im.tiling_correction', please install these libraries."
+        "'basicpy' not installed, to use 'sparrow.im.tiling_correction', please install this library."
     )
 
 try:
     import cv2
 except ImportError:
+    # Assign None to cv2 to avoid NameError in the function signature, but ignore type checking for this assignment.
+    cv2 = None  # type: ignore[assignment]
     log.warning("'OpenCV (cv2)' not installed, to use 'sparrow.im.tiling_correction' please install this library.")
 
-try:
-    import squidpy as sq
-except ImportError:
-    # Assign None so that the name 'sq' always exists in module scope.
-    # Without this, any reference to sq inside tiling_correction would raise
-    # NameError instead of a clear ImportError with installation instructions.
-    sq = None  # type: ignore[assignment]
-    log.warning("'squidpy' not installed, to use 'sparrow.im.tiling_correction' please install this library.")
+
+def _materialize_array(array: np.ndarray | da.Array) -> np.ndarray:
+    """Convert a possibly lazy image array to a NumPy array."""
+    # Evaluate a Dask-backed image slice before passing it to NumPy-only dependencies.
+    if isinstance(array, da.Array):
+        array = array.compute()
+
+    # Normalize the resulting image slice to a plain NumPy array.
+    return np.asarray(array)
+
+
+def _stitch_tiles(tiles: np.ndarray, tile_rows: int, tile_columns: int) -> np.ndarray:
+    """Reassemble row-major square tiles into a two-dimensional image."""
+    # Group tiles by their row and column positions before moving pixel axes next to each other.
+    tiled = tiles.reshape(tile_rows, tile_columns, tiles.shape[1], tiles.shape[2])
+
+    # Flatten the interleaved tile grid into the original image height and width.
+    return tiled.transpose(0, 2, 1, 3).reshape(
+        tile_rows * tiles.shape[1],
+        tile_columns * tiles.shape[2],
+    )
 
 
 def tiling_correction(
@@ -91,13 +108,11 @@ def tiling_correction(
     to stitch tiles together. It manages the pre- and post-processing of data, translation of coordinates,
     and addition of corrected image results back to the `sdata` object.
     """
-    # Guard against sq being None (squidpy not installed) before any sq usage below.
-    # Raising ImportError here gives a clear actionable message instead of an
-    # AttributeError or NameError deep inside the function body.
-    if sq is None:
+    # Guard against missing optional dependencies before any image processing starts.
+    if BaSiC is None or cv2 is None:
         raise ImportError(
-            "'squidpy' is required for tiling_correction. "
-            "Install it with: pip install squidpy"
+            "'basicpy' and 'opencv-python' are required for tiling_correction. "
+            "Install them with: `uv sync --extra tiling`"
         )
 
     if img_layer is None:
@@ -128,29 +143,34 @@ def tiling_correction(
         crd = _substract_translation_crd(spatial_image=se, crd=crd, to_coordinate_system=to_coordinate_system)
         tx, ty = _get_translation(se, to_coordinate_system=to_coordinate_system)
 
+    # Calculate the number of complete tiles along each spatial dimension.
+    tile_rows = se.sizes["y"] // tile_size
+    tile_columns = se.sizes["x"] // tile_size
+
+    # Keep corrected channel results and BaSiC flatfields in channel order.
     result_list = []
     flatfields = []
 
-    for channel in se.c.data:
-        channel_idx = list(se.c.data).index(channel)
-        ic = sq.im.ImageContainer(se.isel(c=channel_idx), layer=img_layer)
+    for channel_idx, channel in enumerate(se.c.data):
+        # Materialize one channel so BaSiC can fit the illumination model on its tiles.
+        channel_data = _materialize_array(se.isel(c=channel_idx).data)
 
-        # Create the tiles
-        tiles = ic.generate_equal_crops(size=tile_size, as_array=img_layer)
+        # Extract tiles in the same row-major order used by Squidpy's image container.
+        # The intermediate reshape has this conceptual layout: (row, pixel_y, column, pixel_x)
+        tiles = channel_data.reshape(tile_rows, tile_size, tile_columns, tile_size)
+        # The transpose changes it to: (row, column, pixel_y, pixel_x) so that the final reshape flattens the first two axes into a single tile index.
+        tiles = tiles.transpose(0, 2, 1, 3).reshape(-1, tile_size, tile_size)
+
+        # Shift completely black tiles so BaSiC can process them without changing their output later.
+        # The reason for the shift is that BaSiC should not interpret a completely black background tile as an illumination pattern.
         tiles = np.array([tile + 1 if ~np.any(tile) else tile for tile in tiles])
-        black = np.array([1 if ~np.any(tile - 1) else 0 for tile in tiles])
+        # After shifting an all-zero tile by one, the code identifies it with a boolean mask so it can be restored to its original state after BaSiC processing.
+        black = np.all(tiles == 1, axis=(1, 2))
 
-        # create the masks for inpainting
-        i_mask = (
-            np.block(
-                [
-                    list(tiles[i : i + (ic.shape[1] // tile_size)])
-                    for i in range(0, len(tiles), ic.shape[1] // tile_size)
-                ]
-            ).astype(np.uint16)
-            == 0
-        )
+        # Mark zero-valued pixels inside non-black tiles for inter-tile inpainting.
+        i_mask = _stitch_tiles(tiles == 0, tile_rows, tile_columns).astype(np.uint8)
 
+        # Fit BaSiC to estimate and remove per-tile illumination variation.
         basic = BaSiC(smoothness_flatfield=1)
         basic.fit(tiles)
         if np.isnan(basic._reweight_score).item():
@@ -159,63 +179,47 @@ def tiling_correction(
                 "Illumination correction will be skipped. Continuing with inpainting. Please consider using a larger image ( more tiles )."
             )
             flatfields.append(None)
+            # Making sure inpainting can still be performed even when illumination correction is unavailable for a particular channel
             tiles_corrected = tiles
         else:
             flatfields.append(basic.flatfield)
             tiles_corrected = basic.transform(tiles)
 
-        tiles_corrected = np.array(
-            [tiles[number] if black[number] == 1 else tile for number, tile in enumerate(tiles_corrected)]
-        )
+        # Restore completely black tiles because they are background rather than illumination samples.
+        tiles_corrected = np.asarray(tiles_corrected)
+        tiles_corrected[black] = tiles[black]
 
-        # Stitch the tiles back together
-        i_new = np.block(
-            [
-                list(tiles_corrected[i : i + (ic.shape[1] // tile_size)])
-                for i in range(0, len(tiles_corrected), ic.shape[1] // tile_size)
-            ]
-        ).astype(np.uint16)
+        # Stitch the corrected tiles back into a full two-dimensional channel image.
+        i_new = _stitch_tiles(tiles_corrected, tile_rows, tile_columns).astype(np.uint16)
 
-        ic = sq.im.ImageContainer(i_new, layer=img_layer)
-
-        ic.add_img(
-            i_mask.astype(np.uint8),
-            layer="mask_black_lines",
-        )
-
+        # Crop both the corrected image and its inpainting mask when a region was requested.
         if crd is not None:
             x0 = crd[0]
             x_size = crd[1] - crd[0]
             y0 = crd[2]
             y_size = crd[3] - crd[2]
-            ic = ic.crop_corner(y=y0, x=x0, size=(y_size, x_size))
+            i_new = i_new[y0 : y0 + y_size, x0 : x0 + x_size]
+            i_mask = i_mask[y0 : y0 + y_size, x0 : x0 + x_size]
 
-        # Perform inpainting
-        ic.apply(
-            {"0": cv2.inpaint},
-            layer=img_layer,
-            drop=False,
-            channel=0,
-            new_layer=output_layer,
-            copy=False,
-            # chunks=10,
-            fn_kwargs={
-                "inpaintMask": ic.data.mask_black_lines.squeeze().to_numpy(),
-                "inpaintRadius": 55,
-                "flags": cv2.INPAINT_NS,
-            },
+        # Fill masked inter-tile lines using the same Navier-Stokes inpainting algorithm.
+        corrected_image = cv2.inpaint(
+            i_new,
+            i_mask,
+            55,
+            cv2.INPAINT_NS,
         )
 
-        # result for each channel
-        result_list.append(ic[output_layer].data)
+        # Store the corrected channel for Dask reassembly after all channels are processed.
+        result_list.append(da.from_array(corrected_image))
 
-    # make one dask array of shape (c,y,x)
-    result = da.concatenate(result_list, axis=-1).transpose(3, 0, 1, 2).squeeze(-1)
+    # Make one Dask array with the SpatialData channel-y-x dimension order.
+    result = da.stack(result_list, axis=0)
 
     if crd is not None:
         tx = tx + crd[0]
         ty = ty + crd[2]
 
+        # Create a translation transformation to account for the cropping and any existing translation.
         translation = Translation([tx, ty], axes=("x", "y"))
 
     else:
