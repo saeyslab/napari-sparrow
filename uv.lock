@@ -126,23 +126,20 @@ wheels = [
 
 [[package]]
 name = "anndata"
-version = "0.12.17"
+version = "0.11.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "array-api-compat" },
     { name = "h5py" },
-    { name = "legacy-api-wrap" },
     { name = "natsort" },
     { name = "numpy" },
     { name = "packaging" },
     { name = "pandas" },
     { name = "scipy" },
-    { name = "scverse-misc" },
-    { name = "zarr" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/04/e4/8cdf4d18c422e6c30edf512d599f9781fb458939d6317cc1e1e7940f2157/anndata-0.12.17.tar.gz", hash = "sha256:86608c28dc78d8a30c03fb3566caf6fa73d9c5aa7be53e4ed6b20888cc5e4337", size = 2257555, upload-time = "2026-06-16T12:30:15.608Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/bb/895fa2e9f8cd6d1c058aa90759da715037d0f11e23713e692537555549d7/anndata-0.11.4.tar.gz", hash = "sha256:4ce08d09d2ccb5f37d32790363bbcc7fc1b79863842296ae4badfaf48c736e24", size = 541143, upload-time = "2025-03-26T11:38:54.566Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/f6/bca233b8311dc2217d9d7c1687acdfa347f778f6f6eb622d8e5afa39f014/anndata-0.12.17-py3-none-any.whl", hash = "sha256:a19e48741a935752d11c9d2dc968ac0cdf3900e0c8c3413320fde84ab11dc9e6", size = 175991, upload-time = "2026-06-16T12:30:13.686Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/4b/ab615fea52e34579d5c6c7dba86b4f9d7f3cdb6a170b348ec49f34cf4355/anndata-0.11.4-py3-none-any.whl", hash = "sha256:fefebb1480316dfa5a23924aa9f74781d447484421bb0c788b0b2ca5e3b339d2", size = 144472, upload-time = "2025-03-26T11:38:52.547Z" },
 ]
 
 [[package]]
@@ -843,6 +840,15 @@ wheels = [
 ]
 
 [[package]]
+name = "docrep"
+version = "0.3.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/8e/250fab1cafeea43f4eb11f1d64cd6313f639965ff62cb0d9da3883655781/docrep-0.3.2.tar.gz", hash = "sha256:ed8a17e201abd829ef8da78a0b6f4d51fb99a4cbd0554adbed3309297f964314", size = 33197, upload-time = "2021-02-16T09:01:50.183Z" }
+
+[[package]]
 name = "docstring-parser"
 version = "0.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1322,6 +1328,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/af/08/07edfac98a38ab0208557524cbdd94a296f565b0558417ccb2c03d14a6ea/in_n_out-0.2.1.tar.gz", hash = "sha256:43cde2b7de981d41a6d70618a2b7bd989481095922a53ead4dc75f2bbd5dffea", size = 26026, upload-time = "2024-04-22T18:56:50.418Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3b/06/711a4d105ad3d01d3ef351a1039bb5cc517a57dbf377d7da9a0808e34c77/in_n_out-0.2.1-py3-none-any.whl", hash = "sha256:343e81edb27cf41ec946134a92964f408465abdf6a065c6c55fe96f53bc3c8b7", size = 19951, upload-time = "2024-04-22T18:56:48.572Z" },
+]
+
+[[package]]
+name = "inflect"
+version = "7.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "more-itertools" },
+    { name = "typeguard" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/c6/943357d44a21fd995723d07ccaddd78023eace03c1846049a2645d4324a3/inflect-7.5.0.tar.gz", hash = "sha256:faf19801c3742ed5a05a8ce388e0d8fe1a07f8d095c82201eb904f5d27ad571f", size = 73751, upload-time = "2024-12-28T17:11:18.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8a/eb/427ed2b20a38a4ee29f24dbe4ae2dafab198674fe9a85e3d6adf9e5f5f41/inflect-7.5.0-py3-none-any.whl", hash = "sha256:2aea70e5e70c35d8350b8097396ec155ffd68def678c7ff97f51aa69c1d92344", size = 35197, upload-time = "2024-12-28T17:11:15.931Z" },
 ]
 
 [[package]]
@@ -1987,6 +2006,18 @@ wheels = [
 ]
 
 [[package]]
+name = "matplotlib-scalebar"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/3d/e76e0e48c96e43b656446c35990824f20136de21940a7436020ab757a54d/matplotlib_scalebar-0.9.0.tar.gz", hash = "sha256:f91adc5e4e67ac920a8fa98a55f904d56e5c2da4d56286748c31ec62146362be", size = 1180588, upload-time = "2025-01-17T22:10:59.349Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a8/c0/2dfab7b319dabe23f5a7b515a797c74b501d15c72e7a03837cf0cf779b9e/matplotlib_scalebar-0.9.0-py3-none-any.whl", hash = "sha256:5140525cd4e0c60bcade541b86571dabaf446fa69192530bd82d60b54601aa79", size = 16411, upload-time = "2025-01-17T22:10:57.319Z" },
+]
+
+[[package]]
 name = "mdit-py-plugins"
 version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2029,6 +2060,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/99/e68c56fac5de973007a10254b6e17a0362393724f40f66d5e4033f4962c2/ml_dtypes-0.4.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e138a9b7a48079c900ea969341a5754019a1ad17ae27ee330f7ebf43f23877f9", size = 2185134, upload-time = "2024-09-13T19:06:53.197Z" },
     { url = "https://files.pythonhosted.org/packages/28/bc/6a2344338ea7b61cd7b46fb24ec459360a5a0903b57c55b156c1e46c644a/ml_dtypes-0.4.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:74c6cfb5cf78535b103fde9ea3ded8e9f16f75bc07789054edc7776abfb3d752", size = 2163661, upload-time = "2024-09-13T19:06:54.519Z" },
     { url = "https://files.pythonhosted.org/packages/e8/d3/ddfd9878b223b3aa9a930c6100a99afca5cfab7ea703662e00323acb7568/ml_dtypes-0.4.1-cp311-cp311-win_amd64.whl", hash = "sha256:274cc7193dd73b35fb26bef6c5d40ae3eb258359ee71cd82f6e96a8c948bdaa6", size = 126727, upload-time = "2024-09-13T19:06:55.897Z" },
+]
+
+[[package]]
+name = "more-itertools"
+version = "11.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/1d/f4da6f02cdffe04d6362210b807146a26044c88d839208aec273bb0d9184/more_itertools-11.1.0.tar.gz", hash = "sha256:48e8f4d9e7e5878571ecf6f2b4e57634f93cd474cc8cfbd2376f2d11b396e30d", size = 145772, upload-time = "2026-05-22T14:14:29.909Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e8/3d/1087453384dbde46a8c7f9356eead2c58be8a7bf156bca40243377c85715/more_itertools-11.1.0-py3-none-any.whl", hash = "sha256:4b65538ae22f6fed0ce4874efd317463a7489796a0939fa66824dd542125a192", size = 72226, upload-time = "2026-05-22T14:14:28.824Z" },
 ]
 
 [[package]]
@@ -2709,6 +2749,27 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/09/48/6388f1bb9da707110532cb70ec4d2822858ddfb44f1cdf1233c20a80ea4b/omegaconf-2.3.0.tar.gz", hash = "sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7", size = 3298120, upload-time = "2022-12-08T20:59:22.753Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e3/94/1843518e420fa3ed6919835845df698c7e27e183cb997394e4a670973a65/omegaconf-2.3.0-py3-none-any.whl", hash = "sha256:7b4df175cdb08ba400f45cae3bdcae7ba8365db4d165fc65fd04b050ab63b46b", size = 79500, upload-time = "2022-12-08T20:59:19.686Z" },
+]
+
+[[package]]
+name = "omnipath"
+version = "1.0.12"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+    { name = "docrep" },
+    { name = "inflect" },
+    { name = "packaging" },
+    { name = "pandas" },
+    { name = "requests" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
+    { name = "urllib3" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/b8/f504706093c149092925c1679aa96aced48af4bde1f73620cc2a6edc7f79/omnipath-1.0.12.tar.gz", hash = "sha256:37e33fd0ab4924a5345deab46868fdc472955c2be136c97ccc8dc5b5ea0ecfb8", size = 2058935, upload-time = "2025-06-26T22:00:09.513Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/ba/704f9e56ae80ef66cf0534e23dac22ada34845f86b5e5b8b3294649d96b6/omnipath-1.0.12-py3-none-any.whl", hash = "sha256:28b85360f2f566e3c1e146560f8d3a5c133e221ce93c63ef62b3c71be9a6b003", size = 51621, upload-time = "2025-06-26T22:00:07.452Z" },
 ]
 
 [[package]]
@@ -3902,19 +3963,6 @@ wheels = [
 ]
 
 [[package]]
-name = "scverse-misc"
-version = "0.0.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "session-info2" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/05/6123a4362e2810ef216f152e249a66799f9c37975dabf89b69abb2d68c42/scverse_misc-0.0.3.tar.gz", hash = "sha256:18c46eeeac8ccef8f435e41a8ee86173b3d7ef6ea1167fde97a17553f70d3210", size = 23128, upload-time = "2026-04-10T15:12:21.731Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/bd/3e/9dad188e00d08f5381b95dd1f8f7b1dc9eb244250d93fea3e9cb7d0e61f0/scverse_misc-0.0.3-py3-none-any.whl", hash = "sha256:295702368db8f5fe946b5296135990492b3fc891a45bd6dd27798775db4c61c6", size = 8845, upload-time = "2026-04-10T15:12:20.366Z" },
-]
-
-[[package]]
 name = "seaborn"
 version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4046,6 +4094,8 @@ dependencies = [
     { name = "pyrootutils" },
     { name = "rasterio" },
     { name = "scanpy" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
     { name = "seaborn" },
     { name = "setuptools" },
     { name = "spatialdata" },
@@ -4062,6 +4112,7 @@ cli = [
     { name = "submitit" },
 ]
 dev = [
+    { name = "anndata" },
     { name = "basicpy" },
     { name = "cellpose" },
     { name = "datasets" },
@@ -4076,9 +4127,11 @@ dev = [
     { name = "nbformat" },
     { name = "notebook" },
     { name = "opencv-python" },
+    { name = "pandas" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "rioxarray" },
+    { name = "squidpy" },
     { name = "torch", version = "2.6.0+cu124", source = { registry = "https://download.pytorch.org/whl/cu124" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "torch", version = "2.12.1", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
     { name = "torch", version = "2.12.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32'" },
@@ -4116,6 +4169,7 @@ riox = [
     { name = "rioxarray" },
 ]
 testing = [
+    { name = "anndata" },
     { name = "basicpy" },
     { name = "cellpose" },
     { name = "datasets" },
@@ -4125,8 +4179,10 @@ testing = [
     { name = "jaxlib" },
     { name = "nbconvert" },
     { name = "opencv-python" },
+    { name = "pandas" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "squidpy" },
     { name = "torch", version = "2.6.0+cu124", source = { registry = "https://download.pytorch.org/whl/cu124" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "torch", version = "2.12.1", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine != 'x86_64' and sys_platform == 'darwin'" },
     { name = "torch", version = "2.12.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32'" },
@@ -4142,6 +4198,7 @@ tiling = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anndata", marker = "extra == 'testing'", specifier = "==0.11.4" },
     { name = "basicpy", marker = "extra == 'testing'", specifier = "==1.0.0" },
     { name = "basicpy", marker = "extra == 'tiling'", specifier = "==1.0.0" },
     { name = "cellpose", marker = "extra == 'plugin'", specifier = ">=2.2.3,<4.0" },
@@ -4180,6 +4237,7 @@ requires-dist = [
     { name = "omegaconf", specifier = "==2.3.0" },
     { name = "opencv-python", marker = "extra == 'testing'" },
     { name = "opencv-python", marker = "extra == 'tiling'" },
+    { name = "pandas", marker = "extra == 'testing'", specifier = "<3" },
     { name = "pyarrow", specifier = "<=21.0.0" },
     { name = "pyrootutils" },
     { name = "pytest", marker = "extra == 'testing'" },
@@ -4188,6 +4246,8 @@ requires-dist = [
     { name = "rasterio", specifier = ">=1.3.2" },
     { name = "rioxarray", marker = "extra == 'riox'", specifier = ">=0.15.0" },
     { name = "scanpy", specifier = ">=1.9.1" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
     { name = "seaborn", specifier = ">=0.12.2" },
     { name = "setuptools", specifier = ">=42.0.0,<=80.10.2" },
     { name = "sparrow", extras = ["testing", "notebook", "riox"], marker = "extra == 'dev'" },
@@ -4200,6 +4260,7 @@ requires-dist = [
     { name = "sphinx-design", marker = "extra == 'docs'" },
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'" },
     { name = "sphinxcontrib-bibtex", marker = "extra == 'docs'", specifier = ">=1.0.0" },
+    { name = "squidpy", marker = "extra == 'testing'", specifier = "==1.6.5" },
     { name = "submitit", marker = "extra == 'cli'", specifier = ">=1.4.5" },
     { name = "torch", marker = "sys_platform == 'darwin' and extra == 'testing'", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'testing'" },
@@ -4477,6 +4538,42 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/65/eb/fbd0f206a330e66f8c602a99c37c4e731f107faed62954b41b01f16dd9d9/sqlalchemy-2.0.51-cp311-cp311-win32.whl", hash = "sha256:ca8435d13829b92f4a97362d91975154a4015db3a2634154e1754e9a915e6b86", size = 2121183, upload-time = "2026-06-15T16:13:29.905Z" },
     { url = "https://files.pythonhosted.org/packages/ad/fd/005bf80f3cf6e5c62b5dd68616280f51cd012c60840fa74781b3ed7b1623/sqlalchemy-2.0.51-cp311-cp311-win_amd64.whl", hash = "sha256:4a011ea4510683319ce4ed274b56ee05194b39b6da9d09ca7a39388f0fa84dcc", size = 2145796, upload-time = "2026-06-15T16:13:31.283Z" },
     { url = "https://files.pythonhosted.org/packages/e2/22/dbf013a12ec759e54a34a119e9e217435b3f71b2dd5c61a7ade0a25dae87/sqlalchemy-2.0.51-py3-none-any.whl", hash = "sha256:bb024d8b621d0be75f4f44ecc7c950450026e76d66dc8f791bb5331d7fed59d5", size = 1944334, upload-time = "2026-06-15T16:09:22.418Z" },
+]
+
+[[package]]
+name = "squidpy"
+version = "1.6.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "anndata" },
+    { name = "cycler" },
+    { name = "dask", extra = ["array"] },
+    { name = "dask-image" },
+    { name = "docrep" },
+    { name = "fsspec" },
+    { name = "matplotlib" },
+    { name = "matplotlib-scalebar" },
+    { name = "networkx" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "omnipath" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "scanpy" },
+    { name = "scikit-image" },
+    { name = "scikit-learn" },
+    { name = "spatialdata" },
+    { name = "statsmodels" },
+    { name = "tifffile" },
+    { name = "tqdm" },
+    { name = "validators" },
+    { name = "xarray" },
+    { name = "zarr" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a0/4d/c45cff096c0b4811f9e55708f0a20e0f43fca9438c85c2cbfe001e0cb08c/squidpy-1.6.5.tar.gz", hash = "sha256:c5f9449cde5829c2d916f56c210a62e110fea44d4839951007aa2abb59c4ca21", size = 5892843, upload-time = "2025-03-16T16:30:00.801Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/d9/419c241e27ec311793bdb2980d7261f5383eadaed56354161865a65b102b/squidpy-1.6.5-py3-none-any.whl", hash = "sha256:bb2e94c6ecef4ff39b68dc0696a33cf81f3cee46be53ad4a371cb467aa173f8d", size = 161292, upload-time = "2025-03-16T16:29:59.403Z" },
 ]
 
 [[package]]
@@ -4828,6 +4925,18 @@ wheels = [
 ]
 
 [[package]]
+name = "typeguard"
+version = "4.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b4/de/4420db493fa8fc0856d5e5c1b159c63a323d2de2317babe36b01568928e8/typeguard-4.6.0.tar.gz", hash = "sha256:e7414f09111317de3e335de92cd397c5c0ca00b1cc1676de12e1d444a79b3f21", size = 82330, upload-time = "2026-07-26T08:40:23.207Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8f/eb/461d5f167b6f5c7d97696f397c82f82e3480e003fce3f0a1cd1dd26e2eb2/typeguard-4.6.0-py3-none-any.whl", hash = "sha256:79878165bb86f2cf5d41d159a0ff1792a796cf496882d2fe1b1c6c7049b9cdd7", size = 36884, upload-time = "2026-07-26T08:40:21.868Z" },
+]
+
+[[package]]
 name = "typer"
 version = "0.26.7"
 source = { registry = "https://pypi.org/simple" }
@@ -4918,6 +5027,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
+]
+
+[[package]]
+name = "validators"
+version = "0.35.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/66/a435d9ae49850b2f071f7ebd8119dd4e84872b01630d6736761e6e7fd847/validators-0.35.0.tar.gz", hash = "sha256:992d6c48a4e77c81f1b4daba10d16c3a9bb0dbb79b3a19ea847ff0928e70497a", size = 73399, upload-time = "2025-05-01T05:42:06.7Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/6e/3e955517e22cbdd565f2f8b2e73d52528b14b8bcfdb04f62466b071de847/validators-0.35.0-py3-none-any.whl", hash = "sha256:e8c947097eae7892cb3d26868d637f79f47b4a0554bc6b80065dfe5aac3705dd", size = 44712, upload-time = "2025-05-01T05:42:04.203Z" },
 ]
 
 [[package]]
