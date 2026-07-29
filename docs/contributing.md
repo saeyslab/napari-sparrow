@@ -9,25 +9,41 @@ git clone https://github.com/saeyslab/napari-sparrow.git
 cd napari-sparrow
 ```
 
-The project requires Python 3.11.15. Create the virtual environment and install the development dependencies:
+The project requires Python 3.11.15. Create a dedicated development environment and install the full local validation bundle:
 
 ```bash
 uv python install 3.11.15
-uv venv --python 3.11.15
+uv venv --python 3.11.15 .venv-dev
+export UV_PROJECT_ENVIRONMENT=.venv-dev
 uv sync --extra dev
 ```
 
-The `dev` extra includes the testing, notebook, and `rioxarray` dependencies. Use `uv run` to execute commands in the project environment without activating it.
+The `dev` extra combines the focused test tools with the complete `tutorials` environment. That includes the Napari plugin, notebook support, tiling correction, the optional `rioxarray` image backend, and the Bokeh-powered Dask dashboard. Keep `UV_PROJECT_ENVIRONMENT` exported so `uv run --no-sync` executes commands in the named environment without activating it.
 
 ## Testing
 
-To run unit tests, run the following from the root of the project:
+For a smaller test-only environment, install the `testing` extra:
+
+```bash
+uv sync --extra testing
+```
+
+This extra contains the test runner, coverage tools, Hydra configuration support, and notebook validation tools. Tests that exercise optional Cellpose, PyTorch, BaSiC, OpenCV, or Squidpy integrations are skipped when those packages are not installed. The `dev` environment installs them so the optional integration paths can run as well.
+
+Run the test suite from the repository root:
 
 ```bash
 uv run --no-sync pytest
 ```
 
-Continuous integration will automatically run the tests on all pull requests.
+Continuous integration will automatically run the tests on pull requests.
+
+When changing dependencies, regenerate and verify the lockfile:
+
+```bash
+uv lock
+uv lock --check
+```
 
 ## Automated checks
 

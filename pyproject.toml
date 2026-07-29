@@ -59,25 +59,16 @@ plugin = [
     "hydra-colorlog>=1.2.0",
     "napari-spatialdata>=0.2.6",
     "cellpose>=2.2.3,<4.0",
-    "pytest-qt",
 ]
 testing = [
     "hydra-core>=1.2.0",
     "hydra-colorlog>=1.2.0",
-    "cellpose>=2.2.3,<4.0",
-    "datasets",
-    "jax>=0.4.6,<=0.4.23",
-    "jaxlib>=0.4.6,<=0.4.23",
-    "basicpy==1.0.0",
-    "opencv-python",
     "pytest",
     "pytest-cov",
     "tox",
     "nbconvert",
-    "torch",
-    "anndata==0.11.4",
-    "pandas<3",
-    "squidpy==1.6.5",
+    "nbformat>=5.10.0",
+    "pytest-qt",
 ]
 notebook = [
     "ipykernel>=6.29",
@@ -99,6 +90,19 @@ cli = [
     "submitit>=1.4.5",
     "hydra-submitit-launcher>=1.2.0",
 ]
+riox = [
+    "rioxarray>=0.15.0",
+]
+dashboard = [
+    "bokeh",
+]
+tutorials = [
+    "sparrow[plugin,notebook,tiling,riox,dashboard]",
+    "anndata==0.11.4",
+    "pandas<3",
+    "squidpy==1.6.5",
+    "torch",
+]
 docs = [
     "sphinx>=4.5",
     "sphinx-book-theme>=1.0.0",
@@ -110,11 +114,8 @@ docs = [
     "ipython>=8.6.0",
     "sphinx-copybutton",
 ]
-riox = [
-  "rioxarray>=0.15.0"
-]
 dev = [
-    "sparrow[testing,notebook,riox]"
+    "sparrow[testing,tutorials]"
 ]
 
 [project.scripts]
