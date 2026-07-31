@@ -108,6 +108,7 @@ Operations on table (`AnnData` object) layers.
     tb.preprocess_transcriptomics
     tb.preprocess_proteomics
     tb.filter_on_size
+    tb.add_transcript_density
     tb.leiden
     tb.kmeans
     tb.score_genes
