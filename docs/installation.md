@@ -1,6 +1,6 @@
 # Installation
 
-SPArrOW requires Python 3.11.15 and uses [uv](https://docs.astral.sh/uv/) to create virtual environments and install dependencies. Install uv by following [the official installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
+SPArrOW requires Python 3.11 and uses [uv](https://docs.astral.sh/uv/) to create virtual environments and install dependencies. Install uv by following [the official installation instructions](https://docs.astral.sh/uv/getting-started/installation/).
 
 ## Install SPArrOW
 
@@ -13,13 +13,12 @@ git clone https://github.com/saeyslab/napari-sparrow.git
 cd napari-sparrow
 ```
 
-### 2. Create a virtual environment
+### 2. Install SPArrOW
 
-Install the required Python version and create the default `.venv` environment:
+`uv sync` reads the project's Python requirement, obtains Python 3.11 if it is not already available, creates the default `.venv` environment, and installs SPArrOW with its core dependencies:
 
 ```bash
-uv python install 3.11.15
-uv venv --python 3.11.15
+uv sync
 ```
 
 Activation is optional because `uv run` uses the project environment automatically. If you want to activate it explicitly, use the command for your shell:
@@ -30,14 +29,6 @@ source .venv/bin/activate
 
 # Windows PowerShell
 .venv\Scripts\Activate.ps1
-```
-
-### 3. Install the package
-
-Install SPArrOW and its core dependencies with:
-
-```bash
-uv sync
 ```
 
 To use SPArrOW as a Napari plugin, install the `plugin` extra instead:

@@ -9,16 +9,13 @@ git clone https://github.com/saeyslab/napari-sparrow.git
 cd napari-sparrow
 ```
 
-The project requires Python 3.11.15. Create a dedicated development environment and install the full local validation bundle:
+The project requires Python 3.11 or newer. Create the project environment and install the full local validation bundle:
 
 ```bash
-uv python install 3.11.15
-uv venv --python 3.11.15 .venv-dev
-export UV_PROJECT_ENVIRONMENT=.venv-dev
 uv sync --extra dev
 ```
 
-The `dev` extra combines the focused test tools with the complete `tutorials` environment. That includes the Napari plugin, notebook support, tiling correction, the optional `rioxarray` image backend, and the Bokeh-powered Dask dashboard. Keep `UV_PROJECT_ENVIRONMENT` exported so `uv run --no-sync` executes commands in the named environment without activating it.
+The `dev` extra combines the focused test tools with the complete `tutorials` environment. That includes the Napari plugin, notebook support, tiling correction, the optional `rioxarray` image backend, and the Bokeh-powered Dask dashboard. `uv sync` creates the default `.venv` environment if needed, and `uv run` uses it automatically without activation.
 
 ## Testing
 
