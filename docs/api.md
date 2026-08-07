@@ -21,6 +21,7 @@ I/O.
 .. autosummary::
     :toctree: generated
 
+    io.cosmx
     io.merscope
     io.xenium
     io.visium_hd

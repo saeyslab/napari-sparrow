@@ -36,8 +36,10 @@ def add_transcript_density(
         SpatialData object containing the labels and AnnData table.
     labels_layer
         Labels layer or layers whose linked observations should be processed.
-        ``labels_layer`` lets Sparrow validate uniqueness per region instead of requiring globally unique IDs.
-        The current requirement follows Sparrow’s existing table-processing conventions and prevents accidentally calculating density across unrelated masks or samples.
+        ``labels_layer`` lets Sparrow validate uniqueness per region instead of 
+        requiring globally unique IDs. The current requirement follows Sparrow’s
+        existing table-processing conventions and prevents accidentally
+        calculating density across unrelated masks or samples.
     table_layer
         AnnData table containing one observation per cell or mask.
     pixel_size
