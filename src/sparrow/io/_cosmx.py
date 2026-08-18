@@ -82,7 +82,6 @@ def cosmx(
     --------
     >>> sdata = cosmx("/data/cosmx", keep_gene_names="COAD_panel.csv")
     """
-    # Convert a single path or coordinate-system name to a one-item list.
     paths = _as_list(path)
     coordinate_systems = _as_list(to_coordinate_system)
 
@@ -116,13 +115,11 @@ def cosmx(
     # Load the optional keep list once so it is shared by all datasets.
     keep_genes = _load_keep_gene_names(keep_gene_names)
 
-    # Log the filtering mode so a pipeline run records whether controls were removed.
     if keep_genes is not None:
         log.info("Keeping %d CosMx genes while reading transcripts.", len(keep_genes))
     else:
         log.info("No CosMx gene whitelist supplied; no gene filtering will be applied.")
 
-    # Create an empty object before loading so output can be backed incrementally.
     sdata = SpatialData()
 
     # Initialize the requested backing store before loading potentially large transcript layers.
@@ -149,7 +146,9 @@ def cosmx(
             coordinate_system,
         )
 
-        # Delegate raw CosMx parsing and FOV-specific transforms to spatialdata-io.
+        # Delegate raw CosMx parsing and FOV-specific transforms to the spatialdata-io cosmx reader
+        # The temporary source_sdata object will be discarded after each dataset as all the ellements
+        # will be adjusted to comply with Sparrow's conventions and finally written to a common sdata object.
         source_sdata = sdata_cosmx(
             path=source_path,
             dataset_id=source_dataset_id,
@@ -168,13 +167,16 @@ def cosmx(
             len(source_sdata.tables),
         )
 
-        # Track destination names so a backed object can persist each new element.
+        # Track destination names so a backed sdata object can persist each new element.
         destination_names: list[str] = []
 
-        # Copy images while replacing the upstream global coordinate-system name.
+        # Convert the image layers to have the appropriate transformation class for Sparrow.
         for layer_name in [*source_sdata.images]:
+            # The combination of the source layer name and the target coordinate system is guaranteed to be unique
+            #  because coordinate systems are validated to be unique.
+            # This avoids overwriting the source layer when multiple datasets are read into the same SpatialData object.
             destination_name = f"{layer_name}_{coordinate_system}"
-            _copy_spatial_element(
+            _convert_spatial_element(
                 sdata=sdata,
                 source_sdata=source_sdata,
                 layer_name=layer_name,
@@ -184,10 +186,10 @@ def cosmx(
             )
             destination_names.append(destination_name)
 
-        # Copy labels while replacing the upstream global coordinate-system name.
+        # Convert the label layers to have the appropriate transformation class for Sparrow.
         for layer_name in [*source_sdata.labels]:
             destination_name = f"{layer_name}_{coordinate_system}"
-            _copy_spatial_element(
+            _convert_spatial_element(
                 sdata=sdata,
                 source_sdata=source_sdata,
                 layer_name=layer_name,
@@ -197,10 +199,11 @@ def cosmx(
             )
             destination_names.append(destination_name)
 
-        # Copy points and filter their target column lazily when a keep list was supplied.
+        # Convert the point layers to have the appropriate transformation class for Sparrow
+        # and optionally filter their gene variables to the requested keep list.
         for layer_name in [*source_sdata.points]:
             destination_name = f"{layer_name}_{coordinate_system}"
-            _copy_spatial_element(
+            _convert_spatial_element(
                 sdata=sdata,
                 source_sdata=source_sdata,
                 layer_name=layer_name,
@@ -234,17 +237,14 @@ def cosmx(
         len(sdata.tables),
     )
 
-    # Return the loaded and normalized SpatialData object for downstream Sparrow operations.
     return sdata
 
 
 def _as_list(value: Any) -> list[Any]:
     """Return a scalar or iterable as a list without splitting strings or paths."""
-    # Preserve scalar strings and paths because both are valid reader arguments.
     if isinstance(value, (str, Path)) or not isinstance(value, Iterable):
         return [value]
 
-    # Materialize iterables once so they can be validated and zipped safely.
     return list(value)
 
 
@@ -252,7 +252,6 @@ def _load_keep_gene_names(
     keep_gene_names: str | Path | Iterable[str] | None,
 ) -> set[str] | None:
     """Load gene names from a sequence or the first column of a panel file."""
-    # Leave filtering disabled when no keep list was requested.
     if keep_gene_names is None:
         return None
 
@@ -274,18 +273,13 @@ def _load_keep_gene_names(
         if not gene_names:
             raise ValueError("The CosMx gene panel file does not contain any gene names.")
 
-        # Return the validated whitelist for point and table filtering.
         return gene_names
-
-    # Treat a scalar string that is not a file path as one gene name.
-    if isinstance(keep_gene_names, str):
-        return {keep_gene_names}
 
     # Normalize iterable gene names to strings for exact matching against CosMx targets.
     return {str(gene_name) for gene_name in keep_gene_names}
 
 
-def _copy_spatial_element(
+def _convert_spatial_element(
     sdata: SpatialData,
     source_sdata: SpatialData,
     layer_name: str,
@@ -293,14 +287,28 @@ def _copy_spatial_element(
     coordinate_system: str,
     keep_genes: set[str] | None,
 ) -> None:
-    """Copy one upstream spatial element into Sparrow's coordinate-system namespace."""
-    # Retrieve the source element before applying optional point-level filtering.
+    """
+    Normalize one upstream CosMx element and register it in the output object.
+
+    The element is retrieved from ``source_sdata``, normalized for Sparrow's
+    coordinate-system conventions, and stored in ``sdata`` under ``destination_name``.
+
+    Image and label layers retain their existing pixel or
+    label coordinates while **translation-only affine transformations** are
+    represented as ``Translation`` objects. 
+    
+    Point layers are optionally filtered using ``keep_genes``,
+    have the upstream ``target`` column renamed to Sparrow's canonical ``gene`` column, 
+    and are transformed from their FOV-local coordinates into global coordinates.
+    Because of this materialization into the global space, 
+    their registered transformation can be set to ``Identity`` relative to ``coordinate_system``.
+    This is because Sparrow requires identity-transformed points.
+    """
     element = source_sdata[layer_name]
 
     # Retrieve the existing CosMx FOV-local-to-global transform before normalizing the element.
     global_transformation = get_transformation(element, to_coordinate_system="global")
 
-    # Normalize CosMx point layers to Sparrow's canonical gene-column name.
     if layer_name in source_sdata.points:
         # Use the upstream CosMx target column while inspecting the source schema.
         target_column = CosmxKeys.TARGET_OF_TRANSCRIPT.value
@@ -309,7 +317,7 @@ def _copy_spatial_element(
         if target_column not in element.columns:
             raise ValueError(f"CosMx point layer '{layer_name}' does not contain a '{target_column}' column.")
 
-        # Apply a Dask dataframe membership filter without materializing the points.
+        # Apply the Dask dataframe membership filter without materializing the points.
         if keep_genes is not None:
             element = element[element[target_column].isin(keep_genes)]
 
@@ -337,7 +345,7 @@ def _copy_spatial_element(
 
 
 def _normalize_transformation(transformation: Any) -> Any:
-    """Convert translation-only affine transforms to Sparrow-compatible translations.
+    """Convert **translation-only affine transforms** to Sparrow-compatible translations.
 
     Sparrow's allocation code currently understands ``Identity``, ``Translation``,
     and ``Sequence``, but not arbitrary ``Affine`` transformations.
@@ -397,7 +405,6 @@ def _transform_points_to_global(points: dd.DataFrame, transformation: Any) -> dd
         transformed_partition["x"] = global_coordinates[:, 0]
         transformed_partition["y"] = global_coordinates[:, 1]
 
-        # Return all original annotations with only the spatial coordinates changed.
         return transformed_partition
 
     # Update the empty metadata frame so Dask records the transformed coordinate dtypes correctly.
@@ -433,6 +440,7 @@ def _prepare_table(
 
     # Remove the SpatialData table metadata so it can be rebuilt with the new region names.
     table.uns.pop(TableModel.ATTRS_KEY, None)
+
     # Rebuild SpatialData table metadata after changing categorical region values.
     return TableModel.parse(
         table,

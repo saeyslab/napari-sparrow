@@ -9,8 +9,7 @@ applyTo: "**/*.py"
 
 If you are trying to adjust Jupyter Notebooks in the repository, check if the adjustments actually stuck. If they did not stick, either find a way to make them stick or show the code changes in the Copilot chat.
 
-
-Every meaningful line of code **must** have at least one comment line directly above it explaining what the code is doing. This is the single most important rule in this codebase.
+Every non-obvious line of code **must** have at least one comment line directly above it explaining what the code is doing. This is the single most important rule in this codebase. For obvious lines of code, a comment line is optional or not necessary. For example, a simple assignment of a variable to a constant does not require a comment line, but a complex operation or transformation should be annotated.
 
 ```python
 # Good — every non-trivial statement is annotated
