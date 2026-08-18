@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterable
+from contextlib import contextmanager
 from pathlib import Path
 
 import dask.dataframe as dd
 import numpy as np
 import pandas as pd
+import zarr
 from spatialdata import SpatialData, read_zarr
 from spatialdata.models import TableModel
 from spatialdata.transformations import get_transformation, set_transformation
@@ -21,6 +23,40 @@ from sparrow.utils.pylogger import get_pylogger
 log = get_pylogger(__name__)
 
 
+# Provide a small compatibility shim so older zarr constructors still accept the mode requested by the Xenium reader.
+@contextmanager
+def _zipstore_mode_compat(mode: str):
+    # Keep the original ZipStore implementation so we can restore it after the Xenium reader finishes.
+    original_zipstore = zarr.storage.ZipStore
+
+    # Store the requested mode so legacy read_only-only call sites can reuse it.
+    requested_mode = mode
+
+    # Wrap the constructor so both read_only=True and mode=... are accepted.
+    class _CompatZipStore(original_zipstore):
+        def __init__(self, *args, read_only: bool = False, mode: str | None = None, **kwargs):
+            # Prefer an explicit mode when one is given, otherwise fall back to the mode requested by sparrow.io.xenium
+            if mode is None:
+                if read_only:
+                    mode = requested_mode
+                else:
+                    mode = "a"
+            # build the base Zipstore class that _CompatZipStore inherits and directly forward any positional and keyword arguments to it
+            # except for the mode argument, which is explicitly set to the value determined above.
+            super().__init__(*args, mode=mode, **kwargs)
+
+    # Swap in the compatibility constructor only for the duration of the call.
+    zarr.storage.ZipStore = _CompatZipStore
+
+    # When Python enters the with block below, execution reaches yield and is paused in this function until the with block exits.
+    # At that point, execution resumes and the finally block restores the original constructor.
+    try:
+        yield
+    finally:
+        # Restore the original constructor no matter how the reader exits.
+        zarr.storage.ZipStore = original_zipstore
+
+
 def xenium(
     path: str | Path | list[str] | list[Path],
     to_coordinate_system: str | list[str] = "global",
@@ -30,6 +66,7 @@ def xenium(
     cells_table: bool = False,
     filter_gene_names: str | list[str] = None,
     output: str | Path | None = None,
+    mode: str = "r",
 ) -> SpatialData:
     """
     Read a *10X Genomics Xenium* dataset into a SpatialData object.
@@ -78,6 +115,9 @@ def xenium(
         Filtering is case insensitive. Also see `sparrow.read_transcripts`.
     output
         The path where the resulting `SpatialData` object will be backed. If `None`, it will not be backed to a zarr store.
+    mode
+        Mode used when reading the Xenium cell-label ZipStore.
+        This is exposed as a compatibility parameter for environments where the Xenium reader still needs a `mode=` constructor argument.
 
     Raises
     ------
@@ -116,65 +156,67 @@ def xenium(
         sdata.write(output)
         sdata = read_zarr(output)
 
-    for _path, _to_coordinate_system in zip(path, to_coordinate_system, strict=True):
-        _sdata = sdata_xenium(
-            path=_path,
-            cells_boundaries=False,
-            nucleus_boundaries=False,
-            cells_labels=cells_labels,
-            nucleus_labels=nucleus_labels,
-            morphology_focus=True,
-            morphology_mip=False,
-            cells_as_circles=False,
-            transcripts=False,
-            cells_table=cells_table,
-            aligned_images=aligned_images,
-        )
-
-        layers = [*_sdata.images] + [*_sdata.labels]
-
-        for _layer in layers:
-            # rename coordinate system "global" to _to_coordinate_system
-            transformation = {_to_coordinate_system: get_transformation(_sdata[_layer], to_coordinate_system="global")}
-            set_transformation(_sdata[_layer], transformation=transformation, set_all=True)
-            _sdata[f"{_layer}_{_to_coordinate_system}"] = _sdata[_layer]
-            del _sdata[_layer]
-
-        if cells_table:
-            with open(os.path.join(_path, XeniumKeys.XENIUM_SPECS)) as f:
-                specs = json.load(f)
-            adata = _sdata["table"]
-            assert f"cell_labels_{_to_coordinate_system}" in [*_sdata.labels], (
-                "labels layer annotating the table is not found in SpatialData object."
-            )
-            # remove "cell_id" column in table, to avoid confusion with _INSTANCE_KEY.
-            if "cell_id" in adata.obs.columns:
-                adata.obs.drop(columns=["cell_id"], inplace=True)
-
-            adata.obs.rename(columns={"region": _REGION_KEY, "cell_labels": _INSTANCE_KEY}, inplace=True)
-            adata.obs[_REGION_KEY] = pd.Categorical(adata.obs[_REGION_KEY].astype(str) + f"_{_to_coordinate_system}")
-            adata.uns.pop(TableModel.ATTRS_KEY)
-            adata.obsm[_SPATIAL] = adata.obsm[_SPATIAL] * (1 / specs["pixel_size"])
-            adata = TableModel.parse(
-                adata,
-                region_key=_REGION_KEY,
-                region=adata.obs[_REGION_KEY].cat.categories.to_list(),
-                instance_key=_INSTANCE_KEY,
+    # Patch ZipStore only around the Xenium reader call so the compatibility change stays local to this function.
+    with _zipstore_mode_compat(mode):
+        for _path, _to_coordinate_system in zip(path, to_coordinate_system, strict=True):
+            _sdata = sdata_xenium(
+                path=_path,
+                cells_boundaries=False,
+                nucleus_boundaries=False,
+                cells_labels=cells_labels,
+                nucleus_labels=nucleus_labels,
+                morphology_focus=True,
+                morphology_mip=False,
+                cells_as_circles=False,
+                transcripts=False,
+                cells_table=cells_table,
+                aligned_images=aligned_images,
             )
 
-            del _sdata["table"]
+            layers = [*_sdata.images] + [*_sdata.labels]
 
-            _sdata[f"table_{_to_coordinate_system}"] = adata
+            for _layer in layers:
+                # Rename coordinate system "global" to the requested target system.
+                transformation = {_to_coordinate_system: get_transformation(_sdata[_layer], to_coordinate_system="global")}
+                set_transformation(_sdata[_layer], transformation=transformation, set_all=True)
+                _sdata[f"{_layer}_{_to_coordinate_system}"] = _sdata[_layer]
+                del _sdata[_layer]
 
-        layers = [*_sdata.images] + [*_sdata.labels] + [*_sdata.tables]
+            if cells_table:
+                with open(os.path.join(_path, XeniumKeys.XENIUM_SPECS)) as f:
+                    specs = json.load(f)
+                adata = _sdata["table"]
+                assert f"cell_labels_{_to_coordinate_system}" in [*_sdata.labels], (
+                    "labels layer annotating the table is not found in SpatialData object."
+                )
+                # Remove "cell_id" from the table so Sparrow can reassign the instance key.
+                if "cell_id" in adata.obs.columns:
+                    adata.obs.drop(columns=["cell_id"], inplace=True)
 
-        for _layer in layers:
-            sdata[_layer] = _sdata[_layer]
+                adata.obs.rename(columns={"region": _REGION_KEY, "cell_labels": _INSTANCE_KEY}, inplace=True)
+                adata.obs[_REGION_KEY] = pd.Categorical(adata.obs[_REGION_KEY].astype(str) + f"_{_to_coordinate_system}")
+                adata.uns.pop(TableModel.ATTRS_KEY)
+                adata.obsm[_SPATIAL] = adata.obsm[_SPATIAL] * (1 / specs["pixel_size"])
+                adata = TableModel.parse(
+                    adata,
+                    region_key=_REGION_KEY,
+                    region=adata.obs[_REGION_KEY].cat.categories.to_list(),
+                    instance_key=_INSTANCE_KEY,
+                )
+
+                del _sdata["table"]
+
+                _sdata[f"table_{_to_coordinate_system}"] = adata
+
+            layers = [*_sdata.images] + [*_sdata.labels] + [*_sdata.tables]
+
+            for _layer in layers:
+                sdata[_layer] = _sdata[_layer]
+                if sdata.is_backed():
+                    sdata.write_element(_layer)
+
             if sdata.is_backed():
-                sdata.write_element(_layer)
-
-        if sdata.is_backed():
-            sdata = read_zarr(sdata.path)
+                sdata = read_zarr(sdata.path)
 
     # now read the transcripts
     for _path, _to_coordinate_system in zip(path, to_coordinate_system, strict=True):

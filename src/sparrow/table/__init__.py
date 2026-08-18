@@ -6,3 +6,4 @@ from ._enrichment import nhood_enrichment
 from ._preprocess import preprocess_proteomics, preprocess_transcriptomics
 from ._regionprops import add_regionprop_features
 from ._table import add_table_layer, correct_marker_genes, filter_on_size
+from ._transcript_density import add_transcript_density

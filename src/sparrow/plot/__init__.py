@@ -3,7 +3,7 @@ from ._sanity import sanity
 from ._cluster_cleanliness import cluster_cleanliness
 from ._clustering import cluster
 from ._enrichment import nhood_enrichment
-from ._plot import plot_image, plot_labels, plot_shapes
+from ._plot import plot, plot_image, plot_labels, plot_shapes
 from ._preprocess import preprocess_transcriptomics
 from ._qc_cells import plot_adata, ridgeplot_channel, ridgeplot_channel_sample
 from ._qc_image import (
@@ -12,10 +12,13 @@ from ._qc_image import (
     clustermap,
     get_hexes,
     group_snr_ratio,
+    histogram,
     make_cols_colors,
+    marker_supervenn,
     signal_clustermap,
     snr_clustermap,
     snr_ratio,
+    supervenn_of_images,
 )
 from ._qc_segmentation import (
     calculate_segmentation_coverage,

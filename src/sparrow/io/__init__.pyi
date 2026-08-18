@@ -1,3 +1,4 @@
+from ._cosmx import cosmx
 from ._merscope import merscope
 from ._spatial_data import create_sdata
 from ._transcripts import (
@@ -11,6 +12,7 @@ from ._visium_hd import visium_hd
 from ._xenium import xenium
 
 __all__ = [
+    "cosmx",
     "merscope",
     "create_sdata",
     "read_merscope_transcripts",

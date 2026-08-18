@@ -1,39 +1,71 @@
 name: Run tests
 
 on:
+  # Allow maintainers to rerun the job manually without creating a new commit.
   workflow_dispatch:
 
   push:
     branches:
       - main
 
-    #pull_request:
-    #  branches:
-    #    - main
+  pull_request:
+    branches:
+      - main
 
+    # A pull request only starts CI when application code or CI-related
+    # configuration changes. Add other build inputs here if they should also
+    # trigger tests.
     paths:
       - "src/sparrow/**"
       - ".github/workflows/run_tests.yml"
+      - ".gitmodules"               # if the submodule URL changes, we need to re-run the tests to make sure the new submodule is valid
+      - ".readthedocs.yaml"         # if the docs build config changes, we need to re-run the tests to make sure the new config is valid
 
 env:
   CACHE_NUMBER: 1 # increase to reset cache manually
 
 jobs:
   test:
+    # Keep OS and Python versions in a matrix so adding another supported
+    # platform/version does not require duplicating the job definition.
     strategy:
       matrix:
         os: [ubuntu-latest] #[ubuntu-latest, macos-latest]
-        python-version: ["3.10"]
+        python-version: ["3.11"]
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive     # tells GitHub Actions to fetch all submodules and keep following submodules inside submodules
+          lfs: true                 # When enabled, checkout attempts to download the real LFS content instead of leaving those pointer files behind.
 
-      # these libraries enable testing on Qt on linux
+      # Checkout requests LFS content above, but pull explicitly here so a
+      # missing tutorial payload fails with a clear, dedicated CI step.
+      - name: Pull tutorial LFS content
+        shell: bash
+        run: git -C docs/tutorials lfs pull
+
+      # Confirm both the expected notebook and every tutorial file are real
+      # content rather than unresolved Git LFS pointer files.
+      - name: Validate tutorial content
+        shell: bash
+        run: |
+          test -f docs/tutorials/general/SPArrOW_how_to_start.ipynb
+
+          if grep -R -n "version https://git-lfs.github.com/spec/v1" docs/tutorials; then
+            echo "Unresolved Git LFS pointer files found"
+            exit 1
+          fi
+
+      # Install the system libraries required by Qt-based napari tests on Linux.
       - uses: tlambert03/setup-qt-libs@v1
 
+      # Create the named conda environment used by the remaining shell steps.
+      # The Python version here should agree with environment.yml and
+      # pyproject.toml so the matrix describes the environment actually tested.
       - name: Setup Mambaforge
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
           miniforge-variant: Mambaforge
           miniforge-version: latest
@@ -41,39 +73,51 @@ jobs:
           use-mamba: true
           python-version: ${{ matrix.python-version }}
 
+      # Resolve the active environment after setup; this is the directory
+      # that actions/cache restores and saves.
       - name: Set cache environment variables
+        id: conda-prefix
         shell: bash -l {0}
         run: |
           CONDA_PREFIX=$(python -c "import sys; print(sys.prefix)")
           echo "$CONDA_PREFIX"
           echo "CONDA_PREFIX=$CONDA_PREFIX" >> $GITHUB_ENV
+          echo "conda_prefix=$CONDA_PREFIX" >> $GITHUB_OUTPUT
 
       #- name: Set cache date
       #  run: echo "DATE=$(date +'%Y%m%d')" >> $GITHUB_ENV
 
-      - uses: actions/cache@v3
+      # Cache the complete conda environment. 
+      # Hash all dependency manifests so any dependency changes invalidate the cache;
+      # CACHE_NUMBER is a manual reset.
+      - uses: actions/cache@v4
         with:
-          path: ${{ env.CONDA_PREFIX }}
-          key: conda-env-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('environment.yml') }}-${{ env.CACHE_NUMBER }}
+          path: ${{ steps.conda-prefix.outputs.conda_prefix }}
+          key: conda-env-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('environment.yml', 'pyproject.toml', 'uv.lock') }}-${{ env.CACHE_NUMBER }}
         id: cache
 
       - name: Update environment
+        # A cache hit already restored the environment, so solving it again is
+        # unnecessary and would reduce the benefit of caching.
         run: mamba env update -n napari-sparrow -f environment.yml
         if: steps.cache.outputs.cache-hit != 'true'
 
-      # this runs the platform-specific tests declared in tox.ini
-      - name: Test with tox
+      # Install the editable package and test dependencies, then run pytest
+      # directly. This repository has no committed tox configuration, so an
+      # explicit command ensures that the configured test suite actually runs.
+      - name: Run tests with pytest
         shell: bash -l {0}
         run: |
           conda activate napari-sparrow
           pip install -e '.[testing]'
-          pip install tox tox-gh-actions
-          tox
-        env:
-          PLATFORM: ${{ matrix.os }}
+          pytest --cov=sparrow --cov-report=xml:coverage.xml
 
+      # Preserve the coverage report even after the job finishes so it can be
+      # inspected independently of the runner's temporary filesystem. 
+      # Fail if pytest did not produce the expected report.
       - name: Upload coverage.xml
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: coverage-report-${{ runner.os }}-py${{ matrix.python-version }}
           path: coverage.xml
+          if-no-files-found: error

@@ -2,50 +2,61 @@
 
 ## Setting up a development environment
 
-First clone the GitHub repo and set it as the current directory:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and clone the GitHub repository:
 
 ```bash
 git clone https://github.com/saeyslab/napari-sparrow.git
 cd napari-sparrow
 ```
 
-Create a conda virtual environment as explained [here](./installation.md) and install `SPArrOW`.
+The project requires Python 3.11 or newer. Create the project environment and install the full local validation bundle:
 
 ```bash
-conda activate napari-sparrow
-pip install -e '.[testing,docs]'
+uv sync --extra dev
 ```
 
-This development environment is supported for:
-
-- CentOS
-- Ubuntu
-- MacOS with an M1/M2 Pro
-- Windows 11
+The `dev` extra combines the focused test tools with the complete `tutorials` environment. That includes the Napari plugin, notebook support, tiling correction, the optional `rioxarray` image backend, and the Bokeh-powered Dask dashboard. `uv sync` creates the default `.venv` environment if needed, and `uv run` uses it automatically without activation.
 
 ## Testing
 
-To run unit tests, run the following from the root of the project:
+For a smaller test-only environment, install the `testing` extra:
 
 ```bash
-pytest
+uv sync --extra testing
 ```
 
-Continuous integration will automatically run the tests on all pull requests.
+This extra contains the test runner, coverage tools, Hydra configuration support, and notebook validation tools. Tests that exercise optional Cellpose, PyTorch, BaSiC, OpenCV, or Squidpy integrations are skipped when those packages are not installed. The `dev` environment installs them so the optional integration paths can run as well.
 
-### Type testing
+Run the test suite from the repository root:
 
-Do a type test:
-
-```
-mypy --ignore-missing-imports src/
+```bash
+uv run --no-sync pytest
 ```
 
-## Automated commit checks
+Continuous integration will automatically run the tests on pull requests.
 
-Install a pre-commit hook to run all configured checks in `.pre-commit-config.yaml`:
+When changing dependencies, regenerate and verify the lockfile:
 
+```bash
+uv lock
+uv lock --check
 ```
+
+## Automated checks
+
+Install pre-commit as a uv-managed tool and enable the repository hooks:
+
+```bash
+uv tool install pre-commit
 pre-commit install
-pre-commit run -a
+pre-commit run --all-files
+```
+
+## Documentation contributions
+
+The HTML build is only needed when changing or validating the documentation. Add the `docs` extra to the development environment, then build the local HTML documentation:
+
+```bash
+uv sync --extra dev --extra docs
+uv run --no-sync python -m sphinx -T --keep-going -b html docs docs/_build/html
 ```

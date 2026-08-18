@@ -8,6 +8,7 @@ _ANNOTATION_KEY = "annotation"
 _UNKNOWN_CELLTYPE_KEY = "unknown_celltype"
 _CLEANLINESS_KEY = "Cleanliness"
 _CELLSIZE_KEY = "shapeSize"
+_TRANSCRIPT_DENSITY_KEY = "transcript_density"
 
 _RAW_COUNTS_KEY = "raw_counts"
 _SPATIAL = "spatial"  # key holding coordinates (array) cell/nuclei/bin in adata.obsm

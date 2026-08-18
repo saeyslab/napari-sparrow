@@ -1,12 +1,32 @@
 # https://docs.readthedocs.io/en/stable/config-file/v2.html
 version: 2
+
 build:
   os: ubuntu-24.04
   tools:
-    python: "mambaforge-23.11"
+    python: "3.11"
+  apt_packages:
+    - git-lfs
+  jobs:
+    pre_build:
+      # install git lfs and pull the large files for the tutorials submodule
+      # This way Sphinx can actually process the notebook JSONs
+      - git -C docs/tutorials lfs install --local
+      - git -C docs/tutorials lfs pull
+      # check for unresolved git lfs pointer files in the tutorials submodule
+      - |
+        if grep -R -n "version https://git-lfs.github.com/spec/v1" docs/tutorials; then
+          echo "Unresolved Git LFS pointer files found"
+          exit 1
+        fi
 
 conda:
   environment: environment.yml
+
+submodules:
+  include:
+    - docs/tutorials
+  recursive: false    # only needed if sparrow_notebooks itself has submodules
 
 sphinx:
   configuration: docs/conf.py
