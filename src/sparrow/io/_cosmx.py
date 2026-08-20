@@ -1,66 +1,118 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+import dask.array as da
 import dask.dataframe as dd
 import numpy as np
 import pandas as pd
+from anndata import AnnData
+from dask.array import Array
+from dask_image.imread import imread
+from scipy.sparse import csr_matrix
 from spatialdata import SpatialData, read_zarr
-from spatialdata.models import TableModel
-from spatialdata.transformations import Affine, Identity, Translation, get_transformation, set_transformation
-from spatialdata_io import cosmx as sdata_cosmx
-from spatialdata_io._constants._constants import CosmxKeys
+from spatialdata.transformations import Identity, Translation
 
-from sparrow.utils._keys import _GENES_KEY, _INSTANCE_KEY, _REGION_KEY
+from sparrow.image._image import add_image_layer, add_labels_layer
+from sparrow.points._points import add_points_layer
+from sparrow.table._table import add_table_layer
+from sparrow.utils._keys import _GENES_KEY, _INSTANCE_KEY, _REGION_KEY, _SPATIAL
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
+
+# Common CosMx export suffixes. Prefer parquet transcripts when both formats exist.
+_TRANSCRIPT_SUFFIXES = ("_tx_file.parquet", "_tx_file.csv")
+_FOV_POSITIONS_SUFFIXES = ("_fov_positions_file.csv",)
+_COUNTS_SUFFIXES = ("_exprMat_file.csv",)
+_METADATA_SUFFIXES = ("_metadata_file.csv",)
+
+# Named image folders used by AtoMx / CosMx exports. CellLabels is never treated as an image folder.
+_IMAGE_DIR_CANDIDATES = ("CellComposite", "Morphology2D", "CellOverlay", "Morphology")
+_LABEL_DIR_NAME = "CellLabels"
+
+_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+_FOV_IN_FILENAME = re.compile(r"_F(\d+)", flags=re.IGNORECASE)
+
+# Transcript and FOV-position column aliases seen across CosMx export versions.
+_GENE_COLUMNS = ("target", "gene")
+_GLOBAL_X_COLUMNS = ("x_global_px", "X_global_px")
+_GLOBAL_Y_COLUMNS = ("y_global_px", "Y_global_px")
+_LOCAL_X_COLUMNS = ("x_local_px", "X_local_px")
+_LOCAL_Y_COLUMNS = ("y_local_px", "Y_local_px")
+_FOV_COLUMNS = ("fov", "FOV")
+_FOV_X_COLUMNS = ("x_global_px", "X_global_px", "x_px", "X_px")
+_FOV_Y_COLUMNS = ("y_global_px", "Y_global_px", "y_px", "Y_px")
+_CELL_ID_COLUMNS = ("cell_ID", "cell_id")
+_CENTER_X_GLOBAL_COLUMNS = ("CenterX_global_px",)
+_CENTER_Y_GLOBAL_COLUMNS = ("CenterY_global_px",)
+
+_BLOCKSIZE = "128MB"
+
+
+@dataclass(frozen=True)
+class _CosmxFiles:
+    """Resolved files for one CosMx dataset root."""
+
+    transcripts: Path
+    images_dir: Path
+    fov_positions: Path | None
+    labels_dir: Path | None
+    counts: Path | None
+    metadata: Path | None
 
 
 def cosmx(
     path: str | Path | list[str] | list[Path],
     to_coordinate_system: str | list[str] = "global",
     dataset_id: str | list[str] | None = None,
-    transcripts: bool = True,
     keep_gene_names: str | Path | Iterable[str] | None = None,
+    cells_labels: bool = False,
+    cells_table: bool = False,
     imread_kwargs: Mapping[str, Any] = MappingProxyType({}),
     image_models_kwargs: Mapping[str, Any] = MappingProxyType({}),
     output: str | Path | None = None,
 ) -> SpatialData:
-    """Read *CosMx Nanostring* data into a ``SpatialData`` object.
+    """Read *CosMx* data into a ``SpatialData`` object.
 
-    This wrapper delegates file parsing and FOV-specific coordinate transforms to
-    :func:`spatialdata_io.cosmx`, while adding support for multiple datasets,
-    Sparrow coordinate-system naming, optional Zarr backing, and filtering by a
-    list of genes to keep.
+    Images and transcripts are required. Vendor cell labels and the vendor
+    cell-by-gene table are optional. Transcripts are read lazily into a single
+    points layer using global pixel coordinates when those columns exist.
+    FOV images are kept separate; they are not stitched into a mosaic.
 
     Parameters
     ----------
     path
-        Path to the CosMx dataset root containing the counts, metadata,
-        transcript, image, and label files. A list combines multiple datasets.
+        Path to a CosMx dataset root, or a list of roots to combine.
     to_coordinate_system
         Coordinate system assigned to each dataset. If a list is provided, its
-        length must match ``path`` and every coordinate system must be unique.
+        length must match ``path`` and every name must be unique.
     dataset_id
-        Dataset identifier used by ``spatialdata_io.cosmx``. A scalar identifier
-        is reused for every path; a list must match the length of ``path``.
-    transcripts
-        Whether to read transcript point layers from the CosMx dataset.
+        Dataset identifier used to select ``<dataset_id>_tx_file.csv`` and related
+        files. A scalar identifier is reused for every path; a list must match
+        the length of ``path``. If ``None``, the identifier is inferred from the
+        transcript file name.
     keep_gene_names
-        Gene names to retain in transcript point layers and the upstream counts
-        table. This can be a gene name, an iterable of gene names, or a path to a
-        delimited file whose first column contains the gene panel, such as
-        ``COAD_panel.csv``. If ``None``, no gene filtering is performed.
-        Stored transcript point layers use Sparrow's canonical ``gene`` column
-        name, rather than the upstream CosMx ``target`` column name.
+        Gene names to retain in the transcript layer and, when requested, the
+        vendor table. This can be a gene name, an iterable of gene names, or a
+        path to a delimited file whose first column contains the gene panel.
+        If ``None``, no gene filtering is performed.
+        Stored transcript layers use Sparrow's canonical ``gene`` column.
+    cells_labels
+        Whether to read vendor ``CellLabels`` masks. Automatically enabled when
+        ``cells_table`` is ``True``.
+    cells_table
+        Whether to read the vendor ``exprMat`` counts and cell metadata table.
     imread_kwargs
-        Keyword arguments passed to the upstream image reader.
+        Keyword arguments passed to :func:`dask_image.imread.imread`.
     image_models_kwargs
-        Keyword arguments passed to the upstream image models.
+        Keyword arguments forwarded to the image and labels models. Supported
+        keys are ``chunks`` and ``scale_factors``.
     output
         Path where the resulting ``SpatialData`` object is backed. If ``None``,
         the result is returned in memory.
@@ -68,15 +120,18 @@ def cosmx(
     Returns
     -------
     SpatialData
-        The loaded CosMx data with elements named for their target coordinate
-        system, for example ``1_points_global`` and ``table_global``.
+        CosMx images as ``{fov}_image_{coordinate_system}`` and transcripts as
+        ``transcripts_{coordinate_system}``. Optional labels and tables use
+        ``{fov}_labels_{coordinate_system}`` and ``table_{coordinate_system}``.
 
     Raises
     ------
     ValueError
-        If the number of paths and coordinate systems differs, coordinate
-        systems are duplicated, dataset identifiers have the wrong length, or a
-        transcript point layer lacks the CosMx target column.
+        If paths and coordinate systems are mismatched, coordinate systems are
+        duplicated, required files are missing, or a gene panel is empty.
+    FileNotFoundError
+        If a required image directory, transcript file, or requested vendor
+        labels/table file cannot be found.
 
     Examples
     --------
@@ -105,10 +160,16 @@ def cosmx(
     if len(dataset_ids) != len(paths):
         raise ValueError("The number of dataset identifiers must match the number of paths.")
 
+    # Vendor tables annotate label layers, so reading the table implies reading labels.
+    if cells_table and not cells_labels:
+        log.info("Setting 'cells_labels' to True so the vendor table can annotate CosMx label layers.")
+        cells_labels = True
+
     log.info(
-        "Starting CosMx read for %d dataset(s); transcripts=%s; coordinate systems=%s.",
+        "Starting CosMx read for %d dataset(s); cells_labels=%s; cells_table=%s; coordinate systems=%s.",
         len(paths),
-        transcripts,
+        cells_labels,
+        cells_table,
         coordinate_systems,
     )
 
@@ -122,20 +183,14 @@ def cosmx(
 
     sdata = SpatialData()
 
-    # Initialize the requested backing store before loading potentially large transcript layers.
+    # Initialize the backing store before reading transcripts so points can spill to disk.
     if output is not None:
         log.info("Creating backed CosMx output at '%s'.", output)
         sdata.write(output)
         sdata = read_zarr(output)
 
-    # Read and normalize each CosMx dataset independently.
     for dataset_index, (source_path, coordinate_system, source_dataset_id) in enumerate(
-        zip(
-            paths,
-            coordinate_systems,
-            dataset_ids,
-            strict=True,
-        ),
+        zip(paths, coordinate_systems, dataset_ids, strict=True),
         start=1,
     ):
         log.info(
@@ -145,89 +200,17 @@ def cosmx(
             source_path,
             coordinate_system,
         )
-
-        # Delegate raw CosMx parsing and FOV-specific transforms to the spatialdata-io cosmx reader
-        # The temporary source_sdata object will be discarded after each dataset as all the ellements
-        # will be adjusted to comply with Sparrow's conventions and finally written to a common sdata object.
-        source_sdata = sdata_cosmx(
-            path=source_path,
+        sdata = _add_dataset(
+            sdata,
+            path=Path(source_path),
+            coordinate_system=coordinate_system,
             dataset_id=source_dataset_id,
-            transcripts=transcripts,
+            keep_genes=keep_genes,
+            cells_labels=cells_labels,
+            cells_table=cells_table,
             imread_kwargs=imread_kwargs,
             image_models_kwargs=image_models_kwargs,
         )
-
-        log.info(
-            "Loaded raw CosMx dataset %d/%d: %d image(s), %d label(s), %d point layer(s), and %d table(s).",
-            dataset_index,
-            len(paths),
-            len(source_sdata.images),
-            len(source_sdata.labels),
-            len(source_sdata.points),
-            len(source_sdata.tables),
-        )
-
-        # Track destination names so a backed sdata object can persist each new element.
-        destination_names: list[str] = []
-
-        # Convert the image layers to have the appropriate transformation class for Sparrow.
-        for layer_name in [*source_sdata.images]:
-            # The combination of the source layer name and the target coordinate system is guaranteed to be unique
-            #  because coordinate systems are validated to be unique.
-            # This avoids overwriting the source layer when multiple datasets are read into the same SpatialData object.
-            destination_name = f"{layer_name}_{coordinate_system}"
-            _convert_spatial_element(
-                sdata=sdata,
-                source_sdata=source_sdata,
-                layer_name=layer_name,
-                destination_name=destination_name,
-                coordinate_system=coordinate_system,
-                keep_genes=None,
-            )
-            destination_names.append(destination_name)
-
-        # Convert the label layers to have the appropriate transformation class for Sparrow.
-        for layer_name in [*source_sdata.labels]:
-            destination_name = f"{layer_name}_{coordinate_system}"
-            _convert_spatial_element(
-                sdata=sdata,
-                source_sdata=source_sdata,
-                layer_name=layer_name,
-                destination_name=destination_name,
-                coordinate_system=coordinate_system,
-                keep_genes=None,
-            )
-            destination_names.append(destination_name)
-
-        # Convert the point layers to have the appropriate transformation class for Sparrow
-        # and optionally filter their gene variables to the requested keep list.
-        for layer_name in [*source_sdata.points]:
-            destination_name = f"{layer_name}_{coordinate_system}"
-            _convert_spatial_element(
-                sdata=sdata,
-                source_sdata=source_sdata,
-                layer_name=layer_name,
-                destination_name=destination_name,
-                coordinate_system=coordinate_system,
-                keep_genes=keep_genes,
-            )
-            destination_names.append(destination_name)
-
-        # Copy tables, filtering their gene variables and updating label-region references.
-        for layer_name in [*source_sdata.tables]:
-            destination_name = f"{layer_name}_{coordinate_system}"
-            table = _prepare_table(
-                source_sdata[layer_name],
-                coordinate_system=coordinate_system,
-                keep_genes=keep_genes,
-            )
-            sdata[destination_name] = table
-            destination_names.append(destination_name)
-
-        # Persist the current dataset before reading the next one when output is backed.
-        if sdata.is_backed():
-            sdata.write_element(destination_names)
-            sdata = read_zarr(sdata.path)
 
     log.info(
         "Finished CosMx read: %d image(s), %d label(s), %d point layer(s), and %d table(s).",
@@ -238,6 +221,323 @@ def cosmx(
     )
 
     return sdata
+
+
+def _add_dataset(
+    sdata: SpatialData,
+    path: Path,
+    coordinate_system: str,
+    dataset_id: str | None,
+    keep_genes: set[str] | None,
+    cells_labels: bool,
+    cells_table: bool,
+    imread_kwargs: Mapping[str, Any],
+    image_models_kwargs: Mapping[str, Any],
+) -> SpatialData:
+    """Read one CosMx dataset root into ``sdata``."""
+    files = _discover_files(path, dataset_id=dataset_id, cells_labels=cells_labels, cells_table=cells_table)
+
+    # FOV origins are translations only; they are never estimated from cell centroids.
+    fov_origins = _load_fov_origins(files.fov_positions)
+
+    sdata = _add_images(
+        sdata,
+        images_dir=files.images_dir,
+        coordinate_system=coordinate_system,
+        fov_origins=fov_origins,
+        imread_kwargs=imread_kwargs,
+        image_models_kwargs=image_models_kwargs,
+    )
+
+    sdata = _add_transcripts(
+        sdata,
+        transcripts_path=files.transcripts,
+        coordinate_system=coordinate_system,
+        keep_genes=keep_genes,
+        fov_origins=fov_origins,
+    )
+
+    if cells_labels:
+        if files.labels_dir is None:
+            raise FileNotFoundError(f"CosMx labels directory not found under '{path}'.")
+        sdata = _add_labels(
+            sdata,
+            labels_dir=files.labels_dir,
+            coordinate_system=coordinate_system,
+            fov_origins=fov_origins,
+            imread_kwargs=imread_kwargs,
+            image_models_kwargs=image_models_kwargs,
+        )
+
+    if cells_table:
+        if files.counts is None or files.metadata is None:
+            raise FileNotFoundError(f"CosMx exprMat/metadata files not found under '{path}'.")
+        sdata = _add_table(
+            sdata,
+            counts_path=files.counts,
+            metadata_path=files.metadata,
+            coordinate_system=coordinate_system,
+            keep_genes=keep_genes,
+        )
+
+    return sdata
+
+
+def _discover_files(
+    path: Path,
+    dataset_id: str | None,
+    cells_labels: bool,
+    cells_table: bool,
+) -> _CosmxFiles:
+    """Locate the standard CosMx files under ``path``."""
+    transcripts = _find_suffix_file(path, dataset_id, _TRANSCRIPT_SUFFIXES)
+    if transcripts is None:
+        raise FileNotFoundError(
+            f"CosMx transcript file not found in '{path}'. Expected a file ending with {', '.join(_TRANSCRIPT_SUFFIXES)}."
+        )
+
+    images_dir = _find_directory(path, _IMAGE_DIR_CANDIDATES, skip_names={_LABEL_DIR_NAME})
+    if images_dir is None:
+        raise FileNotFoundError(
+            f"CosMx image directory not found in '{path}'. Expected one of {', '.join(_IMAGE_DIR_CANDIDATES)}."
+        )
+
+    # Resolve labels by the vendor directory name because arbitrary FOV folders may contain images.
+    labels_dir = path / _LABEL_DIR_NAME
+    if not labels_dir.is_dir():
+        labels_dir = None
+    if cells_labels and labels_dir is None:
+        raise FileNotFoundError(
+            f"CosMx labels directory not found in '{path}'. Expected '{_LABEL_DIR_NAME}'."
+        )
+
+    # Infer one dataset identifier from the required transcript file so related files cannot come from another dataset.
+    if dataset_id is None:
+        # Derive the shared dataset prefix from the transcript filename selected above.
+        transcript_suffix = next(
+            suffix for suffix in _TRANSCRIPT_SUFFIXES if transcripts.name.endswith(suffix)
+        )
+        resolved_dataset_id = transcripts.name[: -len(transcript_suffix)]
+    else:
+        resolved_dataset_id = dataset_id
+    counts = _find_suffix_file(path, resolved_dataset_id, _COUNTS_SUFFIXES)
+    metadata = _find_suffix_file(path, resolved_dataset_id, _METADATA_SUFFIXES)
+    if cells_table and (counts is None or metadata is None):
+        raise FileNotFoundError(
+            f"CosMx counts/metadata files not found in '{path}'. "
+            f"Expected files ending with {', '.join(_COUNTS_SUFFIXES)} and {', '.join(_METADATA_SUFFIXES)}."
+        )
+
+    return _CosmxFiles(
+        transcripts=transcripts,
+        images_dir=images_dir,
+        fov_positions=_find_suffix_file(path, resolved_dataset_id, _FOV_POSITIONS_SUFFIXES),
+        labels_dir=labels_dir,
+        counts=counts,
+        metadata=metadata,
+    )
+
+
+def _add_images(
+    sdata: SpatialData,
+    images_dir: Path,
+    coordinate_system: str,
+    fov_origins: dict[str, tuple[float, float]] | None,
+    imread_kwargs: Mapping[str, Any],
+    image_models_kwargs: Mapping[str, Any],
+) -> SpatialData:
+    """Add one image layer per FOV without stitching."""
+    fov_files = _fov_files(images_dir)
+    if not fov_files:
+        raise FileNotFoundError(f"No CosMx FOV images found in '{images_dir}'.")
+
+    chunks = image_models_kwargs.get("chunks")
+    scale_factors = image_models_kwargs.get("scale_factors")
+
+    for fov, image_path in fov_files:
+        log.info("Reading CosMx image for FOV %s from '%s'.", fov, image_path)
+
+        # Keep the image lazy; dask_image only builds a graph here.
+        image = _as_cyx(imread(image_path, **imread_kwargs))
+        sdata = add_image_layer(
+            sdata,
+            arr=image,
+            output_layer=f"{fov}_image_{coordinate_system}",
+            dims=("c", "y", "x"),
+            chunks=chunks,
+            transformations={coordinate_system: _fov_translation(fov, fov_origins)},
+            scale_factors=scale_factors,
+            overwrite=False,
+        )
+
+    return sdata
+
+
+def _add_labels(
+    sdata: SpatialData,
+    labels_dir: Path,
+    coordinate_system: str,
+    fov_origins: dict[str, tuple[float, float]] | None,
+    imread_kwargs: Mapping[str, Any],
+    image_models_kwargs: Mapping[str, Any],
+) -> SpatialData:
+    """Add one vendor labels layer per FOV."""
+    fov_files = _fov_files(labels_dir)
+    if not fov_files:
+        raise FileNotFoundError(f"No CosMx FOV labels found in '{labels_dir}'.")
+
+    chunks = image_models_kwargs.get("chunks")
+    scale_factors = image_models_kwargs.get("scale_factors")
+
+    for fov, labels_path in fov_files:
+        log.info("Reading CosMx labels for FOV %s from '%s'.", fov, labels_path)
+
+        # Vendor masks are integer label images in FOV-local pixel coordinates.
+        labels = _as_yx(imread(labels_path, **imread_kwargs)).astype(np.uint32)
+        sdata = add_labels_layer(
+            sdata,
+            arr=labels,
+            output_layer=f"{fov}_labels_{coordinate_system}",
+            dims=("y", "x"),
+            chunks=chunks,
+            transformations={coordinate_system: _fov_translation(fov, fov_origins)},
+            scale_factors=scale_factors,
+            overwrite=False,
+        )
+
+    return sdata
+
+
+def _add_transcripts(
+    sdata: SpatialData,
+    transcripts_path: Path,
+    coordinate_system: str,
+    keep_genes: set[str] | None,
+    fov_origins: dict[str, tuple[float, float]] | None,
+) -> SpatialData:
+    """Read CosMx transcripts lazily into one identity-transformed points layer."""
+    log.info("Reading CosMx transcripts from '%s'.", transcripts_path)
+
+    # Read CSV/parquet in chunks so the full transcript table is not materialised.
+    transcripts = _read_transcript_table(transcripts_path)
+    gene_column = _require_column(transcripts.columns, _GENE_COLUMNS, kind="gene")
+
+    # Apply the gene whitelist before any coordinate work so dropped probes never enter the graph.
+    if keep_genes is not None:
+        transcripts = transcripts[transcripts[gene_column].isin(list(keep_genes))]
+
+    global_x = _optional_column(transcripts.columns, _GLOBAL_X_COLUMNS)
+    global_y = _optional_column(transcripts.columns, _GLOBAL_Y_COLUMNS)
+
+    if global_x is not None and global_y is not None:
+        log.info("Using CosMx global pixel columns '%s' and '%s' for transcript coordinates.", global_x, global_y)
+        transcripts = transcripts.rename(columns={gene_column: _GENES_KEY, global_x: "x", global_y: "y"})
+    else:
+        local_x = _require_column(transcripts.columns, _LOCAL_X_COLUMNS, kind="local x")
+        local_y = _require_column(transcripts.columns, _LOCAL_Y_COLUMNS, kind="local y")
+        fov_column = _optional_column(transcripts.columns, _FOV_COLUMNS)
+
+        # Fall back to FOV origins from fov_positions, never to an estimated affine.
+        if fov_origins is not None and fov_column is not None:
+            log.info("Global transcript coordinates are absent; applying FOV translations from fov_positions.")
+            transcripts = transcripts.map_partitions(
+                _apply_fov_origins,
+                gene_column=gene_column,
+                local_x=local_x,
+                local_y=local_y,
+                fov_column=fov_column,
+                fov_origins=fov_origins,
+                meta=pd.DataFrame(
+                    {
+                        _GENES_KEY: pd.Series(dtype="object"),
+                        "x": pd.Series(dtype="float64"),
+                        "y": pd.Series(dtype="float64"),
+                    }
+                ),
+            )
+        else:
+            log.warning(
+                "CosMx transcript file '%s' has no global pixel columns and no FOV origins; "
+                "using local pixel coordinates as-is.",
+                transcripts_path,
+            )
+            transcripts = transcripts.rename(columns={gene_column: _GENES_KEY, local_x: "x", local_y: "y"})
+
+    # Keep only the columns Sparrow allocation needs so extra CosMx fields are not persisted.
+    transcripts = transcripts[[_GENES_KEY, "x", "y"]]
+    transcripts["x"] = transcripts["x"].astype(float)
+    transcripts["y"] = transcripts["y"].astype(float)
+
+    return add_points_layer(
+        sdata,
+        ddf=transcripts,
+        output_layer=f"transcripts_{coordinate_system}",
+        coordinates={"x": "x", "y": "y"},
+        transformations={coordinate_system: Identity()},
+        overwrite=False,
+    )
+
+
+def _add_table(
+    sdata: SpatialData,
+    counts_path: Path,
+    metadata_path: Path,
+    coordinate_system: str,
+    keep_genes: set[str] | None,
+) -> SpatialData:
+    """Read the optional vendor cell-by-gene table."""
+    log.info("Reading CosMx vendor table from '%s' and '%s'.", counts_path, metadata_path)
+
+    counts = pd.read_csv(counts_path, header=0)
+    metadata = pd.read_csv(metadata_path, header=0)
+
+    counts_fov = _require_column(counts.columns, _FOV_COLUMNS, kind="fov")
+    counts_cell = _require_column(counts.columns, _CELL_ID_COLUMNS, kind="cell ID")
+    metadata_fov = _require_column(metadata.columns, _FOV_COLUMNS, kind="fov")
+    metadata_cell = _require_column(metadata.columns, _CELL_ID_COLUMNS, kind="cell ID")
+
+    # Build a unique observation index that is stable across FOVs.
+    counts_index = _cell_index(counts[counts_cell], counts[counts_fov])
+    metadata_index = _cell_index(metadata[metadata_cell], metadata[metadata_fov])
+    counts = counts.set_index(counts_index)
+    metadata = metadata.set_index(metadata_index)
+
+    # Drop identifier columns from the expression matrix so remaining columns are genes.
+    gene_columns = [column for column in counts.columns if column not in {counts_fov, counts_cell}]
+    counts = counts[gene_columns]
+
+    common_index = metadata.index.intersection(counts.index)
+    counts = counts.loc[common_index]
+    metadata = metadata.loc[common_index].copy()
+
+    if keep_genes is not None:
+        counts = counts.loc[:, counts.columns.astype(str).isin(keep_genes)]
+
+    # Point the table at the renamed per-FOV labels layers stored in this coordinate system.
+    metadata[_REGION_KEY] = pd.Categorical(
+        metadata[metadata_fov].map(lambda fov: f"{_normalize_fov(fov)}_labels_{coordinate_system}")
+    )
+    metadata[_INSTANCE_KEY] = metadata[metadata_cell].astype(np.int64)
+
+    adata = AnnData(
+        X=csr_matrix(counts.to_numpy()),
+        obs=metadata,
+        var=pd.DataFrame(index=counts.columns.astype(str)),
+    )
+
+    # Preserve global cell centres when the vendor metadata provides them.
+    center_x = _optional_column(adata.obs.columns, _CENTER_X_GLOBAL_COLUMNS)
+    center_y = _optional_column(adata.obs.columns, _CENTER_Y_GLOBAL_COLUMNS)
+    if center_x is not None and center_y is not None:
+        adata.obsm[_SPATIAL] = adata.obs[[center_x, center_y]].to_numpy()
+
+    return add_table_layer(
+        sdata,
+        adata=adata,
+        output_layer=f"table_{coordinate_system}",
+        region=adata.obs[_REGION_KEY].cat.categories.to_list(),
+        overwrite=False,
+    )
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -256,11 +556,20 @@ def _load_keep_gene_names(
         return None
 
     # Treat an explicit Path or an existing string path as a panel file.
-    if isinstance(keep_gene_names, Path) or (
-        isinstance(keep_gene_names, str) and Path(keep_gene_names).is_file()
-    ):
+    panel_path: Path | None = None
+    if isinstance(keep_gene_names, Path):
+        panel_path = keep_gene_names
+    elif isinstance(keep_gene_names, str):
+        candidate_path = Path(keep_gene_names)
+        if candidate_path.is_file():
+            panel_path = candidate_path
+        else:
+            # Preserve a scalar gene name instead of iterating over its individual characters.
+            return {keep_gene_names}
+
+    if panel_path is not None:
         # Read the first column so one-column panels with arbitrary headers are supported.
-        panel = pd.read_csv(keep_gene_names, header=0)
+        panel = pd.read_csv(panel_path, header=0)
 
         # Reject empty files because they would silently remove every transcript.
         if panel.shape[1] == 0:
@@ -276,175 +585,234 @@ def _load_keep_gene_names(
         return gene_names
 
     # Normalize iterable gene names to strings for exact matching against CosMx targets.
-    return {str(gene_name) for gene_name in keep_gene_names}
+    gene_names = {str(gene_name) for gene_name in keep_gene_names}
+    if not gene_names:
+        raise ValueError("The CosMx gene whitelist must contain at least one gene name.")
+
+    return gene_names
 
 
-def _convert_spatial_element(
-    sdata: SpatialData,
-    source_sdata: SpatialData,
-    layer_name: str,
-    destination_name: str,
-    coordinate_system: str,
-    keep_genes: set[str] | None,
-) -> None:
-    """
-    Normalize one upstream CosMx element and register it in the output object.
+def _find_suffix_file(path: Path, dataset_id: str | None, suffixes: tuple[str, ...]) -> Path | None:
+    """Return an exact dataset file, or a unique suffix match when no ID was supplied."""
+    # Use only exact filenames when the caller selected a dataset explicitly.
+    if dataset_id is not None:
+        for suffix in suffixes:
+            candidate = path / f"{dataset_id}{suffix}"
+            if candidate.is_file():
+                return candidate
+        return None
 
-    The element is retrieved from ``source_sdata``, normalized for Sparrow's
-    coordinate-system conventions, and stored in ``sdata`` under ``destination_name``.
+    # Infer a file only when the caller asked the reader to discover the dataset.
+    for suffix in suffixes:
+        matches = sorted(child for child in path.iterdir() if child.is_file() and child.name.endswith(suffix))
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(f"Multiple files ending with '{suffix}' found in '{path}'. Please specify dataset_id.")
 
-    Image and label layers retain their existing pixel or
-    label coordinates while **translation-only affine transformations** are
-    represented as ``Translation`` objects. 
-    
-    Point layers are optionally filtered using ``keep_genes``,
-    have the upstream ``target`` column renamed to Sparrow's canonical ``gene`` column, 
-    and are transformed from their FOV-local coordinates into global coordinates.
-    Because of this materialization into the global space, 
-    their registered transformation can be set to ``Identity`` relative to ``coordinate_system``.
-    This is because Sparrow requires identity-transformed points.
-    """
-    element = source_sdata[layer_name]
-
-    # Retrieve the existing CosMx FOV-local-to-global transform before normalizing the element.
-    global_transformation = get_transformation(element, to_coordinate_system="global")
-
-    if layer_name in source_sdata.points:
-        # Use the upstream CosMx target column while inspecting the source schema.
-        target_column = CosmxKeys.TARGET_OF_TRANSCRIPT.value
-
-        # Fail early if a custom upstream reader returns an unexpected point schema.
-        if target_column not in element.columns:
-            raise ValueError(f"CosMx point layer '{layer_name}' does not contain a '{target_column}' column.")
-
-        # Apply the Dask dataframe membership filter without materializing the points.
-        if keep_genes is not None:
-            element = element[element[target_column].isin(keep_genes)]
-
-        # Rename the upstream feature column so Sparrow's default allocation and plotting APIs work.
-        element = element.rename(columns={target_column: _GENES_KEY})
-
-        # Keep the PointsModel feature-key metadata synchronized with the renamed dataframe column.
-        element.attrs["spatialdata_attrs"]["feature_key"] = _GENES_KEY
-
-        # Numerically materialize the FOV transform in point coordinates because Sparrow requires identity-transformed points.
-        element = _transform_points_to_global(element, global_transformation)
-
-        # Mark the already-transformed points as identity-related to the requested coordinate system.
-        global_transformation = Identity()
-    else:
-        # Convert translation-only Affines to the transformation type Sparrow's raster operations support.
-        global_transformation = _normalize_transformation(global_transformation)
-
-    # Register the normalized element under the requested coordinate-system name.
-    # set_all=True replaces the previous transformation dictionary
-    set_transformation(element, transformation={coordinate_system: global_transformation}, set_all=True)
-
-    # Store the normalized element under a name that is unique to its coordinate system.
-    sdata[destination_name] = element
+    return None
 
 
-def _normalize_transformation(transformation: Any) -> Any:
-    """Convert **translation-only affine transforms** to Sparrow-compatible translations.
+def _find_directory(
+    path: Path,
+    candidates: tuple[str, ...],
+    skip_names: set[str],
+) -> Path | None:
+    """Return a named image folder, or a FOV-containing image subdirectory."""
+    for name in candidates:
+        candidate = path / name
+        if candidate.is_dir():
+            return candidate
 
-    Sparrow's allocation code currently understands ``Identity``, ``Translation``,
-    and ``Sequence``, but not arbitrary ``Affine`` transformations.
-    """
-    # Leave non-affine transformations unchanged because they already carry their intended semantics.
-    if not isinstance(transformation, Affine):
-        return transformation
+    for child in sorted(path.iterdir()):
+        if child.is_dir() and child.name not in skip_names and _fov_files(child):
+            return child
 
-    # Express the affine transform in the two spatial axes used by CosMx images, labels, and points.
-    affine_matrix = np.asarray(
-        transformation.to_affine_matrix(
-            input_axes=("x", "y"),
-            output_axes=("x", "y"),
+    return None
+
+
+def _fov_files(directory: Path) -> list[tuple[str, Path]]:
+    """Return ``(fov, path)`` pairs for image-like files whose names contain ``_F<number>``."""
+    files: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+
+    for child in sorted(directory.iterdir()):
+        if not child.is_file() or child.suffix.lower() not in _IMAGE_EXTENSIONS:
+            continue
+
+        match = _FOV_IN_FILENAME.search(child.name)
+        if match is None:
+            continue
+
+        # Normalise F001 and F1 to the same FOV identifier.
+        fov = str(int(match.group(1)))
+        if fov in seen:
+            log.warning("Skipping extra CosMx file '%s' for FOV %s.", child, fov)
+            continue
+
+        seen.add(fov)
+        files.append((fov, child))
+
+    return files
+
+
+def _load_fov_origins(fov_positions_path: Path | None) -> dict[str, tuple[float, float]] | None:
+    """Read FOV translations from ``fov_positions_file.csv`` when pixel columns exist."""
+    if fov_positions_path is None:
+        return None
+
+    positions = pd.read_csv(fov_positions_path, header=0)
+    fov_column = _optional_column(positions.columns, _FOV_COLUMNS)
+    x_column = _optional_column(positions.columns, _FOV_X_COLUMNS)
+    y_column = _optional_column(positions.columns, _FOV_Y_COLUMNS)
+
+    if fov_column is None or x_column is None or y_column is None:
+        log.warning(
+            "CosMx FOV positions file '%s' does not contain pixel origin columns; "
+            "FOV images will use an identity transformation.",
+            fov_positions_path,
         )
-    )
+        return None
 
-    # Check whether the linear part is identity (i.e., leave x and y unchanged)
-    # and the homogeneous row is present indicating a pure translation
-    is_translation = np.allclose(affine_matrix[:2, :2], np.eye(2)) and np.allclose(
-        affine_matrix[2], np.array([0.0, 0.0, 1.0])
-    )
+    origins: dict[str, tuple[float, float]] = {}
+    for _, row in positions.iterrows():
+        # Normalize the FOV key before checking for duplicate vendor rows.
+        fov = _normalize_fov(row[fov_column])
+        if fov in origins:
+            raise ValueError(f"CosMx FOV positions file '{fov_positions_path}' contains duplicate FOV '{fov}'.")
 
-    # If the above check is false, it indicates genuine scale, rotation, or shear transforms
-    # That cannot be represented by a simple translation, so we return the original Affine.
-    if not is_translation:
-        return transformation
+        try:
+            origin = (float(row[x_column]), float(row[y_column]))
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"CosMx FOV positions file '{fov_positions_path}' contains a non-numeric origin for FOV '{fov}'."
+            ) from error
 
-    # Represent the same translation using the class accepted by Sparrow's raster-coordinate helpers.
-    # affine_matrix[:2, -1] extracts the translation vector from the affine matrix
-    return Translation(affine_matrix[:2, -1], axes=("x", "y"))
+        # Reject invalid origins before they become Translation transforms and corrupt allocation coordinates.
+        if not all(np.isfinite(value) for value in origin):
+            raise ValueError(
+                f"CosMx FOV positions file '{fov_positions_path}' contains a non-finite origin for FOV '{fov}'."
+            )
+
+        origins[fov] = origin
+
+    return origins
 
 
-def _transform_points_to_global(points: dd.DataFrame, transformation: Any) -> dd.DataFrame:
-    """Apply a CosMx FOV transform to point coordinates and return identity-transformed points."""
-    # Convert the SpatialData transformation into a two-dimensional homogeneous affine matrix.
-    affine_matrix = np.asarray(
-        transformation.to_affine_matrix(
-            input_axes=("x", "y"),
-            output_axes=("x", "y"),
+def _fov_translation(
+    fov: str,
+    fov_origins: Mapping[str, Any] | None,
+) -> Identity | Translation:
+    """Return the translation that places one FOV image into the global pixel system."""
+    if fov_origins is None:
+        return Identity()
+
+    # If the requested FOV has no origin, we return the Identity() transform
+    try:
+        origin = fov_origins[fov]
+    except KeyError:
+        return Identity()
+
+    # Preserve already-created supported transforms so this boundary also validates future transform sources.
+    if isinstance(origin, Identity | Translation):
+        return origin
+
+    # Reject values that cannot represent the two-dimensional FOV origin used by CosMx.
+    if not isinstance(origin, (tuple, list)) or len(origin) != 2:
+        raise ValueError(
+            f"CosMx FOV '{fov}' received unsupported transformation type "
+            f"'{type(origin).__name__}'. Sparrow supports only Identity and Translation here."
         )
+
+    # Convert the numeric FOV origin into the translation used by image and label layers.
+    return Translation(list(origin), axes=("x", "y"))
+
+
+def _read_transcript_table(path: Path) -> dd.DataFrame:
+    """Read CosMx transcripts as a Dask dataframe from parquet or CSV."""
+    if path.suffix.lower() == ".parquet":
+        return dd.read_parquet(path)
+
+    return dd.read_csv(path, header=0, blocksize=_BLOCKSIZE)
+
+
+def _apply_fov_origins(
+    partition: pd.DataFrame,
+    gene_column: str,
+    local_x: str,
+    local_y: str,
+    fov_column: str,
+    fov_origins: dict[str, tuple[float, float]],
+) -> pd.DataFrame:
+    """Add FOV origin translations to local transcript coordinates."""
+    fov_ids = partition[fov_column].map(_normalize_fov)
+    origin_x = fov_ids.map(lambda fov: fov_origins.get(fov, (0.0, 0.0))[0])
+    origin_y = fov_ids.map(lambda fov: fov_origins.get(fov, (0.0, 0.0))[1])
+
+    return pd.DataFrame(
+        {
+            _GENES_KEY: partition[gene_column].astype(str),
+            "x": partition[local_x].astype(float) + origin_x.astype(float),
+            "y": partition[local_y].astype(float) + origin_y.astype(float),
+        }
     )
 
-    # Define the partition operation so Dask can apply the transform lazily to transcript chunks.
-    def apply_affine(partition: pd.DataFrame) -> pd.DataFrame:
-        # Read local FOV coordinates
-        local_coordinates = partition[["x", "y"]].to_numpy()
-        # Append the homogeneous coordinate to enable translation through matrix multiplication with the affine matrix
-        homogeneous_coordinates = np.column_stack((local_coordinates, np.ones(len(partition))))
 
-        # Apply the FOV-to-global transform to every point in the partition.
-        global_coordinates = homogeneous_coordinates @ affine_matrix.T
+def _as_cyx(array: Array) -> Array:
+    """Normalise an image to ``(c, y, x)`` without flipping the y-axis."""
+    array = da.squeeze(array)
 
-        # Copy the partition so the source point dataframe and its lazy graph remain unchanged.
-        transformed_partition = partition.copy()
+    if array.ndim == 2:
+        return array[None, ...]
 
-        # Replace local x and y values with their calculated global-coordinate equivalents.
-        transformed_partition["x"] = global_coordinates[:, 0]
-        transformed_partition["y"] = global_coordinates[:, 1]
+    if array.ndim == 3:
+        # RGB/RGBA FOV composites are stored as (y, x, c).
+        if array.shape[-1] in (3, 4) and array.shape[0] not in (3, 4):
+            return da.moveaxis(array, -1, 0)
+        return array
 
-        return transformed_partition
-
-    # Update the empty metadata frame so Dask records the transformed coordinate dtypes correctly.
-    metadata = points._meta.copy()
-    metadata["x"] = metadata["x"].astype(float)
-    metadata["y"] = metadata["y"].astype(float)
-
-    # Build a lazy transformed dataframe without computing the full transcript table.
-    return points.map_partitions(apply_affine, meta=metadata)
+    raise ValueError(f"CosMx image has unsupported shape {array.shape}; expected (y, x) or (c, y, x).")
 
 
-def _prepare_table(
-    table: Any,
-    coordinate_system: str,
-    keep_genes: set[str] | None,
-) -> Any:
-    """Filter and rename the region metadata in an upstream CosMx table."""
-    # Select only requested genes while preserving all cell observations and metadata.
-    if keep_genes is not None:
-        table = table[:, table.var_names.isin(keep_genes)].copy()
+def _as_yx(array: Array) -> Array:
+    """Normalise a labels image to ``(y, x)`` without flipping the y-axis."""
+    array = da.squeeze(array)
 
-    # Validate the columns needed to keep table regions linked to renamed label layers.
-    if _REGION_KEY not in table.obs.columns:
-        raise ValueError(f"CosMx table does not contain the region column '{_REGION_KEY}'.")
-    if _INSTANCE_KEY not in table.obs.columns:
-        raise ValueError(f"CosMx table does not contain the instance column '{_INSTANCE_KEY}'.")
+    if array.ndim == 2:
+        return array
 
-    # Append the target coordinate system to every referenced label region.
-    # This is needed because the label layers were renamed to include the coordinate system.
-    region_names = table.obs[_REGION_KEY].astype(str).map(lambda region: f"{region}_{coordinate_system}")
-    # Store the region values as categorical data, which is the representation expected by TableModel.
-    table.obs[_REGION_KEY] = pd.Categorical(region_names)
+    if array.ndim == 3:
+        # Drop a trailing or leading singleton channel if the vendor wrote RGB-like labels.
+        if array.shape[0] == 1:
+            return array[0]
+        if array.shape[-1] == 1:
+            return array[..., 0]
 
-    # Remove the SpatialData table metadata so it can be rebuilt with the new region names.
-    table.uns.pop(TableModel.ATTRS_KEY, None)
+    raise ValueError(f"CosMx labels image has unsupported shape {array.shape}; expected (y, x).")
 
-    # Rebuild SpatialData table metadata after changing categorical region values.
-    return TableModel.parse(
-        table,
-        region_key=_REGION_KEY,
-        region=table.obs[_REGION_KEY].cat.categories.to_list(),
-        instance_key=_INSTANCE_KEY,
-    )
+
+def _optional_column(columns: Iterable[str], candidates: tuple[str, ...]) -> str | None:
+    """Return the first matching column name, or ``None`` if none are present."""
+    column_set = set(columns)
+    for candidate in candidates:
+        if candidate in column_set:
+            return candidate
+    return None
+
+
+def _require_column(columns: Iterable[str], candidates: tuple[str, ...], kind: str) -> str:
+    """Return the first matching column name or raise a descriptive error."""
+    column = _optional_column(columns, candidates)
+    if column is None:
+        raise ValueError(f"CosMx file is missing a {kind} column; expected one of {', '.join(candidates)}.")
+    return column
+
+
+def _normalize_fov(value: Any) -> str:
+    """Normalise FOV identifiers such as ``1``, ``1.0`` and ``001`` to ``'1'``."""
+    return str(int(float(value)))
+
+
+def _cell_index(cell_ids: pd.Series, fovs: pd.Series) -> pd.Index:
+    """Build a unique cell index from vendor cell ID and FOV columns."""
+    return pd.Index(cell_ids.astype(str).str.cat(fovs.map(_normalize_fov), sep="_"))

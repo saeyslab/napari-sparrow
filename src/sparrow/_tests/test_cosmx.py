@@ -1,130 +1,133 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
-from anndata import AnnData
-from spatialdata import SpatialData
-from spatialdata.models import Labels2DModel, PointsModel, TableModel
-from spatialdata.transformations import Affine, Identity, Translation, get_transformation
+import tifffile
+from spatialdata.transformations import Identity, Translation, get_transformation
 
-from sparrow.io._cosmx import _load_keep_gene_names, cosmx
+from sparrow.io._cosmx import (
+    _discover_files,
+    _fov_translation,
+    _load_keep_gene_names,
+    cosmx,
+)
 from sparrow.table._allocation import allocate
 from sparrow.utils._keys import _GENES_KEY, _INSTANCE_KEY, _REGION_KEY
 
 
-def _mock_cosmx_sdata() -> SpatialData:
-    """Create the minimal upstream-shaped CosMx object needed by the reader test."""
-    # Build a point dataframe with one measured gene and one control probe.
-    points_data = pd.DataFrame(
+def _write_cosmx_dataset(root: Path) -> Path:
+    """Write a minimal CosMx export that the native reader can load."""
+    images_dir = root / "CellComposite"
+    labels_dir = root / "CellLabels"
+    images_dir.mkdir()
+    labels_dir.mkdir()
+
+    # Write one grayscale FOV image and a matching integer label mask.
+    tifffile.imwrite(images_dir / "CellComposite_F001.tif", np.arange(64, dtype=np.uint8).reshape(8, 8))
+    tifffile.imwrite(labels_dir / "CellLabels_F001.tif", np.ones((8, 8), dtype=np.uint16))
+
+    # Include both local and global transcript columns so the reader must prefer global pixels.
+    pd.DataFrame(
         {
+            "fov": [1, 1],
+            "cell_ID": [1, 1],
             "x_local_px": [1.0, 2.0],
             "y_local_px": [3.0, 4.0],
+            "x_global_px": [2.0, 3.0],
+            "y_global_px": [5.0, 6.0],
             "target": ["ACTB", "SystemControl1"],
-            "cell_ID": [1, 1],
         }
+    ).to_csv(root / "coad_tx_file.csv", index=False)
+
+    # FOV origins are translations, not estimated affines.
+    pd.DataFrame({"fov": [1], "x_global_px": [1.0], "y_global_px": [2.0]}).to_csv(
+        root / "coad_fov_positions_file.csv",
+        index=False,
     )
 
-    # Define the FOV-local-to-global transform that the upstream CosMx reader provides.
-    fov_to_global = Affine(
-        np.array([[1.0, 0.0, 1.0], [0.0, 1.0, 2.0], [0.0, 0.0, 1.0]]),
-        input_axes=("x", "y"),
-        output_axes=("x", "y"),
+    pd.DataFrame({"cell_ID": [1, 2], "fov": [1, 1], "ACTB": [2, 1], "SystemControl1": [4, 3]}).to_csv(
+        root / "coad_exprMat_file.csv",
+        index=False,
     )
-
-    # Parse the dataframe using the same point schema as spatialdata-io CosMx.
-    points = PointsModel.parse(
-        points_data,
-        coordinates={"x": "x_local_px", "y": "y_local_px"},
-        feature_key="target",
-        instance_key="cell_ID",
-        transformations={"global": fov_to_global},
-    )
-
-    # Build a counts table with matching region and instance metadata.
-    observations = pd.DataFrame(
+    pd.DataFrame(
         {
-            _REGION_KEY: pd.Categorical(["1_labels", "1_labels"]),
-            _INSTANCE_KEY: [1, 2],
-        },
-        index=["1_1", "1_2"],
-    )
-    variables = pd.DataFrame(index=["ACTB", "SystemControl1"])
-    table = AnnData(np.array([[2, 4], [1, 3]]), obs=observations, var=variables)
+            "cell_ID": [1, 2],
+            "fov": [1, 1],
+            "CenterX_global_px": [2.0, 3.0],
+            "CenterY_global_px": [5.0, 6.0],
+        }
+    ).to_csv(root / "coad_metadata_file.csv", index=False)
 
-    # Add SpatialData table metadata using the CosMx region and instance columns.
-    table = TableModel.parse(
-        table,
-        region_key=_REGION_KEY,
-        region=["1_labels"],
-        instance_key=_INSTANCE_KEY,
-    )
-
-    # Add a matching label layer so table-region validation reflects a real CosMx object.
-    labels = Labels2DModel.parse(
-        np.ones((4, 4), dtype=np.uint32),
-        dims=("y", "x"),
-        transformations={"global": fov_to_global},
-    )
-
-    # Return the same categories that the upstream reader exposes.
-    return SpatialData(labels={"1_labels": labels}, points={"1_points": points}, tables={"table": table})
+    return root
 
 
-def test_cosmx_filters_panel_genes_and_renames_output(monkeypatch, tmp_path):
+def test_cosmx_reads_global_transcripts_and_filters_panel_genes(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
     # Write a one-column panel file in the format supplied for the COAD dataset.
     panel_path = tmp_path / "COAD_panel.csv"
     panel_path.write_text("x\nACTB\n", encoding="utf-8")
 
-    # Capture the upstream call while returning a small deterministic CosMx object.
-    calls: dict[str, object] = {}
-
-    def fake_cosmx(**kwargs):
-        calls.update(kwargs)
-        return _mock_cosmx_sdata()
-
-    # Replace only the upstream reader used by Sparrow's wrapper.
-    monkeypatch.setattr("sparrow.io._cosmx.sdata_cosmx", fake_cosmx)
-
-    # Read the mocked dataset with the panel and a non-global coordinate-system name.
     sdata = cosmx(
-        tmp_path,
+        dataset_path,
         dataset_id="coad",
         to_coordinate_system="sample",
         keep_gene_names=panel_path,
-        transcripts=True,
     )
 
-    # Confirm the wrapper forwards the upstream reader arguments unchanged.
-    assert calls["path"] == tmp_path
-    assert calls["dataset_id"] == "coad"
-    assert calls["transcripts"] is True
+    # Default reads are images plus one transcript layer; vendor labels and tables stay opt-in.
+    assert "1_image_sample" in sdata.images
+    assert "transcripts_sample" in sdata.points
+    assert sdata.labels == {}
+    assert sdata.tables == {}
 
-    # Confirm control probes are absent from the lazily filtered transcript points.
-    points = sdata["1_points_sample"].compute()
+    # Confirm control probes are absent and global pixel columns were used as-is.
+    points = sdata["transcripts_sample"].compute()
     assert points[_GENES_KEY].tolist() == ["ACTB"]
     assert "target" not in points.columns
-    assert points[["x", "y"]].values.tolist() == [[2.0, 5.0]]
-    assert isinstance(get_transformation(sdata["1_points_sample"], to_coordinate_system="sample"), Identity)
+    assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 5.0]]
+    assert isinstance(get_transformation(sdata["transcripts_sample"], to_coordinate_system="sample"), Identity)
+
+    image_transform = get_transformation(sdata["1_image_sample"], to_coordinate_system="sample")
+    assert isinstance(image_transform, Translation)
+    assert np.allclose(image_transform.translation, [1.0, 2.0])
+
+
+def test_cosmx_reads_optional_labels_and_table(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+    panel_path = tmp_path / "COAD_panel.csv"
+    panel_path.write_text("x\nACTB\n", encoding="utf-8")
+
+    sdata = cosmx(
+        dataset_path,
+        dataset_id="coad",
+        to_coordinate_system="sample",
+        keep_gene_names=panel_path,
+        cells_table=True,
+    )
+
+    # Confirm vendor labels received the same FOV translation as the image.
     assert isinstance(get_transformation(sdata["1_labels_sample"], to_coordinate_system="sample"), Translation)
 
-    # Confirm the counts table uses the same keep list and renamed label region.
     table = sdata["table_sample"]
     assert table.var_names.tolist() == ["ACTB"]
     assert table.obs[_REGION_KEY].cat.categories.tolist() == ["1_labels_sample"]
+    assert table.obs[_INSTANCE_KEY].tolist() == [1, 2]
 
     # Confirm default Sparrow allocation consumes the canonical gene column without extra arguments.
     sdata = allocate(
         sdata,
         labels_layer="1_labels_sample",
-        points_layer="1_points_sample",
+        points_layer="transcripts_sample",
         to_coordinate_system="sample",
         output_layer="allocated",
         update_shapes_layers=False,
         overwrite=True,
     )
 
-    # Confirm the allocated table contains the retained gene.
     assert sdata["allocated"].var_names.tolist() == ["ACTB"]
 
 
@@ -133,6 +136,59 @@ def test_cosmx_rejects_empty_gene_panel(tmp_path):
     panel_path = tmp_path / "empty_panel.csv"
     panel_path.write_text("x\n", encoding="utf-8")
 
-    # Reject the empty whitelist before any upstream CosMx data is loaded.
+    # Reject the empty whitelist before any CosMx data is loaded.
     with pytest.raises(ValueError, match="does not contain any gene names"):
         _load_keep_gene_names(panel_path)
+
+
+def test_cosmx_accepts_scalar_gene_name_and_rejects_empty_iterable():
+    # Treat one direct gene name as one whitelist entry rather than a sequence of characters.
+    assert _load_keep_gene_names("ACTB") == {"ACTB"}
+
+    # Reject empty direct iterables because they would silently remove every transcript.
+    with pytest.raises(ValueError, match="at least one gene name"):
+        _load_keep_gene_names([])
+
+
+def test_cosmx_rejects_unsupported_fov_transformation():
+    # Report unsupported transform values before they reach SpatialData layer registration.
+    with pytest.raises(ValueError, match="unsupported transformation type 'object'"):
+        _fov_translation("1", {"1": object()})
+
+
+def test_cosmx_requires_named_labels_directory(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+    labels_dir = dataset_path / "CellLabels"
+
+    # Remove the named labels directory while leaving the image directory in place.
+    for label_path in labels_dir.iterdir():
+        label_path.unlink()
+    labels_dir.rmdir()
+
+    # Do not reinterpret CellComposite or another FOV folder as a labels directory.
+    with pytest.raises(FileNotFoundError, match="labels directory"):
+        _discover_files(dataset_path, dataset_id="coad", cells_labels=True, cells_table=False)
+
+
+def test_cosmx_keeps_related_files_on_the_transcript_dataset_id(tmp_path):
+    dataset_path = tmp_path / "dataset"
+    dataset_path.mkdir()
+    (dataset_path / "CellComposite").mkdir()
+
+    # Make the transcript prefix differ from the only available table-file prefix.
+    pd.DataFrame({"target": ["ACTB"], "x_global_px": [1.0], "y_global_px": [2.0]}).to_csv(
+        dataset_path / "coad_tx_file.csv",
+        index=False,
+    )
+    pd.DataFrame({"cell_ID": [1], "fov": [1], "ACTB": [1]}).to_csv(
+        dataset_path / "other_exprMat_file.csv",
+        index=False,
+    )
+    pd.DataFrame({"cell_ID": [1], "fov": [1]}).to_csv(
+        dataset_path / "other_metadata_file.csv",
+        index=False,
+    )
+
+    # Refuse to combine table files belonging to a different dataset prefix.
+    with pytest.raises(FileNotFoundError, match="counts/metadata files"):
+        _discover_files(dataset_path, dataset_id=None, cells_labels=False, cells_table=True)
