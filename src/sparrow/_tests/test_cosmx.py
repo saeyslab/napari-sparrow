@@ -96,6 +96,94 @@ def test_cosmx_reads_global_transcripts_and_filters_panel_genes(tmp_path):
     assert np.allclose(image_transform.translation, [1.0, 2.0])
 
 
+def test_cosmx_allows_single_fov_without_positions(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+    (dataset_path / "coad_fov_positions_file.csv").unlink()
+
+    # Preserve the valid identity-coordinate case when the dataset contains only one FOV.
+    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+    assert isinstance(get_transformation(sdata["1_image_sample"], to_coordinate_system="sample"), Identity)
+
+
+def test_cosmx_rejects_missing_positions_for_multiple_fovs(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Add a second FOV so identity transforms would place two images on top of each other.
+    tifffile.imwrite(
+        dataset_path / "CellComposite" / "CellComposite_F002.tif",
+        np.zeros((8, 8), dtype=np.uint8),
+    )
+    (dataset_path / "coad_fov_positions_file.csv").unlink()
+
+    # Reject ambiguous geometry before image or transcript layers are registered.
+    with pytest.raises(ValueError, match=r"multiple FOVs.*no FOV positions file"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+
+def test_cosmx_rejects_incomplete_positions_for_multiple_fovs(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Add a second FOV while leaving the positions file with only the first origin.
+    tifffile.imwrite(
+        dataset_path / "CellComposite" / "CellComposite_F002.tif",
+        np.zeros((8, 8), dtype=np.uint8),
+    )
+
+    # Reject a partial origin mapping instead of assigning the missing FOV identity coordinates.
+    with pytest.raises(ValueError, match=r"missing origins for FOVs 2"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+
+def test_cosmx_includes_local_transcript_fovs_in_origin_validation(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Remove global coordinates so the transcript FOV column controls placement.
+    pd.DataFrame(
+        {
+            "fov": [1, 2],
+            "x_local_px": [1.0, 2.0],
+            "y_local_px": [3.0, 4.0],
+            "target": ["ACTB", "ACTB"],
+        }
+    ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
+
+    # Reject the second transcript FOV before local coordinates can be treated as global.
+    with pytest.raises(ValueError, match=r"missing origins for FOVs 2"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+
+def test_cosmx_rejects_non_finite_transcript_coordinates(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Keep the global coordinate schema but introduce an invalid spatial value.
+    pd.DataFrame(
+        {
+            "x_global_px": [np.nan],
+            "y_global_px": [2.0],
+            "target": ["ACTB"],
+        }
+    ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
+
+    # Reject invalid points before registering the transcript layer.
+    with pytest.raises(ValueError, match="contains non-finite coordinates"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+
+def test_cosmx_warns_for_unsupported_image_model_kwargs(tmp_path, caplog):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Warn about ignored model options while continuing with supported reader arguments.
+    cosmx(
+        dataset_path,
+        dataset_id="coad",
+        to_coordinate_system="sample",
+        image_models_kwargs={"unsupported": True},
+    )
+
+    assert "Ignoring unsupported 'image_models_kwargs' keys: unsupported" in caplog.text
+
+
 def test_cosmx_reads_optional_labels_and_table(tmp_path):
     dataset_path = _write_cosmx_dataset(tmp_path)
     panel_path = tmp_path / "COAD_panel.csv"
@@ -141,9 +229,15 @@ def test_cosmx_rejects_empty_gene_panel(tmp_path):
         _load_keep_gene_names(panel_path)
 
 
-def test_cosmx_accepts_scalar_gene_name_and_rejects_empty_iterable():
-    # Treat one direct gene name as one whitelist entry rather than a sequence of characters.
-    assert _load_keep_gene_names("ACTB") == {"ACTB"}
+def test_cosmx_rejects_scalar_gene_name_and_accepts_string_panel_path(tmp_path):
+    # Require direct gene filters to be expressed as an iterable rather than a scalar string.
+    with pytest.raises(ValueError, match="single gene names are not supported"):
+        _load_keep_gene_names("ACTB")
+
+    # Preserve support for string paths to panel files.
+    panel_path = tmp_path / "panel.csv"
+    panel_path.write_text("gene\nACTB\n", encoding="utf-8")
+    assert _load_keep_gene_names(str(panel_path)) == {"ACTB"}
 
     # Reject empty direct iterables because they would silently remove every transcript.
     with pytest.raises(ValueError, match="at least one gene name"):

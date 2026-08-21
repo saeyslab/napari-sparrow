@@ -67,6 +67,23 @@ class _CosmxFiles:
     metadata: Path | None
 
 
+@dataclass(frozen=True)
+class _CosmxDataset:
+    """Validated inputs and discovered FOVs for one CosMx dataset root."""
+
+    path: Path
+    transcripts_file: Path
+    images_dir: Path
+    fov_positions_file: Path | None
+    labels_dir: Path | None
+    counts_file: Path | None
+    metadata_file: Path | None
+    image_fov_files: tuple[tuple[str, Path], ...]
+    label_fov_files: tuple[tuple[str, Path], ...]
+    fov_origins: dict[str, tuple[float, float]] | None
+    transcripts: dd.DataFrame
+
+
 def cosmx(
     path: str | Path | list[str] | list[Path],
     to_coordinate_system: str | list[str] = "global",
@@ -83,7 +100,10 @@ def cosmx(
     Images and transcripts are required. Vendor cell labels and the vendor
     cell-by-gene table are optional. Transcripts are read lazily into a single
     points layer using global pixel coordinates when those columns exist.
-    FOV images are kept separate; they are not stitched into a mosaic.
+    Gene names can be filtered to a whitelist before any coordinate work is performed.
+    Multi-FOV datasets require a valid ``fov_positions_file.csv`` with origins
+    for every image and requested label FOV; single-FOV datasets may use the
+    identity transformation when no positions file is available.
 
     Parameters
     ----------
@@ -99,13 +119,14 @@ def cosmx(
         transcript file name.
     keep_gene_names
         Gene names to retain in the transcript layer and, when requested, the
-        vendor table. This can be a gene name, an iterable of gene names, or a
-        path to a delimited file whose first column contains the gene panel.
+        vendor table. This can be an iterable of gene names or a path to a
+        delimited file whose first column contains the gene panel. A single
+        gene name is not supported. String values are interpreted as panel file paths.
         If ``None``, no gene filtering is performed.
         Stored transcript layers use Sparrow's canonical ``gene`` column.
     cells_labels
         Whether to read vendor ``CellLabels`` masks. Automatically enabled when
-        ``cells_table`` is ``True``.
+        ``cells_table`` is ``True`` because the cell table is linked to the vendor label masks.
     cells_table
         Whether to read the vendor ``exprMat`` counts and cell metadata table.
     imread_kwargs
@@ -128,10 +149,10 @@ def cosmx(
     ------
     ValueError
         If paths and coordinate systems are mismatched, coordinate systems are
-        duplicated, required files are missing, or a gene panel is empty.
+        duplicated, or ``keep_gene_names`` is a scalar gene name or empty whitelist.
     FileNotFoundError
-        If a required image directory, transcript file, or requested vendor
-        labels/table file cannot be found.
+        If a required image directory, transcript file, requested vendor
+        labels/table file, or ``Path`` gene panel cannot be found.
 
     Examples
     --------
@@ -155,10 +176,19 @@ def cosmx(
         dataset_ids = [dataset_id] * len(paths)
     else:
         dataset_ids = list(dataset_id)
+        # Validate the per-path dataset identifiers before reading any data.
+        if len(dataset_ids) != len(paths):
+            raise ValueError("The number of dataset identifiers must match the number of paths.")
 
-    # Validate the per-path dataset identifiers before reading any data.
-    if len(dataset_ids) != len(paths):
-        raise ValueError("The number of dataset identifiers must match the number of paths.")
+    # Warn about model options that this reader cannot forward to its image and label models.
+    unsupported_image_model_keys = [
+        str(key) for key in image_models_kwargs if key not in {"chunks", "scale_factors"}
+    ]
+    if unsupported_image_model_keys:
+        log.warning(
+            "Ignoring unsupported 'image_models_kwargs' keys: %s. Supported keys are 'chunks' and 'scale_factors'.",
+            ", ".join(sorted(unsupported_image_model_keys)),
+        )
 
     # Vendor tables annotate label layers, so reading the table implies reading labels.
     if cells_table and not cells_labels:
@@ -167,7 +197,7 @@ def cosmx(
 
     log.info(
         "Starting CosMx read for %d dataset(s); cells_labels=%s; cells_table=%s; coordinate systems=%s.",
-        len(paths),
+        len(dataset_ids),
         cells_labels,
         cells_table,
         coordinate_systems,
@@ -181,6 +211,29 @@ def cosmx(
     else:
         log.info("No CosMx gene whitelist supplied; no gene filtering will be applied.")
 
+    # Validate every dataset before creating an output store so invalid later datasets cannot leave partial output.
+    dataset_specs: list[_CosmxDataset] = []
+    for source_path, coordinate_system, source_dataset_id in zip(
+        paths,
+        coordinate_systems,
+        dataset_ids,
+        strict=True,
+    ):
+        log.info(
+            "Validating CosMx dataset from '%s' for coordinate system '%s'.",
+            source_path,
+            coordinate_system,
+        )
+        dataset_specs.append(
+            _prepare_dataset(
+                path=Path(source_path),
+                dataset_id=source_dataset_id,
+                keep_genes=keep_genes,
+                cells_labels=cells_labels,
+                cells_table=cells_table,
+            )
+        )
+
     sdata = SpatialData()
 
     # Initialize the backing store before reading transcripts so points can spill to disk.
@@ -189,22 +242,21 @@ def cosmx(
         sdata.write(output)
         sdata = read_zarr(output)
 
-    for dataset_index, (source_path, coordinate_system, source_dataset_id) in enumerate(
-        zip(paths, coordinate_systems, dataset_ids, strict=True),
+    for dataset_index, (dataset, coordinate_system) in enumerate(
+        zip(dataset_specs, coordinate_systems, strict=True),
         start=1,
     ):
         log.info(
             "Reading CosMx dataset %d/%d from '%s' into coordinate system '%s'.",
             dataset_index,
-            len(paths),
-            source_path,
+            len(dataset_specs),
+            dataset.path,
             coordinate_system,
         )
         sdata = _add_dataset(
             sdata,
-            path=Path(source_path),
+            dataset=dataset,
             coordinate_system=coordinate_system,
-            dataset_id=source_dataset_id,
             keep_genes=keep_genes,
             cells_labels=cells_labels,
             cells_table=cells_table,
@@ -223,59 +275,119 @@ def cosmx(
     return sdata
 
 
+def _prepare_dataset(
+    path: Path,
+    dataset_id: str | None,
+    keep_genes: set[str] | None,
+    cells_labels: bool,
+    cells_table: bool,
+) -> _CosmxDataset:
+    """Discover and validate one CosMx dataset before any layers are created."""
+    # Find all relevant dataset_files for this dataset
+    dataset_files = _discover_files(path, dataset_id=dataset_id, cells_labels=cells_labels, cells_table=cells_table)
+
+    # Validate that every FOV in the images, labels, and transcripts has a known origin.
+    image_fov_files = tuple(_fov_files(dataset_files.images_dir))
+    if not image_fov_files:
+        raise FileNotFoundError(f"No CosMx FOV images found in '{dataset_files.images_dir}'.")
+
+    if cells_labels:
+        if dataset_files.labels_dir is None:
+            raise FileNotFoundError(f"CosMx labels directory not found under '{path}'.")
+        label_fov_files = tuple(_fov_files(dataset_files.labels_dir))
+        if not label_fov_files:
+            raise FileNotFoundError(f"No CosMx FOV labels found in '{dataset_files.labels_dir}'.")
+    else:
+        label_fov_files = ()
+
+    # FOV origins are translations only; they are never estimated from cell centroids.
+    fov_origins = _load_fov_origins(dataset_files.fov_positions)
+
+    # Read and gene-filter transcripts once so preflight and layer creation share one lazy graph.
+    transcripts = _read_transcript_table(dataset_files.transcripts)
+    gene_column = _require_column(transcripts.columns, _GENE_COLUMNS, kind="gene")
+    if keep_genes is not None:
+        transcripts = transcripts[transcripts[gene_column].isin(list(keep_genes))]
+
+    # Include local transcript FOVs in the geometry check, even when images contain one FOV only.
+    transcript_fovs = _get_transcript_fovs(transcripts, transcripts_path=dataset_files.transcripts)
+    required_fovs = {fov for fov, _ in image_fov_files}
+    required_fovs.update(fov for fov, _ in label_fov_files)
+    required_fovs.update(transcript_fovs)
+    _validate_fov_origins(
+        required_fovs=required_fovs,
+        fov_origins=fov_origins,
+        fov_positions_path=dataset_files.fov_positions,
+    )
+
+    # Normalize and validate transcript coordinates before any output store or image layer is created.
+    transcripts = _prepare_transcripts(
+        transcripts=transcripts,
+        transcripts_path=dataset_files.transcripts,
+        gene_column=gene_column,
+        fov_origins=fov_origins,
+        require_fov_origins=len(required_fovs) > 1,
+    )
+
+    return _CosmxDataset(
+        path=path,
+        transcripts_file=dataset_files.transcripts,
+        images_dir=dataset_files.images_dir,
+        fov_positions_file=dataset_files.fov_positions,
+        labels_dir=dataset_files.labels_dir,
+        counts_file=dataset_files.counts,
+        metadata_file=dataset_files.metadata,
+        image_fov_files=image_fov_files,
+        label_fov_files=label_fov_files,
+        fov_origins=fov_origins,
+        transcripts=transcripts,
+    )
+
+
 def _add_dataset(
     sdata: SpatialData,
-    path: Path,
+    dataset: _CosmxDataset,
     coordinate_system: str,
-    dataset_id: str | None,
     keep_genes: set[str] | None,
     cells_labels: bool,
     cells_table: bool,
     imread_kwargs: Mapping[str, Any],
     image_models_kwargs: Mapping[str, Any],
 ) -> SpatialData:
-    """Read one CosMx dataset root into ``sdata``."""
-    files = _discover_files(path, dataset_id=dataset_id, cells_labels=cells_labels, cells_table=cells_table)
-
-    # FOV origins are translations only; they are never estimated from cell centroids.
-    fov_origins = _load_fov_origins(files.fov_positions)
-
+    """Add one validated CosMx dataset to ``sdata``."""
     sdata = _add_images(
         sdata,
-        images_dir=files.images_dir,
+        images_dir=dataset.images_dir,
+        fov_files=dataset.image_fov_files,
         coordinate_system=coordinate_system,
-        fov_origins=fov_origins,
+        fov_origins=dataset.fov_origins,
         imread_kwargs=imread_kwargs,
         image_models_kwargs=image_models_kwargs,
     )
 
     sdata = _add_transcripts(
         sdata,
-        transcripts_path=files.transcripts,
+        transcripts=dataset.transcripts,
+        transcripts_path=dataset.transcripts_file,
         coordinate_system=coordinate_system,
-        keep_genes=keep_genes,
-        fov_origins=fov_origins,
     )
 
     if cells_labels:
-        if files.labels_dir is None:
-            raise FileNotFoundError(f"CosMx labels directory not found under '{path}'.")
         sdata = _add_labels(
             sdata,
-            labels_dir=files.labels_dir,
+            labels_dir=dataset.labels_dir,
+            fov_files=dataset.label_fov_files,
             coordinate_system=coordinate_system,
-            fov_origins=fov_origins,
+            fov_origins=dataset.fov_origins,
             imread_kwargs=imread_kwargs,
             image_models_kwargs=image_models_kwargs,
         )
 
     if cells_table:
-        if files.counts is None or files.metadata is None:
-            raise FileNotFoundError(f"CosMx exprMat/metadata files not found under '{path}'.")
         sdata = _add_table(
             sdata,
-            counts_path=files.counts,
-            metadata_path=files.metadata,
+            counts_path=dataset.counts_file,
+            metadata_path=dataset.metadata_file,
             coordinate_system=coordinate_system,
             keep_genes=keep_genes,
         )
@@ -290,48 +402,51 @@ def _discover_files(
     cells_table: bool,
 ) -> _CosmxFiles:
     """Locate the standard CosMx files under ``path``."""
+    # Check for the required transcript file through the known suffixes, preferring parquet over CSV when both exist.
     transcripts = _find_suffix_file(path, dataset_id, _TRANSCRIPT_SUFFIXES)
     if transcripts is None:
         raise FileNotFoundError(
             f"CosMx transcript file not found in '{path}'. Expected a file ending with {', '.join(_TRANSCRIPT_SUFFIXES)}."
         )
 
+    # Check for the required image directory through the known candidates, or any FOV-containing subdirectory.
     images_dir = _find_directory(path, _IMAGE_DIR_CANDIDATES, skip_names={_LABEL_DIR_NAME})
     if images_dir is None:
         raise FileNotFoundError(
             f"CosMx image directory not found in '{path}'. Expected one of {', '.join(_IMAGE_DIR_CANDIDATES)}."
         )
 
-    # Resolve labels by the vendor directory name because arbitrary FOV folders may contain images.
-    labels_dir = path / _LABEL_DIR_NAME
-    if not labels_dir.is_dir():
-        labels_dir = None
-    if cells_labels and labels_dir is None:
-        raise FileNotFoundError(
-            f"CosMx labels directory not found in '{path}'. Expected '{_LABEL_DIR_NAME}'."
-        )
-
+    # Resolve and validate the labels directory only when labels were requested.
+    labels_dir: Path | None = None
+    if cells_labels:
+        labels_dir = path / _LABEL_DIR_NAME
+        if not labels_dir.is_dir():
+            raise FileNotFoundError(f"CosMx labels directory not found in '{path}'. Expected '{_LABEL_DIR_NAME}'.")
+    
     # Infer one dataset identifier from the required transcript file so related files cannot come from another dataset.
     if dataset_id is None:
-        # Derive the shared dataset prefix from the transcript filename selected above.
-        transcript_suffix = next(
+        current_transcript_suffix = next(
             suffix for suffix in _TRANSCRIPT_SUFFIXES if transcripts.name.endswith(suffix)
         )
-        resolved_dataset_id = transcripts.name[: -len(transcript_suffix)]
+        # Derive the shared dataset prefix from the transcript filename selected above.
+        resolved_dataset_id = transcripts.name[: -len(current_transcript_suffix)]
     else:
         resolved_dataset_id = dataset_id
+
+    # Find the optional FOV positions file, counts file, and metadata file through their known suffixes.
+    fov_positions = _find_suffix_file(path, resolved_dataset_id, _FOV_POSITIONS_SUFFIXES)
     counts = _find_suffix_file(path, resolved_dataset_id, _COUNTS_SUFFIXES)
     metadata = _find_suffix_file(path, resolved_dataset_id, _METADATA_SUFFIXES)
     if cells_table and (counts is None or metadata is None):
         raise FileNotFoundError(
-            f"CosMx counts/metadata files not found in '{path}'. "
+            f"CosMx counts/metadata files not found in '{path}' which is required when 'cells_table' is True. "
             f"Expected files ending with {', '.join(_COUNTS_SUFFIXES)} and {', '.join(_METADATA_SUFFIXES)}."
         )
 
     return _CosmxFiles(
         transcripts=transcripts,
         images_dir=images_dir,
-        fov_positions=_find_suffix_file(path, resolved_dataset_id, _FOV_POSITIONS_SUFFIXES),
+        fov_positions=fov_positions,
         labels_dir=labels_dir,
         counts=counts,
         metadata=metadata,
@@ -341,13 +456,13 @@ def _discover_files(
 def _add_images(
     sdata: SpatialData,
     images_dir: Path,
+    fov_files: tuple[tuple[str, Path], ...],
     coordinate_system: str,
-    fov_origins: dict[str, tuple[float, float]] | None,
+    fov_origins: Mapping[str, tuple[float, float]] | None,
     imread_kwargs: Mapping[str, Any],
     image_models_kwargs: Mapping[str, Any],
 ) -> SpatialData:
     """Add one image layer per FOV without stitching."""
-    fov_files = _fov_files(images_dir)
     if not fov_files:
         raise FileNotFoundError(f"No CosMx FOV images found in '{images_dir}'.")
 
@@ -358,7 +473,7 @@ def _add_images(
         log.info("Reading CosMx image for FOV %s from '%s'.", fov, image_path)
 
         # Keep the image lazy; dask_image only builds a graph here.
-        image = _as_cyx(imread(image_path, **imread_kwargs))
+        image = _normalize_image_dims(imread(image_path, **imread_kwargs), target_dims="cyx")
         sdata = add_image_layer(
             sdata,
             arr=image,
@@ -376,13 +491,13 @@ def _add_images(
 def _add_labels(
     sdata: SpatialData,
     labels_dir: Path,
+    fov_files: tuple[tuple[str, Path], ...],
     coordinate_system: str,
-    fov_origins: dict[str, tuple[float, float]] | None,
+    fov_origins: Mapping[str, tuple[float, float]] | None,
     imread_kwargs: Mapping[str, Any],
     image_models_kwargs: Mapping[str, Any],
 ) -> SpatialData:
     """Add one vendor labels layer per FOV."""
-    fov_files = _fov_files(labels_dir)
     if not fov_files:
         raise FileNotFoundError(f"No CosMx FOV labels found in '{labels_dir}'.")
 
@@ -393,7 +508,7 @@ def _add_labels(
         log.info("Reading CosMx labels for FOV %s from '%s'.", fov, labels_path)
 
         # Vendor masks are integer label images in FOV-local pixel coordinates.
-        labels = _as_yx(imread(labels_path, **imread_kwargs)).astype(np.uint32)
+        labels = _normalize_image_dims(imread(labels_path, **imread_kwargs), target_dims="yx").astype(np.uint32)
         sdata = add_labels_layer(
             sdata,
             arr=labels,
@@ -408,24 +523,14 @@ def _add_labels(
     return sdata
 
 
-def _add_transcripts(
-    sdata: SpatialData,
+def _prepare_transcripts(
+    transcripts: dd.DataFrame,
     transcripts_path: Path,
-    coordinate_system: str,
-    keep_genes: set[str] | None,
-    fov_origins: dict[str, tuple[float, float]] | None,
-) -> SpatialData:
-    """Read CosMx transcripts lazily into one identity-transformed points layer."""
-    log.info("Reading CosMx transcripts from '%s'.", transcripts_path)
-
-    # Read CSV/parquet in chunks so the full transcript table is not materialised.
-    transcripts = _read_transcript_table(transcripts_path)
-    gene_column = _require_column(transcripts.columns, _GENE_COLUMNS, kind="gene")
-
-    # Apply the gene whitelist before any coordinate work so dropped probes never enter the graph.
-    if keep_genes is not None:
-        transcripts = transcripts[transcripts[gene_column].isin(list(keep_genes))]
-
+    gene_column: str,
+    fov_origins: Mapping[str, tuple[float, float]] | None,
+    require_fov_origins: bool,
+) -> dd.DataFrame:
+    """Normalize, place, and validate CosMx transcript coordinates."""
     global_x = _optional_column(transcripts.columns, _GLOBAL_X_COLUMNS)
     global_y = _optional_column(transcripts.columns, _GLOBAL_Y_COLUMNS)
 
@@ -437,7 +542,7 @@ def _add_transcripts(
         local_y = _require_column(transcripts.columns, _LOCAL_Y_COLUMNS, kind="local y")
         fov_column = _optional_column(transcripts.columns, _FOV_COLUMNS)
 
-        # Fall back to FOV origins from fov_positions, never to an estimated affine.
+        # Apply FOV origins to local coordinates when the transcript schema supports that placement.
         if fov_origins is not None and fov_column is not None:
             log.info("Global transcript coordinates are absent; applying FOV translations from fov_positions.")
             transcripts = transcripts.map_partitions(
@@ -455,9 +560,14 @@ def _add_transcripts(
                     }
                 ),
             )
+        elif require_fov_origins:
+            raise ValueError(
+                f"CosMx transcript file '{transcripts_path}' uses local pixel coordinates, but complete FOV "
+                "origins are unavailable. Provide global pixel columns or a valid FOV positions file."
+            )
         else:
             log.warning(
-                "CosMx transcript file '%s' has no global pixel columns and no FOV origins; "
+                "CosMx transcript file '%s' has no usable global pixel coordinates or FOV placement metadata; "
                 "using local pixel coordinates as-is.",
                 transcripts_path,
             )
@@ -465,8 +575,25 @@ def _add_transcripts(
 
     # Keep only the columns Sparrow allocation needs so extra CosMx fields are not persisted.
     transcripts = transcripts[[_GENES_KEY, "x", "y"]]
+
+    # Convert transcript coordinates to numeric values before checking their geometry.
     transcripts["x"] = transcripts["x"].astype(float)
     transcripts["y"] = transcripts["y"].astype(float)
+
+    # Reject non-finite coordinates before any output store or points layer is created.
+    _validate_transcript_coordinates(transcripts, transcripts_path=transcripts_path)
+
+    return transcripts
+
+
+def _add_transcripts(
+    sdata: SpatialData,
+    transcripts: dd.DataFrame,
+    transcripts_path: Path,
+    coordinate_system: str,
+) -> SpatialData:
+    """Read CosMx transcripts lazily into one identity-transformed points layer."""
+    log.info("Reading CosMx transcripts from '%s'.", transcripts_path)
 
     return add_points_layer(
         sdata,
@@ -548,24 +675,22 @@ def _as_list(value: Any) -> list[Any]:
     return list(value)
 
 
-def _load_keep_gene_names(
-    keep_gene_names: str | Path | Iterable[str] | None,
-) -> set[str] | None:
-    """Load gene names from a sequence or the first column of a panel file."""
+def _load_keep_gene_names(keep_gene_names: str | Path | Iterable[str] | None) -> set[str] | None:
+    """Load gene names from an iterable or the first column of a panel file."""
     if keep_gene_names is None:
         return None
 
     # Treat an explicit Path or an existing string path as a panel file.
     panel_path: Path | None = None
-    if isinstance(keep_gene_names, Path):
-        panel_path = keep_gene_names
-    elif isinstance(keep_gene_names, str):
-        candidate_path = Path(keep_gene_names)
-        if candidate_path.is_file():
-            panel_path = candidate_path
-        else:
-            # Preserve a scalar gene name instead of iterating over its individual characters.
-            return {keep_gene_names}
+    if isinstance(keep_gene_names, (str, Path)):
+        panel_path = Path(keep_gene_names)
+        if not panel_path.is_file():
+            if isinstance(keep_gene_names, Path):
+                raise FileNotFoundError(f"CosMx gene panel file does not exist: {panel_path}")
+            raise ValueError(
+                "`keep_gene_names` must be a path to a gene panel file or an iterable "
+                "of gene names; single gene names are not supported."
+            )
 
     if panel_path is not None:
         # Read the first column so one-column panels with arbitrary headers are supported.
@@ -602,7 +727,7 @@ def _find_suffix_file(path: Path, dataset_id: str | None, suffixes: tuple[str, .
                 return candidate
         return None
 
-    # Infer a file only when the caller asked the reader to discover the dataset.
+    # Infer a file when no dataset_id was supplied.
     for suffix in suffixes:
         matches = sorted(child for child in path.iterdir() if child.is_file() and child.name.endswith(suffix))
         if len(matches) == 1:
@@ -613,11 +738,7 @@ def _find_suffix_file(path: Path, dataset_id: str | None, suffixes: tuple[str, .
     return None
 
 
-def _find_directory(
-    path: Path,
-    candidates: tuple[str, ...],
-    skip_names: set[str],
-) -> Path | None:
+def _find_directory(path: Path, candidates: tuple[str, ...], skip_names: set[str]) -> Path | None:
     """Return a named image folder, or a FOV-containing image subdirectory."""
     for name in candidates:
         candidate = path / name
@@ -699,29 +820,105 @@ def _load_fov_origins(fov_positions_path: Path | None) -> dict[str, tuple[float,
     return origins
 
 
+def _get_transcript_fovs(transcripts: dd.DataFrame, transcripts_path: Path) -> frozenset[str]:
+    """Return FOV identifiers needed to place local transcript coordinates."""
+    global_x = _optional_column(transcripts.columns, _GLOBAL_X_COLUMNS)
+    global_y = _optional_column(transcripts.columns, _GLOBAL_Y_COLUMNS)
+
+    # Global transcript coordinates already have a common placement and need no FOV-origin lookup.
+    if global_x is not None and global_y is not None:
+        return frozenset()
+
+    # Validate local coordinate columns while the transcript schema is available during preflight.
+    _require_column(transcripts.columns, _LOCAL_X_COLUMNS, kind="local x")
+    _require_column(transcripts.columns, _LOCAL_Y_COLUMNS, kind="local y")
+    fov_column = _optional_column(transcripts.columns, _FOV_COLUMNS)
+    if fov_column is None:
+        return frozenset()
+
+    # Compute only distinct FOV identifiers before any images or output stores are created.
+    transcript_fovs = transcripts[fov_column].drop_duplicates().compute()
+    try:
+        return frozenset(_normalize_fov(fov) for fov in transcript_fovs)
+    except ValueError as error:
+        raise ValueError(
+            f"CosMx transcript file '{transcripts_path}' contains an invalid FOV identifier."
+        ) from error
+
+
+def _validate_transcript_coordinates(transcripts: dd.DataFrame, transcripts_path: Path) -> None:
+    """Reject non-numeric or non-finite transcript coordinates."""
+    try:
+        # Check coordinates across partitions lazily and compute reduction
+        has_invalid = ~(
+            (transcripts["x"].map_partitions(np.isfinite, meta=pd.Series(dtype="bool")))
+            & (transcripts["y"].map_partitions(np.isfinite, meta=pd.Series(dtype="bool")))
+        ).all().compute()
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"CosMx transcript file '{transcripts_path}' contains non-numeric coordinate values."
+        ) from error
+
+    # Stop before layer creation when any coordinate is NaN, positive infinity, or negative infinity.
+    if bool(has_invalid):
+        raise ValueError(f"CosMx transcript file '{transcripts_path}' contains non-finite coordinates.")
+
+
+def _validate_fov_origins(
+    required_fovs: Iterable[str],
+    fov_origins: Mapping[str, tuple[float, float]] | None,
+    fov_positions_path: Path | None,
+) -> None:
+    """Require complete FOV origins when more than one FOV is being loaded."""
+    # Deduplicate FOV identifiers because an image and its label mask share one origin.
+    required_fovs = set(required_fovs)
+
+    # A single FOV can use identity coordinates when no placement metadata is available.
+    if len(required_fovs) <= 1:
+        return
+
+    # Reject absent or structurally invalid positions files before reading any image data.
+    if fov_origins is None:
+        if fov_positions_path is None:
+            positions_description = "no FOV positions file was found"
+        else:
+            positions_description = f"FOV positions file '{fov_positions_path}' has no usable pixel origins"
+        raise ValueError(
+            f"CosMx dataset contains multiple FOVs ({', '.join(sorted(required_fovs))}), but "
+            f"{positions_description}. Valid FOV origins are required for multi-FOV analysis."
+        )
+
+    # Reject a positions file that does not describe every FOV that will be loaded.
+    missing_fovs = sorted(required_fovs.difference(fov_origins))
+    if missing_fovs:
+        raise ValueError(
+            "CosMx FOV positions metadata is incomplete; missing origins for FOVs "
+            f"{', '.join(missing_fovs)}. Valid origins are required for every multi-FOV image and label layer."
+        )
+
+
 def _fov_translation(
     fov: str,
-    fov_origins: Mapping[str, Any] | None,
+    fov_origins: Mapping[str, tuple[float, float]] | None,
 ) -> Identity | Translation:
     """Return the translation that places one FOV image into the global pixel system."""
     if fov_origins is None:
         return Identity()
 
-    # If the requested FOV has no origin, we return the Identity() transform
+    # Treat a missing origin as invalid when a positions mapping was supplied.
     try:
         origin = fov_origins[fov]
-    except KeyError:
-        return Identity()
-
-    # Preserve already-created supported transforms so this boundary also validates future transform sources.
-    if isinstance(origin, Identity | Translation):
-        return origin
+    except KeyError as error:
+        raise ValueError(
+            f"CosMx FOV '{fov}' is missing from the FOV positions metadata; "
+            "an origin is required to place this FOV."
+        ) from error
 
     # Reject values that cannot represent the two-dimensional FOV origin used by CosMx.
-    if not isinstance(origin, (tuple, list)) or len(origin) != 2:
+    if not isinstance(origin, tuple) or len(origin) != 2:
         raise ValueError(
             f"CosMx FOV '{fov}' received unsupported transformation type "
-            f"'{type(origin).__name__}'. Sparrow supports only Identity and Translation here."
+            f"'{type(origin).__name__}'. Sparrow supports only numeric two-dimensional origins here."
         )
 
     # Convert the numeric FOV origin into the translation used by image and label layers.
@@ -742,12 +939,17 @@ def _apply_fov_origins(
     local_x: str,
     local_y: str,
     fov_column: str,
-    fov_origins: dict[str, tuple[float, float]],
+    fov_origins: Mapping[str, tuple[float, float]],
 ) -> pd.DataFrame:
     """Add FOV origin translations to local transcript coordinates."""
+    # Pre-build coordinate lookup maps to avoid row-by-row lambda evaluation in Pandas
+    x_map = {fov: origin[0] for fov, origin in fov_origins.items()}
+    y_map = {fov: origin[1] for fov, origin in fov_origins.items()}
+
+    # Normalize FOVs and map to numeric origin offsets vectorially
     fov_ids = partition[fov_column].map(_normalize_fov)
-    origin_x = fov_ids.map(lambda fov: fov_origins.get(fov, (0.0, 0.0))[0])
-    origin_y = fov_ids.map(lambda fov: fov_origins.get(fov, (0.0, 0.0))[1])
+    origin_x = fov_ids.map(x_map)
+    origin_y = fov_ids.map(y_map)
 
     return pd.DataFrame(
         {
@@ -758,37 +960,29 @@ def _apply_fov_origins(
     )
 
 
-def _as_cyx(array: Array) -> Array:
-    """Normalise an image to ``(c, y, x)`` without flipping the y-axis."""
+def _normalize_image_dims(array: Array, target_dims: str = "cyx") -> Array:
+    """Normalise an image or label array to ``(c, y, x)`` or ``(y, x)`` without flipping axes."""
     array = da.squeeze(array)
 
-    if array.ndim == 2:
-        return array[None, ...]
+    if target_dims == "cyx":
+        if array.ndim == 2:
+            return array[None, ...]
+        if array.ndim == 3:
+            # RGB/RGBA FOV composites are stored as (y, x, c).
+            if array.shape[-1] in (3, 4) and array.shape[0] not in (3, 4):
+                return da.moveaxis(array, -1, 0)
+            return array
+    elif target_dims == "yx":
+        if array.ndim == 2:
+            return array
+        if array.ndim == 3:
+            # Drop a trailing or leading singleton channel if the vendor wrote RGB-like labels.
+            if array.shape[0] == 1:
+                return array[0]
+            if array.shape[-1] == 1:
+                return array[..., 0]
 
-    if array.ndim == 3:
-        # RGB/RGBA FOV composites are stored as (y, x, c).
-        if array.shape[-1] in (3, 4) and array.shape[0] not in (3, 4):
-            return da.moveaxis(array, -1, 0)
-        return array
-
-    raise ValueError(f"CosMx image has unsupported shape {array.shape}; expected (y, x) or (c, y, x).")
-
-
-def _as_yx(array: Array) -> Array:
-    """Normalise a labels image to ``(y, x)`` without flipping the y-axis."""
-    array = da.squeeze(array)
-
-    if array.ndim == 2:
-        return array
-
-    if array.ndim == 3:
-        # Drop a trailing or leading singleton channel if the vendor wrote RGB-like labels.
-        if array.shape[0] == 1:
-            return array[0]
-        if array.shape[-1] == 1:
-            return array[..., 0]
-
-    raise ValueError(f"CosMx labels image has unsupported shape {array.shape}; expected (y, x).")
+    raise ValueError(f"CosMx image has unsupported shape {array.shape}; expected 2D or 3D for target '{target_dims}'.")
 
 
 def _optional_column(columns: Iterable[str], candidates: tuple[str, ...]) -> str | None:
