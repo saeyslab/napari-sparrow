@@ -36,6 +36,7 @@ dependencies = [
     "seaborn>=0.12.2",
     "leidenalg>=0.9.1",
     "geopandas>=1.0.1",
+    "ome-zarr>=0.8.4",
     "omegaconf==2.3.0",
     "pyarrow<=21.0.0",  # latest pyarrow breaks spatialdata: https://github.com/scverse/spatialdata/issues/1000
     "nptyping",
