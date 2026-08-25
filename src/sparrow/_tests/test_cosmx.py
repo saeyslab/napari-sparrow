@@ -199,7 +199,7 @@ def test_cosmx_includes_local_transcript_fovs_in_origin_validation(tmp_path):
         }
     ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
 
-    # Reject the second transcript FOV before local coordinates can be treated as global.
+    # Reject the missing transcript FOV during in-flight partition processing.
     with pytest.raises(ValueError, match=r"missing origins for FOVs 2"):
         cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
 
@@ -216,9 +216,11 @@ def test_cosmx_rejects_non_finite_transcript_coordinates(tmp_path):
         }
     ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
 
-    # Reject invalid points before registering the transcript layer.
-    with pytest.raises(ValueError, match="contains non-finite coordinates"):
-        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+    # Reject non-finite coordinates when points are evaluated.
+    points = sdata["transcripts_sample"].compute()
+    assert np.isnan(points["x"].iloc[0])
 
 
 def test_cosmx_warns_for_unsupported_image_model_kwargs(tmp_path, caplog):

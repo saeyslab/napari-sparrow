@@ -117,8 +117,8 @@ def cosmx(
     keep_gene_names
         Gene names to retain in the transcript layer and, when requested, the
         vendor table. This can be an iterable of gene names or a path to a
-        delimited file whose first column contains the gene panel. A single
-        gene name is not supported. String values are interpreted as panel file paths.
+        delimited file whose first column contains the gene panel.
+        String values are interpreted as panel file paths.
         If ``None``, no gene filtering is performed.
         Stored transcript layers use Sparrow's canonical ``gene`` column.
     cells_labels
@@ -165,14 +165,13 @@ def cosmx(
     if len(coordinate_systems) != len(set(coordinate_systems)):
         raise ValueError("All coordinate systems must be unique.")
 
-    # Reuse one dataset identifier for every path when a scalar was provided.
+    # Validate the per-path dataset identifiers before reading any data.
     if dataset_id is None:
         dataset_ids = [None] * len(paths)
     elif isinstance(dataset_id, str):
         dataset_ids = [dataset_id] * len(paths)
     else:
         dataset_ids = list(dataset_id)
-        # Validate the per-path dataset identifiers before reading any data.
         if len(dataset_ids) != len(paths):
             raise ValueError("The number of dataset identifiers must match the number of paths.")
 
@@ -181,7 +180,7 @@ def cosmx(
     if unsupported_image_model_keys:
         log.warning(
             "Ignoring unsupported 'image_models_kwargs' keys: %s. Supported key is 'chunks'.",
-            ", ".join(sorted(unsupported_image_model_keys)),
+            ", ".join(sorted(unsupported_image_model_keys))
         )
 
     # Vendor tables annotate label layers, so reading the table implies reading labels.
@@ -189,21 +188,20 @@ def cosmx(
         log.info("Setting 'cells_labels' to True so the vendor table can annotate CosMx label layers.")
         cells_labels = True
 
+    # Load the optional keep list once so it is shared by all datasets.
+    keep_genes = _load_keep_gene_names(keep_gene_names)
+    if keep_genes is not None:
+        log.info("Keeping %d CosMx genes while reading transcripts.", len(keep_genes))
+    else:
+        log.info("No CosMx gene whitelist supplied; no gene filtering will be applied.")
+
     log.info(
-        "Starting CosMx read for %d dataset(s); cells_labels=%s; cells_table=%s; coordinate systems=%s.",
+        "Starting CosMx reader for %d dataset(s); cells_labels=%s; cells_table=%s; coordinate systems=%s.",
         len(dataset_ids),
         cells_labels,
         cells_table,
         coordinate_systems,
     )
-
-    # Load the optional keep list once so it is shared by all datasets.
-    keep_genes = _load_keep_gene_names(keep_gene_names)
-
-    if keep_genes is not None:
-        log.info("Keeping %d CosMx genes while reading transcripts.", len(keep_genes))
-    else:
-        log.info("No CosMx gene whitelist supplied; no gene filtering will be applied.")
 
     # Validate every dataset before creating an output store so invalid later datasets cannot leave partial output.
     validated_datasets: list[_CosmxDataset] = []
@@ -275,49 +273,51 @@ def _prepare_dataset(
     cells_labels: bool,
     cells_table: bool,
 ) -> _CosmxDataset:
-    """Discover and validate one CosMx dataset before any layers are created."""
-    # Find all relevant dataset_files for this dataset
+    """Discover and validate one CosMx dataset root."""
+    # Find and validate all relevant dataset files and Zarr stores for this dataset
     dataset_files = _discover_files(path, dataset_id=dataset_id, cells_labels=cells_labels, cells_table=cells_table)
 
-    # Require the single global image OME-Zarr store supplied by modern CosMx exports.
-    image_store = _global_zarr_store(dataset_files.images_dir, kind="image")
+    # Require that the discovered images directory is an OME-Zarr group rather than a legacy raster directory.
+    if not _is_zarr_group(dataset_files.images_dir):
+        raise FileNotFoundError(
+            f"CosMx image store '{dataset_files.images_dir}' is not an OME-Zarr group. Legacy raster inputs are not supported."
+        )
 
-    if cells_labels:
-        # Require the single global label OME-Zarr store supplied by modern CosMx exports.
-        labels_store = _global_zarr_store(dataset_files.labels_dir, kind="label")
-    else:
-        labels_store = None
+    # Require that the discovered labels directory is an OME-Zarr group when labels are requested.
+    if cells_labels and dataset_files.labels_dir is not None and not _is_zarr_group(dataset_files.labels_dir):
+        raise FileNotFoundError(
+            f"CosMx label store '{dataset_files.labels_dir}' is not an OME-Zarr group. Legacy raster inputs are not supported."
+        )
 
     # FOV origins are translations only; they are never estimated from cell centroids.
     fov_origins = _load_fov_origins(dataset_files.fov_positions)
 
-    # Read and gene-filter transcripts once so preflight and layer creation share one lazy graph.
-    transcripts = _read_transcript_table(dataset_files.transcripts)
+    # Read transcripts lazily from parquet or CSV.
+    if dataset_files.transcripts.suffix.lower() == ".parquet":
+        transcripts = dd.read_parquet(dataset_files.transcripts)
+    else:
+        transcripts = dd.read_csv(dataset_files.transcripts, header=0, blocksize=_BLOCKSIZE)
+
+    # Require a recognized gene column name in the transcripts table.
     gene_column = _require_column(transcripts.columns, _GENE_COLUMNS, kind="gene")
     if keep_genes is not None:
+        # Filter transcripts lazily to the specified whitelist before coordinate transformations.
         transcripts = transcripts[transcripts[gene_column].isin(list(keep_genes))]
 
-    # Validate local transcript placement before any output store or image layer is created.
-    _validate_local_transcript_placement(
-        transcripts=transcripts,
-        transcripts_path=dataset_files.transcripts,
-        fov_origins=fov_origins,
-        fov_positions_path=dataset_files.fov_positions,
-    )
-
-    # Normalize and validate transcript coordinates before any output store or image layer is created.
+    # Normalize transcript coordinates, handling global vs local FOV placement lazily.
     transcripts = _prepare_transcripts(
         transcripts=transcripts,
         transcripts_path=dataset_files.transcripts,
         gene_column=gene_column,
         fov_origins=fov_origins,
+        fov_positions_path=dataset_files.fov_positions,
     )
 
     return _CosmxDataset(
         path=path,
         transcripts_file=dataset_files.transcripts,
-        image_store=image_store,
-        labels_store=labels_store,
+        image_store=dataset_files.images_dir,
+        labels_store=dataset_files.labels_dir,
         counts_file=dataset_files.counts,
         metadata_file=dataset_files.metadata,
         transcripts=transcripts,
@@ -334,26 +334,48 @@ def _add_dataset(
     image_models_kwargs: Mapping[str, Any],
 ) -> SpatialData:
     """Add one validated CosMx dataset to ``sdata``."""
-    sdata = _add_images(
-        sdata,
-        image_store=dataset.image_store,
+    chunks = image_models_kwargs.get("chunks")
+
+    log.info("Reading global CosMx image from '%s'.", dataset.image_store)
+    # Read multiscale image channels and register with SpatialData image manager.
+    image_tree = _read_multiscale_raster(
+        dataset.image_store,
         coordinate_system=coordinate_system,
-        image_models_kwargs=image_models_kwargs,
+        kind="image",
+        chunks=chunks,
+    )
+    sdata = ImageLayerManager().add_to_sdata(
+        sdata,
+        output_layer=f"image_{coordinate_system}",
+        spatial_element=image_tree,
+        overwrite=False,
     )
 
-    sdata = _add_transcripts(
+    log.info("Reading CosMx transcripts from '%s'.", dataset.transcripts_file)
+    # Add lazily evaluated transcript points with an identity coordinate transform.
+    sdata = add_points_layer(
         sdata,
-        transcripts=dataset.transcripts,
-        transcripts_path=dataset.transcripts_file,
-        coordinate_system=coordinate_system,
+        ddf=dataset.transcripts,
+        output_layer=f"transcripts_{coordinate_system}",
+        coordinates={"x": "x", "y": "y"},
+        transformations={coordinate_system: Identity()},
+        overwrite=False,
     )
 
-    if cells_labels:
-        sdata = _add_labels(
-            sdata,
-            labels_store=dataset.labels_store,
+    if cells_labels and dataset.labels_store is not None:
+        log.info("Reading global CosMx labels from '%s'.", dataset.labels_store)
+        # Read multiscale integer label masks and register with SpatialData label manager.
+        labels_tree = _read_multiscale_raster(
+            dataset.labels_store,
             coordinate_system=coordinate_system,
-            image_models_kwargs=image_models_kwargs,
+            kind="labels",
+            chunks=chunks,
+        )
+        sdata = LabelLayerManager().add_to_sdata(
+            sdata,
+            output_layer=f"labels_{coordinate_system}",
+            spatial_element=labels_tree,
+            overwrite=False,
         )
 
     if cells_table:
@@ -374,7 +396,7 @@ def _discover_files(
     cells_labels: bool,
     cells_table: bool,
 ) -> _CosmxFiles:
-    """Locate the standard CosMx files under ``path``."""
+    """Locate and validate the standard CosMx files under ``path``."""
     # Check for the required transcript file through the known suffixes, preferring parquet over CSV when both exist.
     transcripts = _find_suffix_file(path, dataset_id, _TRANSCRIPT_SUFFIXES)
     if transcripts is None:
@@ -424,66 +446,15 @@ def _discover_files(
     )
 
 
-def _add_images(
-    sdata: SpatialData,
-    image_store: Path,
-    coordinate_system: str,
-    image_models_kwargs: Mapping[str, Any],
-) -> SpatialData:
-    """Add the global CosMx multiscale Zarr store as one image layer."""
-    chunks = image_models_kwargs.get("chunks")
-
-    log.info("Reading global CosMx image from '%s'.", image_store)
-
-    # Keep native OME-Zarr pyramid levels lazy instead of persisting the full global mosaic.
-    image_tree = _read_zarr_image(
-        image_store,
-        coordinate_system=coordinate_system,
-        chunks=chunks,
-    )
-    return ImageLayerManager().add_to_sdata(
-        sdata,
-        output_layer=f"image_{coordinate_system}",
-        spatial_element=image_tree,
-        overwrite=False,
-    )
-
-
-def _add_labels(
-    sdata: SpatialData,
-    labels_store: Path | None,
-    coordinate_system: str,
-    image_models_kwargs: Mapping[str, Any],
-) -> SpatialData:
-    """Add the global CosMx multiscale labels Zarr store as one labels layer."""
-    if labels_store is None:
-        raise FileNotFoundError("CosMx labels were requested, but no global labels store was discovered.")
-
-    chunks = image_models_kwargs.get("chunks")
-
-    log.info("Reading global CosMx labels from '%s'.", labels_store)
-
-    # Keep native OME-Zarr label pyramid levels lazy instead of persisting the full global mask.
-    labels_tree = _read_zarr_labels(
-        labels_store,
-        coordinate_system=coordinate_system,
-        chunks=chunks,
-    )
-    return LabelLayerManager().add_to_sdata(
-        sdata,
-        output_layer=f"labels_{coordinate_system}",
-        spatial_element=labels_tree,
-        overwrite=False,
-    )
-
-
 def _prepare_transcripts(
     transcripts: dd.DataFrame,
     transcripts_path: Path,
     gene_column: str,
     fov_origins: Mapping[str, tuple[float, float]] | None,
+    fov_positions_path: Path | None,
 ) -> dd.DataFrame:
     """Normalize, place, and validate CosMx transcript coordinates."""
+    # Check if global pixel coordinates are present in the transcript file.
     global_x = _optional_column(transcripts.columns, _GLOBAL_X_COLUMNS)
     global_y = _optional_column(transcripts.columns, _GLOBAL_Y_COLUMNS)
 
@@ -491,11 +462,12 @@ def _prepare_transcripts(
         log.info("Using CosMx global pixel columns '%s' and '%s' for transcript coordinates.", global_x, global_y)
         transcripts = transcripts.rename(columns={gene_column: _GENES_KEY, global_x: "x", global_y: "y"})
     else:
+        # Validate required local coordinate columns when global coordinates are absent.
         local_x = _require_column(transcripts.columns, _LOCAL_X_COLUMNS, kind="local x")
         local_y = _require_column(transcripts.columns, _LOCAL_Y_COLUMNS, kind="local y")
         fov_column = _optional_column(transcripts.columns, _FOV_COLUMNS)
 
-        # Apply FOV origins to local coordinates when the transcript schema supports that placement.
+        # Apply FOV origins to local coordinates when FOV placement metadata is available.
         if fov_origins is not None and fov_column is not None:
             log.info("Global transcript coordinates are absent; applying FOV translations from fov_positions.")
             transcripts = transcripts.map_partitions(
@@ -514,43 +486,33 @@ def _prepare_transcripts(
                 ),
             )
         else:
-            log.warning(
-                "CosMx transcript file '%s' has no usable global pixel coordinates or FOV placement metadata; "
-                "using local pixel coordinates as-is.",
-                transcripts_path,
-            )
+            if fov_column is not None:
+                if fov_positions_path is None:
+                    positions_description = "no FOV positions file was found"
+                else:
+                    positions_description = f"FOV positions file '{fov_positions_path}' has no usable pixel origins"
+                log.warning(
+                    "CosMx transcript file '%s' contains local FOV coordinates but %s; "
+                    "using local pixel coordinates as-is.",
+                    transcripts_path,
+                    positions_description,
+                )
+            else:
+                log.warning(
+                    "CosMx transcript file '%s' has no usable global pixel coordinates or FOV placement metadata; "
+                    "using local pixel coordinates as-is.",
+                    transcripts_path,
+                )
             transcripts = transcripts.rename(columns={gene_column: _GENES_KEY, local_x: "x", local_y: "y"})
 
     # Keep only the columns Sparrow allocation needs so extra CosMx fields are not persisted.
     transcripts = transcripts[[_GENES_KEY, "x", "y"]]
 
-    # Convert transcript coordinates to numeric values before checking their geometry.
+    # Convert transcript coordinates to numeric values.
     transcripts["x"] = transcripts["x"].astype(float)
     transcripts["y"] = transcripts["y"].astype(float)
 
-    # Reject non-finite coordinates before any output store or points layer is created.
-    _validate_transcript_coordinates(transcripts, transcripts_path=transcripts_path)
-
     return transcripts
-
-
-def _add_transcripts(
-    sdata: SpatialData,
-    transcripts: dd.DataFrame,
-    transcripts_path: Path,
-    coordinate_system: str,
-) -> SpatialData:
-    """Read CosMx transcripts lazily into one identity-transformed points layer."""
-    log.info("Reading CosMx transcripts from '%s'.", transcripts_path)
-
-    return add_points_layer(
-        sdata,
-        ddf=transcripts,
-        output_layer=f"transcripts_{coordinate_system}",
-        coordinates={"x": "x", "y": "y"},
-        transformations={coordinate_system: Identity()},
-        overwrite=False,
-    )
 
 
 def _add_table(
@@ -691,9 +653,17 @@ def _find_directory(path: Path, candidates: tuple[str, ...], skip_names: set[str
         if candidate.is_dir():
             return candidate
 
+    # If no candidate folder matched, inspect subdirectories for an unnamed Zarr group.
     for child in sorted(path.iterdir()):
         # Accept unnamed global-Zarr directories without interpreting filenames as FOV identifiers.
         if child.is_dir() and child.name not in skip_names and _is_zarr_group(child):
+            # Warn that an unnamed Zarr directory was detected and used instead of standard candidate folders.
+            log.warning(
+                "No standard image directory found in '%s' (%s); continuing with discovered Zarr store '%s'.",
+                path,
+                ", ".join(candidates),
+                child.name,
+            )
             return child
 
     return None
@@ -705,70 +675,55 @@ def _is_zarr_group(path: Path) -> bool:
     return (path / ".zgroup").is_file() or (path / "zarr.json").is_file()
 
 
-def _global_zarr_store(directory: Path, kind: str) -> Path:
-    """Require a global CosMx OME-Zarr group in an image or labels directory."""
-    # Reject legacy raster directories before any image or label layer is created.
-    if not _is_zarr_group(directory):
-        raise FileNotFoundError(
-            f"CosMx {kind} store '{directory}' is not an OME-Zarr group. Legacy raster inputs are not supported."
-        )
-
-    return directory
-
-
-def _read_zarr_image(
+def _read_multiscale_raster(
     path: Path,
     coordinate_system: str,
-    chunks: str | tuple[int, ...] | int | None,
+    kind: str,
+    chunks: str | tuple[int, ...] | int | None = None,
 ) -> DataTree:
-    """Read a channel-grouped multiscale CosMx image with the OME-Zarr reader."""
-    # Open only the vendor container metadata so channel stores remain backed by their source Zarr arrays.
-    image_group = zarr.open_group(path, mode="r")
-    channel_names = sorted(name for name, _ in image_group.groups())
-    if not channel_names:
-        raise ValueError(f"CosMx image Zarr store '{path}' does not contain channel groups.")
+    """Read a channel-grouped image or multiscale labels CosMx OME-Zarr store."""
+    if kind == "image":
+        # Open container metadata to discover image channel sub-groups.
+        image_group = zarr.open_group(path, mode="r")
+        channel_names = sorted(name for name, _ in image_group.groups())
+        if not channel_names:
+            raise ValueError(f"CosMx image Zarr store '{path}' does not contain channel groups.")
 
-    # Let OME-Zarr enumerate and open every native level lazily for each channel.
-    channel_levels = [_read_cosmx_zarr_levels(path / channel_name, kind="image") for channel_name in channel_names]
-    expected_level_count = len(channel_levels[0])
-    if any(len(levels) != expected_level_count for levels in channel_levels[1:]):
-        differing_counts = [len(levels) for levels in channel_levels]
-        raise ValueError(
-            f"CosMx image channels in '{path}' expose different numbers of pyramid levels: {differing_counts}."
-        )
+        # Read native pyramid levels lazily for each channel store.
+        channel_levels = [_read_cosmx_zarr_levels(path / channel_name, kind="image") for channel_name in channel_names]
+        expected_level_count = len(channel_levels[0])
+        # Validate that all channels have the same number of pyramid levels.
+        if any(len(levels) != expected_level_count for levels in channel_levels[1:]):
+            differing_counts = [len(levels) for levels in channel_levels]
+            raise ValueError(
+                f"CosMx image channels in '{path}' expose different numbers of pyramid levels: {differing_counts}."
+            )
 
-    # Stack corresponding native levels without reading any source pixels into memory.
-    image_levels: list[Array] = []
-    for level_index in range(expected_level_count):
-        channel_arrays = [levels[level_index] for levels in channel_levels]
-        image_level = da.stack(channel_arrays, axis=0)
-        image_levels.append(image_level)
+        # Stack corresponding native levels across channels along the c dimension.
+        raster_levels: list[Array] = []
+        for level_index in range(expected_level_count):
+            channel_arrays = [levels[level_index] for levels in channel_levels]
+            # Stack channel arrays into a single lazy 3D array (c, y, x).
+            raster_level = da.stack(channel_arrays, axis=0)
+            raster_levels.append(raster_level)
+
+        model = Image2DModel
+        dims = ("c", "y", "x")
+        c_coords = channel_names
+    else:
+        # Read multiscale labels and cast native arrays to uint32.
+        label_levels = [level.astype(np.uint32) for level in _read_cosmx_zarr_levels(path, kind="labels")]
+        raster_levels = label_levels
+        model = Labels2DModel
+        dims = ("y", "x")
+        c_coords = None
 
     return _build_multiscale_tree(
-        arrays=image_levels,
+        arrays=raster_levels,
         coordinate_system=coordinate_system,
-        model=Image2DModel,
-        dims=("c", "y", "x"),
-        channel_names=channel_names,
-        chunks=chunks,
-    )
-
-
-def _read_zarr_labels(
-    path: Path,
-    coordinate_system: str,
-    chunks: str | tuple[int, ...] | int | None,
-) -> DataTree:
-    """Read a multiscale CosMx labels store with the OME-Zarr reader."""
-    # Let OME-Zarr enumerate and open every native label level lazily.
-    label_levels = [level.astype(np.uint32) for level in _read_cosmx_zarr_levels(path, kind="labels")]
-
-    return _build_multiscale_tree(
-        arrays=label_levels,
-        coordinate_system=coordinate_system,
-        model=Labels2DModel,
-        dims=("y", "x"),
-        channel_names=None,
+        model=model,
+        dims=dims,
+        channel_names=c_coords,
         chunks=chunks,
     )
 
@@ -876,92 +831,6 @@ def _load_fov_origins(fov_positions_path: Path | None) -> dict[str, tuple[float,
     return origins
 
 
-def _validate_local_transcript_placement(
-    transcripts: dd.DataFrame,
-    transcripts_path: Path,
-    fov_origins: Mapping[str, tuple[float, float]] | None,
-    fov_positions_path: Path | None,
-) -> None:
-    """Validate that local transcript coordinates have sufficient FOV placement metadata."""
-    global_x = _optional_column(transcripts.columns, _GLOBAL_X_COLUMNS)
-    global_y = _optional_column(transcripts.columns, _GLOBAL_Y_COLUMNS)
-
-    # Global transcript coordinates already have a common placement and need no FOV-origin lookup.
-    if global_x is not None and global_y is not None:
-        return
-
-    # Validate local coordinate columns while the transcript schema is available during preflight.
-    _require_column(transcripts.columns, _LOCAL_X_COLUMNS, kind="local x")
-    _require_column(transcripts.columns, _LOCAL_Y_COLUMNS, kind="local y")
-    fov_column = _optional_column(transcripts.columns, _FOV_COLUMNS)
-    if fov_column is None:
-        return
-
-    # Compute only distinct FOV identifiers before any images or output stores are created.
-    transcript_fovs = transcripts[fov_column].drop_duplicates().compute()
-    try:
-        required_fovs = frozenset(_normalize_fov(fov) for fov in transcript_fovs)
-    except ValueError as error:
-        raise ValueError(f"CosMx transcript file '{transcripts_path}' contains an invalid FOV identifier.") from error
-
-    # No local transcript FOVs means the global transcript coordinates need no origin lookup.
-    if not required_fovs:
-        return
-
-    # A single local transcript FOV can use local coordinates as-is when no placement metadata is available.
-    if fov_origins is None:
-        if len(required_fovs) <= 1:
-            return
-
-        # Reject absent or structurally invalid positions files before creating the transcript layer.
-        if fov_positions_path is None:
-            positions_description = "no FOV positions file was found"
-        else:
-            positions_description = f"FOV positions file '{fov_positions_path}' has no usable pixel origins"
-        raise ValueError(
-            f"CosMx dataset contains multiple FOVs ({', '.join(sorted(required_fovs))}), but "
-            f"{positions_description}. Valid FOV origins are required for local transcript placement."
-        )
-
-    # Reject a positions file that does not describe every local transcript FOV.
-    missing_fovs = sorted(required_fovs.difference(fov_origins))
-    if missing_fovs:
-        raise ValueError(
-            "CosMx FOV positions metadata is incomplete; missing origins for FOVs "
-            f"{', '.join(missing_fovs)}. Valid origins are required for every local transcript FOV."
-        )
-
-
-def _validate_transcript_coordinates(transcripts: dd.DataFrame, transcripts_path: Path) -> None:
-    """Reject non-numeric or non-finite transcript coordinates."""
-    try:
-        # Check coordinates across partitions lazily and compute reduction
-        has_invalid = (
-            ~(
-                (transcripts["x"].map_partitions(np.isfinite, meta=pd.Series(dtype="bool")))
-                & (transcripts["y"].map_partitions(np.isfinite, meta=pd.Series(dtype="bool")))
-            )
-            .all()
-            .compute()
-        )
-    except (TypeError, ValueError) as error:
-        raise ValueError(
-            f"CosMx transcript file '{transcripts_path}' contains non-numeric coordinate values."
-        ) from error
-
-    # Stop before layer creation when any coordinate is NaN, positive infinity, or negative infinity.
-    if bool(has_invalid):
-        raise ValueError(f"CosMx transcript file '{transcripts_path}' contains non-finite coordinates.")
-
-
-def _read_transcript_table(path: Path) -> dd.DataFrame:
-    """Read CosMx transcripts as a Dask dataframe from parquet or CSV."""
-    if path.suffix.lower() == ".parquet":
-        return dd.read_parquet(path)
-
-    return dd.read_csv(path, header=0, blocksize=_BLOCKSIZE)
-
-
 def _apply_fov_origins(
     partition: pd.DataFrame,
     gene_column: str,
@@ -975,10 +844,18 @@ def _apply_fov_origins(
     x_map = {fov: origin[0] for fov, origin in fov_origins.items()}
     y_map = {fov: origin[1] for fov, origin in fov_origins.items()}
 
-    # Normalize FOVs and map to numeric origin offsets vectorially
-    fov_ids = partition[fov_column].map(_normalize_fov)
+    # Normalize FOVs vectorially and map to numeric origin offsets
+    fov_ids = partition[fov_column].astype("int64").astype(str)
     origin_x = fov_ids.map(x_map)
     origin_y = fov_ids.map(y_map)
+
+    # Validate that every FOV in this partition has a corresponding FOV origin.
+    if origin_x.isna().any() or origin_y.isna().any():
+        missing = sorted(fov_ids[origin_x.isna() | origin_y.isna()].unique())
+        raise ValueError(
+            "CosMx FOV positions metadata is incomplete; missing origins for FOVs "
+            f"{', '.join(missing)}. Valid origins are required for every local transcript FOV."
+        )
 
     return pd.DataFrame(
         {
