@@ -14,6 +14,7 @@ from xarray import DataTree
 from sparrow.io._cosmx import (
     _discover_files,
     _load_keep_gene_names,
+    _read_cosmx_zarr_levels,
     cosmx,
 )
 from sparrow.table._allocation import allocate
@@ -92,6 +93,47 @@ def _write_zarr_stores(images_dir: Path, labels_dir: Path) -> None:
     labels_group["1"][:] = 1
 
 
+def test_cosmx_reports_missing_multiscale_node(tmp_path, monkeypatch):
+    """Report when a Zarr store has no readable multiscale dataset."""
+
+    class EmptyReader:
+        def __init__(self, location):
+            pass
+
+        def __call__(self):
+            return []
+
+    # Replace metadata discovery so this test focuses on the zero-node error branch.
+    monkeypatch.setattr("sparrow.io._cosmx.Reader", EmptyReader)
+
+    with pytest.raises(ValueError, match="does not contain a readable multiscale OME-Zarr dataset"):
+        _read_cosmx_zarr_levels(tmp_path, kind="image")
+
+
+def test_cosmx_reports_multiple_multiscale_nodes(tmp_path, monkeypatch):
+    """Report when a Zarr store contains ambiguous multiscale datasets."""
+
+    class FakeMultiscales:
+        pass
+
+    class FakeNode:
+        specs = [FakeMultiscales()]
+
+    class MultipleReader:
+        def __init__(self, location):
+            pass
+
+        def __call__(self):
+            return [FakeNode(), FakeNode()]
+
+    # Replace metadata discovery and its marker type so this test reaches the multiple-node branch.
+    monkeypatch.setattr("sparrow.io._cosmx.Reader", MultipleReader)
+    monkeypatch.setattr("sparrow.io._cosmx.Multiscales", FakeMultiscales)
+
+    with pytest.raises(ValueError, match=r"contains 2 multiscale nodes; expected exactly one"):
+        _read_cosmx_zarr_levels(tmp_path, kind="labels")
+
+
 def test_cosmx_reads_global_transcripts_and_filters_panel_genes(tmp_path):
     dataset_path = _write_cosmx_dataset(tmp_path)
 
@@ -116,6 +158,8 @@ def test_cosmx_reads_global_transcripts_and_filters_panel_genes(tmp_path):
     points = sdata["transcripts_sample"].compute()
     assert points[_GENES_KEY].tolist() == ["ACTB"]
     assert "target" not in points.columns
+    assert points["fov"].tolist() == [1]
+    assert points["cell_ID"].tolist() == [1]
     assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 5.0]]
     assert isinstance(get_transformation(sdata["transcripts_sample"], to_coordinate_system="sample"), Identity)
 
@@ -171,6 +215,7 @@ def test_cosmx_applies_fov_origins_to_local_transcripts(tmp_path):
             "x_local_px": [1.0, 2.0],
             "y_local_px": [3.0, 4.0],
             "target": ["ACTB", "ACTB"],
+            "quality": ["good", "review"],
         }
     ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
 
@@ -184,6 +229,8 @@ def test_cosmx_applies_fov_origins_to_local_transcripts(tmp_path):
     points = sdata["transcripts_sample"].compute()
 
     assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 5.0], [102.0, 204.0]]
+    assert points["fov"].tolist() == [1, 2]
+    assert points["quality"].tolist() == ["good", "review"]
 
 
 def test_cosmx_includes_local_transcript_fovs_in_origin_validation(tmp_path):
@@ -201,6 +248,40 @@ def test_cosmx_includes_local_transcript_fovs_in_origin_validation(tmp_path):
 
     # Reject the missing transcript FOV during in-flight partition processing.
     with pytest.raises(ValueError, match=r"missing origins for FOVs 2"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+
+def test_cosmx_rejects_local_transcripts_without_fov_column(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Remove global coordinates and the FOV column from the local transcript schema.
+    pd.DataFrame(
+        {
+            "x_local_px": [1.0],
+            "y_local_px": [3.0],
+            "target": ["ACTB"],
+        }
+    ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
+
+    with pytest.raises(ValueError, match=r"missing a fov column"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+
+def test_cosmx_rejects_local_transcripts_without_fov_origins(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Remove global coordinates so local transcript positions require FOV origins.
+    pd.DataFrame(
+        {
+            "fov": [1],
+            "x_local_px": [1.0],
+            "y_local_px": [3.0],
+            "target": ["ACTB"],
+        }
+    ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
+    (dataset_path / "coad_fov_positions_file.csv").unlink()
+
+    with pytest.raises(ValueError, match=r"local FOV coordinates.*no FOV positions file"):
         cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
 
 
