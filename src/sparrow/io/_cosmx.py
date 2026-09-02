@@ -257,7 +257,8 @@ def cosmx(
         )
 
     log.info(
-        "Finished CosMx read: %d image(s), %d label(s), %d point layer(s), and %d table(s).",
+        "Finished CosMx read: %d image(s), %d label(s), %d point layer(s), and %d table(s)"
+        "where added to the spatial data object.",
         len(sdata.images),
         len(sdata.labels),
         len(sdata.points),
@@ -514,26 +515,24 @@ def _add_table(
     keep_genes: set[str] | None,
 ) -> SpatialData:
     """Read the optional vendor cell-by-gene table."""
-    log.info("Reading CosMx vendor table from '%s' and '%s'.", counts_path, metadata_path)
-
     counts = pd.read_csv(counts_path, header=0)
     metadata = pd.read_csv(metadata_path, header=0)
 
     counts_fov = _require_column(counts.columns, _FOV_COLUMNS, kind="fov")
     counts_cell = _require_column(counts.columns, _CELL_ID_COLUMNS, kind="cell ID")
-    metadata_fov = _require_column(metadata.columns, _FOV_COLUMNS, kind="fov")
     metadata_cell = _require_column(metadata.columns, _CELL_ID_COLUMNS, kind="cell ID")
 
-    # Build a unique observation index that is stable across FOVs.
-    counts_index = _cell_index(counts[counts_cell], counts[counts_fov])
-    metadata_index = _cell_index(metadata[metadata_cell], metadata[metadata_fov])
-    counts = counts.set_index(counts_index)
-    metadata = metadata.set_index(metadata_index)
+    # The vendor cell_ID is already unique across FOVs, so it can be used directly as the observation index.
+    counts = counts.set_index(pd.Index(counts[counts_cell].astype(str)))
+    metadata = metadata.set_index(pd.Index(metadata[metadata_cell].astype(str)))
 
     # Drop identifier columns from the expression matrix so remaining columns are genes.
     gene_columns = [column for column in counts.columns if column not in {counts_fov, counts_cell}]
     counts = counts[gene_columns]
 
+    # Align the counts and metadata tables to a common set of cells, dropping any cells that are missing from either table.
+    # AnnData aligns X, obs, and var positionally, not by index label so that is why we need to guarantee that
+    # counts and metadata end up in identical row order.
     common_index = metadata.index.intersection(counts.index)
     counts = counts.loc[common_index]
     metadata = metadata.loc[common_index].copy()
@@ -543,8 +542,12 @@ def _add_table(
 
     # Point every vendor cell at the single global labels layer stored in this coordinate system.
     metadata[_REGION_KEY] = pd.Categorical([f"labels_{coordinate_system}"] * len(metadata), ordered=False)
+    # TableLayerManager, which is called below, expects the _INSTANCE_KEY column to be present in the obs metadata
     metadata[_INSTANCE_KEY] = metadata[metadata_cell].astype(np.int64)
 
+    # Create an AnnData object for the vendor table with a sparse expression matrix and the required obs/var structure.
+    # Scipy's Compressed Sparse Row format is used because count matrices are typically very sparse,
+    # so sparse storage saves substantial memory.
     adata = AnnData(
         X=csr_matrix(counts.to_numpy()),
         obs=metadata,
@@ -554,6 +557,8 @@ def _add_table(
     # Preserve global cell centres when the vendor metadata provides them.
     center_x = _optional_column(adata.obs.columns, _CENTER_X_GLOBAL_COLUMNS)
     center_y = _optional_column(adata.obs.columns, _CENTER_Y_GLOBAL_COLUMNS)
+    # If they are present, copy them into the obsm spatial coordinates for Sparrow, following the conventional key
+    # (x, y) pair used throughout the scanpy/squidpy/spatialdata ecosystem for per-cell spatial coordinates
     if center_x is not None and center_y is not None:
         adata.obsm[_SPATIAL] = adata.obs[[center_x, center_y]].to_numpy()
 
@@ -561,7 +566,7 @@ def _add_table(
         sdata,
         adata=adata,
         output_layer=f"table_{coordinate_system}",
-        region=adata.obs[_REGION_KEY].cat.categories.to_list(),
+        region=adata.obs[_REGION_KEY].cat.categories.to_list(),     # a one-element list, ["labels_<coordinate_system>"]
         overwrite=False,
     )
 
@@ -705,7 +710,7 @@ def _process_multiscale_raster(
     else:
         # Read multiscale labels lazily from the single labels store.
         # Cast native arrays to uint32 for compatibility with Sparrow’s segmentation utilities.
-        raster_levels = [resolution.astype(np.uint32) for resolution in _read_cosmx_zarr_levels(path, kind="labels")]
+        raster_levels = [level_array.astype(np.uint32) for level_array in _read_cosmx_zarr_levels(path, kind="labels")]
         model = Labels2DModel
         dims = ("y", "x")
         c_coords = None
@@ -756,8 +761,6 @@ def _read_cosmx_zarr_levels(path: Path, kind: str) -> list[Array]:
 
     # Open the same store with Zarr so Dask reads the vendor chunks correctly on Windows.
     zarr_group = zarr.open_group(path, mode="r")
-    # The order in multiscales.datasets matters because the OME-Zarr metadata defines which
-    #  dataset is level zero, level one, etc.
     # Read each dataset lazily into a Dask array without changing the native pyramid levels.
     raster_levels = [da.from_zarr(zarr_group[dataset_path]) for dataset_path in multiscales.datasets]
 
@@ -785,21 +788,22 @@ def _build_multiscale_tree(
             # Rechunk the array to the requested chunking scheme for better Dask performance.
             array = array.rechunk(chunks)
 
-        # Convert the Dask array for each existing level into a SpatialData-compatible xarray.DataArray
-        #  with the specified dimensions and channel coordinates.
+        # Convert each Dask array into a SpatialData-compatible xarray.DataArray
         parsed = model.parse(
             array,
             dims=dims,
             c_coords=channel_names,
         )
         # Wrap the DataArray in an xarray.Dataset, compatible with SpatialData's expectations for DataTree nodes.
+        # Here, name="image" mirrors spatialdata's own internal convention
+        # It has nothing to do with whether the element ends up registered as an image or a labels layer.
         levels[f"scale{level_index}"] = parsed.to_dataset(name="image")
 
     # Build the multiscale DataTree from the Datasets
     tree = DataTree.from_dict(levels)
     # The level-zero CosMx mosaic is already in the requested global pixel coordinate system,
     # so it receives an Identity() transform. 
-    # For lower levels, SpatialData derives scale factors from the shapes.
+    # For the lower resolution levels, SpatialData derives scale factors from the shapes.
     _set_transformations(tree, {coordinate_system: Identity()})
 
     # Compute every level's pixel centres in the level-zero CosMx pixel coordinate system, needed xarray coordinate computations
@@ -905,8 +909,3 @@ def _require_column(columns: Iterable[str], candidates: tuple[str, ...], kind: s
 def _normalize_fov(value: Any) -> str:
     """Normalise FOV identifiers such as ``1``, ``1.0`` and ``001`` to ``'1'``."""
     return str(int(float(value)))
-
-
-def _cell_index(cell_ids: pd.Series, fovs: pd.Series) -> pd.Index:
-    """Build a unique cell index from vendor cell ID and FOV columns."""
-    return pd.Index(cell_ids.astype(str).str.cat(fovs.map(_normalize_fov), sep="_"))
