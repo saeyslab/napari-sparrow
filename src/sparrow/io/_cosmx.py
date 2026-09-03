@@ -55,6 +55,12 @@ _CENTER_Y_GLOBAL_COLUMNS = ("CenterY_global_px",)
 
 _BLOCKSIZE = "256MB"
 
+# Row chunk size used when streaming the vendor counts CSV, and the dtypes used to accumulate
+# it into a sparse matrix.
+_COUNTS_CHUNK_ROWS = 50_000
+_COUNTS_VALUE_DTYPE = np.int32
+_COUNTS_INDEX_DTYPE = np.int32
+
 
 @dataclass(frozen=True)
 class _CosmxFiles:
@@ -514,31 +520,48 @@ def _add_table(
     coordinate_system: str,
     keep_genes: set[str] | None,
 ) -> SpatialData:
-    """Read the optional vendor cell-by-gene table."""
-    counts = pd.read_csv(counts_path, header=0)
+    """Read the optional vendor cell-by-gene table, streaming counts to avoid a dense (cells x genes) read."""
     metadata = pd.read_csv(metadata_path, header=0)
-
-    counts_fov = _require_column(counts.columns, _FOV_COLUMNS, kind="fov")
-    counts_cell = _require_column(counts.columns, _CELL_ID_COLUMNS, kind="cell ID")
     metadata_cell = _require_column(metadata.columns, _CELL_ID_COLUMNS, kind="cell ID")
-
     # The vendor cell_ID is already unique across FOVs, so it can be used directly as the observation index.
-    counts = counts.set_index(pd.Index(counts[counts_cell].astype(str)))
     metadata = metadata.set_index(pd.Index(metadata[metadata_cell].astype(str)))
 
-    # Drop identifier columns from the expression matrix so remaining columns are genes.
-    gene_columns = [column for column in counts.columns if column not in {counts_fov, counts_cell}]
-    counts = counts[gene_columns]
-
-    # Align the counts and metadata tables to a common set of cells, dropping any cells that are missing from either table.
-    # AnnData aligns X, obs, and var positionally, not by index label so that is why we need to guarantee that
-    # counts and metadata end up in identical row order.
-    common_index = metadata.index.intersection(counts.index)
-    counts = counts.loc[common_index]
-    metadata = metadata.loc[common_index].copy()
-
+    # Read only the header row so gene columns are known up front, before any counts rows are read.
+    counts_columns = pd.read_csv(counts_path, header=0, nrows=0).columns
+    counts_fov = _require_column(counts_columns, _FOV_COLUMNS, kind="fov")
+    counts_cell = _require_column(counts_columns, _CELL_ID_COLUMNS, kind="cell ID")
+    # Drop identifier columns so remaining columns are genes, then apply the optional whitelist.
+    gene_columns = [column for column in counts_columns if column not in {counts_fov, counts_cell}]
     if keep_genes is not None:
-        counts = counts.loc[:, counts.columns.astype(str).isin(keep_genes)]
+        gene_columns = [column for column in gene_columns if str(column) in keep_genes]
+
+    # Log a memory estimate before the expensive read. So a too-large panel/cell count 
+    # is a visible warning up front rather than a silent multi-minute hang before an OOM.
+    n_genes = len(gene_columns)
+    # len(metadata) is an upper bound on the final cell count (counts is intersected against it below)
+    estimated_dense_bytes = len(metadata) * n_genes * np.dtype(_COUNTS_VALUE_DTYPE).itemsize
+    log.info(
+        "CosMx vendor table has %d candidate cells (from metadata) and %d genes; a dense %s matrix "
+        "would need up to ~%.2f GB of memory. Streaming '%s' into a sparse matrix instead.",
+        len(metadata),
+        n_genes,
+        np.dtype(_COUNTS_VALUE_DTYPE),
+        estimated_dense_bytes / 1e9,
+        counts_path,
+    )
+
+    # Single pass over the counts file without materializing the full (cells x genes) matrix as a dense array
+    X, seen = _read_counts_sparse(
+        counts_path=counts_path,
+        counts_cell=counts_cell,
+        gene_columns=gene_columns,
+        metadata_index=metadata.index,
+    )
+
+    # A cell belongs in the table only if it appears in both metadata and counts
+    # Filter the metadata to the cells that were actually seen in the counts file, preserving the original row order.
+    # This later is necessary because AnnData aligns X, obs, and var positionally, not by index label
+    metadata = metadata.loc[seen].copy()
 
     # Point every vendor cell at the single global labels layer stored in this coordinate system.
     metadata[_REGION_KEY] = pd.Categorical([f"labels_{coordinate_system}"] * len(metadata), ordered=False)
@@ -549,9 +572,9 @@ def _add_table(
     # Scipy's Compressed Sparse Row format is used because count matrices are typically very sparse,
     # so sparse storage saves substantial memory.
     adata = AnnData(
-        X=csr_matrix(counts.to_numpy()),
+        X=X,
         obs=metadata,
-        var=pd.DataFrame(index=counts.columns.astype(str)),
+        var=pd.DataFrame(index=pd.Index(gene_columns).astype(str)),
     )
 
     # Preserve global cell centres when the vendor metadata provides them.
@@ -566,9 +589,87 @@ def _add_table(
         sdata,
         adata=adata,
         output_layer=f"table_{coordinate_system}",
-        region=adata.obs[_REGION_KEY].cat.categories.to_list(),     # a one-element list, ["labels_<coordinate_system>"]
+        region=adata.obs[_REGION_KEY].cat.categories.to_list(),  # a one-element list, ["labels_<coordinate_system>"]
         overwrite=False,
     )
+
+
+def _read_counts_sparse(
+    counts_path: Path,
+    counts_cell: str,
+    gene_columns: list[str],
+    metadata_index: pd.Index,
+) -> tuple[csr_matrix, np.ndarray]:
+    """Stream the vendor counts CSV once and accumulate it directly into a sparse matrix.
+
+    Each counts row is placed at its cell's position in ``metadata_index``; a counts row whose
+    cell ID is not in ``metadata_index`` is dropped. Row order does not matter for COO
+    construction, so counts can be streamed in whatever order it is stored in.
+    The full (cells x genes) matrix is never materialized as a dense array.
+    """
+    n_cells = len(metadata_index)
+    n_genes = len(gene_columns)
+    # A label -> row index lookup, built once from metadata's own row order.
+    row_positions = {cell_id: index for index, cell_id in enumerate(metadata_index)}
+    seen = np.zeros(n_cells, dtype=bool)
+
+    row_chunks: list[np.ndarray] = []
+    col_chunks: list[np.ndarray] = []
+    value_chunks: list[np.ndarray] = []
+
+    # Only read the cell_ID and (already gene-filtered) gene columns of the expression matrix,
+    # streaming it in chunks to avoid a dense (cells x genes) read.
+    usecols = [counts_cell, *gene_columns]
+    reader = pd.read_csv(counts_path, header=0, usecols=usecols, chunksize=_COUNTS_CHUNK_ROWS)
+    for chunk in reader:
+        # a cell_ID present in row_positions (i.e., also in metadata) comes back as its integer row index
+        # a cell_ID absent from row_positions (in counts but not in metadata) comes back as NaN.
+        chunk_positions = chunk[counts_cell].astype(str).map(row_positions)
+        keep = chunk_positions.notna()
+        if not keep.any():
+            continue
+        # Drop the unmatched (NaN) rows and convert the remaining float row-positions to a plain int32 array
+        # these are the exact row indices these counts rows will occupy in the final sparse matrix.
+        metadata_filtered_positions = chunk_positions[keep].to_numpy(dtype=_COUNTS_INDEX_DTYPE)
+        seen[metadata_filtered_positions] = True
+
+        # Select gene columns in gene_columns order so column positions match the final matrix.
+        chunk_values = chunk.loc[keep, gene_columns].to_numpy()
+
+        # A sparse matrix only needs to record nonzero entries.
+        # np.nonzero returns two 1D arrays of equal length,
+        # ensuring that all nonzero entries have two coupled indices (row, col)
+        nonzero_rows, nonzero_cols = np.nonzero(chunk_values)
+        if nonzero_rows.size == 0:
+            continue
+
+        # Select only the 1D arrays of the row positions, column positions and values for the nonzero entries
+        row_chunks.append(metadata_filtered_positions[nonzero_rows])
+        col_chunks.append(nonzero_cols.astype(_COUNTS_INDEX_DTYPE))
+        value_chunks.append(chunk_values[nonzero_rows, nonzero_cols].astype(_COUNTS_VALUE_DTYPE))
+
+    # Concatenate the accumulated COO triples into single arrays for the final sparse matrix construction.
+    if value_chunks:
+        rows = np.concatenate(row_chunks)
+        cols = np.concatenate(col_chunks)
+        values = np.concatenate(value_chunks)
+    else:
+        rows = np.array([], dtype=_COUNTS_INDEX_DTYPE)
+        cols = np.array([], dtype=_COUNTS_INDEX_DTYPE)
+        values = np.array([], dtype=_COUNTS_VALUE_DTYPE)
+        log.warning(
+            f"CosMx counts file '{counts_path}' contains no nonzero entries after gene filtering"
+            f"or contains no cell IDs that match the metadata. "
+            f"Check that the counts file and metadata file are compatible."
+            f"Resulting sparse expression matrix will be empty with shape ({n_cells}, {n_genes})."
+            )
+
+    # Create a sparse matrix in Compressed Sparse Row format directly from the COO triples.
+    X = csr_matrix((values, (rows, cols)), shape=(n_cells, n_genes))
+    # A metadata cell that is absent in the counts file doesn't get excluded from the matrix,
+    # because of shape=(n_cells, n_genes) with n_cells = len(metadata_index)
+    # That is why we need to slice the sparse matrix down to the rows that were actually seen in counts
+    return X[seen], seen
 
 
 def _as_list(value: Any) -> list[Any]:
