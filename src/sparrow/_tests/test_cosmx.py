@@ -18,7 +18,7 @@ from sparrow.io._cosmx import (
     cosmx,
 )
 from sparrow.table._allocation import allocate
-from sparrow.utils._keys import _GENES_KEY, _INSTANCE_KEY, _REGION_KEY
+from sparrow.utils._keys import _CELL_INDEX, _GENES_KEY, _INSTANCE_KEY, _REGION_KEY
 
 
 def _write_cosmx_dataset(root: Path) -> Path:
@@ -337,7 +337,8 @@ def test_cosmx_reads_optional_labels_and_table(tmp_path):
     table = sdata["table_sample"]
     assert table.var_names.tolist() == ["ACTB"]
     assert table.obs[_REGION_KEY].cat.categories.tolist() == ["labels_sample"]
-    assert table.obs[_INSTANCE_KEY].tolist() == [1, 2]
+    # Both fixture cells share fov=1, so the dataset-global fov+cell_ID key is "1_1"/"1_2".
+    assert table.obs[_INSTANCE_KEY].tolist() == ["1_1", "1_2"]
 
     # Confirm default Sparrow allocation consumes the canonical gene column without extra arguments.
     sdata = allocate(
@@ -351,6 +352,36 @@ def test_cosmx_reads_optional_labels_and_table(tmp_path):
     )
 
     assert sdata["allocated"].var_names.tolist() == ["ACTB"]
+
+
+def test_cosmx_disambiguates_cell_ids_repeated_across_fovs(tmp_path):
+    """The vendor per-FOV cell_ID restarts at 1 in every FOV, so two different cells that happen
+    to share the same local cell_ID in different FOVs must not be merged into one observation."""
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Two distinct cells colliding on the vendor's per-FOV cell_ID (both "1") but belonging to
+    # different FOVs, with different gene counts so an accidental merge would be detectable.
+    pd.DataFrame({"cell_ID": [1, 1], "fov": [1, 2], "ACTB": [5, 9], "SystemControl1": [0, 0]}).to_csv(
+        dataset_path / "coad_exprMat_file.csv", index=False
+    )
+    pd.DataFrame(
+        {
+            "cell_ID": [1, 1],
+            "fov": [1, 2],
+            "CenterX_global_px": [2.0, 3.0],
+            "CenterY_global_px": [5.0, 6.0],
+        }
+    ).to_csv(dataset_path / "coad_metadata_file.csv", index=False)
+
+    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
+
+    table = sdata["table_sample"]
+    # Both cells are kept as distinct observations, keyed by the dataset-global fov + cell_ID.
+    assert table.n_obs == 2
+    assert table.obs[_INSTANCE_KEY].tolist() == ["1_1", "2_1"]
+    assert table.obs.index.name == _CELL_INDEX
+    # Counts are not merged between the two same-local-ID cells.
+    assert table[:, "ACTB"].X.toarray().ravel().tolist() == [5, 9]
 
 
 def test_cosmx_reads_multiscale_zarr_stores_and_keeps_table_link(tmp_path):

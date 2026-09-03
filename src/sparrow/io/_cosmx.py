@@ -25,7 +25,7 @@ from xarray import DataTree
 from sparrow.image._manager import ImageLayerManager, LabelLayerManager
 from sparrow.points._points import add_points_layer
 from sparrow.table._table import add_table_layer
-from sparrow.utils._keys import _GENES_KEY, _INSTANCE_KEY, _REGION_KEY, _SPATIAL
+from sparrow.utils._keys import _CELL_INDEX, _GENES_KEY, _INSTANCE_KEY, _REGION_KEY, _SPATIAL
 from sparrow.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -305,7 +305,16 @@ def _prepare_dataset(
     if dataset_files.transcripts.suffix.lower() == ".parquet":
         transcripts = dd.read_parquet(dataset_files.transcripts)
     else:
-        transcripts = dd.read_csv(dataset_files.transcripts, header=0, blocksize=_BLOCKSIZE)
+        # First, read only the header row so the dtype of every column can be explicitly specified
+        # before Dask ever samples the file itself.
+        # This avoids Dask's unreliable dtype inference for large multi-gigabyte CSVs.
+        header_columns = pd.read_csv(dataset_files.transcripts, header=0, nrows=0).columns
+        transcripts = dd.read_csv(
+            dataset_files.transcripts,
+            header=0,
+            blocksize=_BLOCKSIZE,
+            dtype=_resolve_transcript_csv_dtypes(header_columns),
+        )
 
     # Require a recognized gene column name in the transcripts table.
     gene_column = _require_column(transcripts.columns, _GENE_COLUMNS, kind="gene")
@@ -454,6 +463,47 @@ def _discover_files(
     )
 
 
+def _resolve_transcript_csv_dtypes(columns: Iterable[str]) -> dict[str, Any]:
+    """Build an explicit per-column dtype map for a CosMx transcripts CSV.
+
+    Dask infers each column's dtype from a small sample of the file (256KB by default), which is
+    unreliable for a multi-gigabyte CosMx export. A column that is blank in that sample defaults
+    to float64 (an all-NaN column looks numeric) but can hold real text further into the file.
+    Such a mismatch crashes Dask's cross-partition dtype reconciliation once the later partitions
+    are actually read. Every column this reader gives a specific meaning to is assigned its
+    correct dtype explicitly here instead, so no sampling is involved for it.
+    Every other (vendor passthrough) column is read as a string, since this reader never depends
+    on a passthrough column's dtype.
+    """
+    dtype: dict[str, Any] = {}
+
+    # Gene/target values are never numeric.
+    gene_column = _optional_column(columns, _GENE_COLUMNS)
+    if gene_column is not None:
+        dtype[gene_column] = str
+
+    # Pixel coordinates are cast to float wherever they are used (see below), so declaring every
+    # candidate column float64 up front avoids Dask ever mistaking one for a clean integer column.
+    for candidates in (_GLOBAL_X_COLUMNS, _GLOBAL_Y_COLUMNS, _LOCAL_X_COLUMNS, _LOCAL_Y_COLUMNS):
+        column = _optional_column(columns, candidates)
+        if column is not None:
+            dtype[column] = np.float64
+
+    # CosMx FOV and cell IDs are always populated whole numbers.
+    for candidates in (_FOV_COLUMNS, _CELL_ID_COLUMNS):
+        column = _optional_column(columns, candidates)
+        if column is not None:
+            dtype[column] = np.int64
+
+    # Any remaining column is a vendor passthrough column this reader never inspects.
+    for column in columns:
+        # If key is not already in the dictionary, insert it with value.
+        # Otherwise, leave the existing value unchanged.
+        dtype.setdefault(column, str)
+
+    return dtype
+
+
 def _prepare_transcripts(
     transcripts: dd.DataFrame,
     transcripts_path: Path,
@@ -522,9 +572,34 @@ def _add_table(
 ) -> SpatialData:
     """Read the optional vendor cell-by-gene table, streaming counts to avoid a dense (cells x genes) read."""
     metadata = pd.read_csv(metadata_path, header=0)
+    metadata_fov = _require_column(metadata.columns, _FOV_COLUMNS, kind="fov")
     metadata_cell = _require_column(metadata.columns, _CELL_ID_COLUMNS, kind="cell ID")
-    # The vendor cell_ID is already unique across FOVs, so it can be used directly as the observation index.
-    metadata = metadata.set_index(pd.Index(metadata[metadata_cell].astype(str)))
+
+    # Some CosMx metadata exports carry more than one cell-ID alias at once (e.g. both 'cell_id'
+    # and 'cell_ID', observed to hold different values).
+    # SpatialData's table model rejects obs column names that are case-insensitive duplicates of each other,
+    # so drop every alias that was not chosen as the canonical column above.
+    redundant_cell_id_columns = [
+        column for column in _CELL_ID_COLUMNS if column != metadata_cell and column in metadata.columns
+    ]
+    if redundant_cell_id_columns:
+        log.info(
+            "Dropping redundant CosMx cell ID column alias(es) %s from vendor metadata; using '%s'.",
+            redundant_cell_id_columns,
+            metadata_cell,
+        )
+        metadata = metadata.drop(columns=redundant_cell_id_columns)
+
+    # The vendor's per-FOV cell ID restarts from 1 in every FOV, so it is only unique within a
+    # single FOV, not across the dataset. Using it alone would silently merge unrelated cells
+    # from different FOVs that happen to share the same local ID.
+    # Building a dataset-global identifier by combining cell IDs with their corresponding FOVs.
+    metadata = metadata.set_index(
+        pd.Index(
+            metadata[metadata_fov].astype(str) + "_" + metadata[metadata_cell].astype(str),
+            name=_CELL_INDEX,
+        )
+    )
 
     # Read only the header row so gene columns are known up front, before any counts rows are read.
     counts_columns = pd.read_csv(counts_path, header=0, nrows=0).columns
@@ -553,6 +628,7 @@ def _add_table(
     # Single pass over the counts file without materializing the full (cells x genes) matrix as a dense array
     X, seen = _read_counts_sparse(
         counts_path=counts_path,
+        counts_fov=counts_fov,
         counts_cell=counts_cell,
         gene_columns=gene_columns,
         metadata_index=metadata.index,
@@ -565,8 +641,9 @@ def _add_table(
 
     # Point every vendor cell at the single global labels layer stored in this coordinate system.
     metadata[_REGION_KEY] = pd.Categorical([f"labels_{coordinate_system}"] * len(metadata), ordered=False)
-    # TableLayerManager, which is called below, expects the _INSTANCE_KEY column to be present in the obs metadata
-    metadata[_INSTANCE_KEY] = metadata[metadata_cell].astype(np.int64)
+    # TableLayerManager, which is called below, expects the _INSTANCE_KEY column to be present in the obs
+    # metadata; it holds the same dataset-global fov+cell ID used as the observation index above.
+    metadata[_INSTANCE_KEY] = metadata.index.to_numpy()
 
     # Create an AnnData object for the vendor table with a sparse expression matrix and the required obs/var structure.
     # Scipy's Compressed Sparse Row format is used because count matrices are typically very sparse,
@@ -596,16 +673,18 @@ def _add_table(
 
 def _read_counts_sparse(
     counts_path: Path,
+    counts_fov: str,
     counts_cell: str,
     gene_columns: list[str],
     metadata_index: pd.Index,
 ) -> tuple[csr_matrix, np.ndarray]:
     """Stream the vendor counts CSV once and accumulate it directly into a sparse matrix.
 
-    Each counts row is placed at its cell's position in ``metadata_index``; a counts row whose
-    cell ID is not in ``metadata_index`` is dropped. Row order does not matter for COO
-    construction, so counts can be streamed in whatever order it is stored in.
-    The full (cells x genes) matrix is never materialized as a dense array.
+    Each counts row is placed at its cell's position in ``metadata_index``, matched on the same
+    fov+cell ID key used to build that index; a counts row whose key is not in ``metadata_index``
+    is dropped. Row order does not matter for COO construction, so counts can be streamed in
+    whatever order it is stored in. The full (cells x genes) matrix is never materialized as a
+    dense array.
     """
     n_cells = len(metadata_index)
     n_genes = len(gene_columns)
@@ -617,14 +696,17 @@ def _read_counts_sparse(
     col_chunks: list[np.ndarray] = []
     value_chunks: list[np.ndarray] = []
 
-    # Only read the cell_ID and (already gene-filtered) gene columns of the expression matrix,
-    # streaming it in chunks to avoid a dense (cells x genes) read.
-    usecols = [counts_cell, *gene_columns]
+    # Only read the fov, cell_ID, and (already gene-filtered) gene columns of the expression
+    # matrix, streaming it in chunks to avoid a dense (cells x genes) read.
+    usecols = [counts_fov, counts_cell, *gene_columns]
     reader = pd.read_csv(counts_path, header=0, usecols=usecols, chunksize=_COUNTS_CHUNK_ROWS)
     for chunk in reader:
-        # a cell_ID present in row_positions (i.e., also in metadata) comes back as its integer row index
-        # a cell_ID absent from row_positions (in counts but not in metadata) comes back as NaN.
-        chunk_positions = chunk[counts_cell].astype(str).map(row_positions)
+        # Build the same dataset-global fov+cell ID key used for metadata_index, since the
+        # vendor's per-FOV cell ID alone is not unique across the dataset.
+        chunk_keys = chunk[counts_fov].astype(str) + "_" + chunk[counts_cell].astype(str)
+        # a key present in row_positions (i.e., also in metadata) comes back as its integer row index
+        # a key absent from row_positions (in counts but not in metadata) comes back as NaN.
+        chunk_positions = chunk_keys.map(row_positions)
         keep = chunk_positions.notna()
         if not keep.any():
             continue
