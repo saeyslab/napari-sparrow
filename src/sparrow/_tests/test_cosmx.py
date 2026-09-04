@@ -93,45 +93,43 @@ def _write_zarr_stores(images_dir: Path, labels_dir: Path) -> None:
     labels_group["1"][:] = 1
 
 
-def test_cosmx_reports_missing_multiscale_node(tmp_path, monkeypatch):
+def _write_multiscale_group(path: Path, multiscales: list[dict], level_paths: tuple[str, ...]) -> Path:
+    """Write a bare Zarr group carrying the given multiscale attrs and level arrays."""
+    group = zarr.open_group(path, mode="w")
+    if multiscales is not None:
+        group.attrs["multiscales"] = multiscales
+    for level_path in level_paths:
+        group.create_dataset(level_path, shape=(4, 4), chunks=(4, 4), dtype="uint16")
+    return path
+
+
+def test_cosmx_reports_missing_multiscale_node(tmp_path):
     """Report when a Zarr store has no readable multiscale dataset."""
-
-    class EmptyReader:
-        def __init__(self, location):
-            pass
-
-        def __call__(self):
-            return []
-
-    # Replace metadata discovery so this test focuses on the zero-node error branch.
-    monkeypatch.setattr("sparrow.io._cosmx.Reader", EmptyReader)
+    # A valid Zarr group that simply carries no OME-Zarr pyramid descriptor.
+    store = _write_multiscale_group(tmp_path / "store", multiscales=None, level_paths=("0",))
 
     with pytest.raises(ValueError, match="does not contain a readable multiscale OME-Zarr dataset"):
-        _read_cosmx_zarr_levels(tmp_path, kind="image")
+        _read_cosmx_zarr_levels(store, kind="image")
 
 
-def test_cosmx_reports_multiple_multiscale_nodes(tmp_path, monkeypatch):
+def test_cosmx_reports_multiple_multiscale_nodes(tmp_path):
     """Report when a Zarr store contains ambiguous multiscale datasets."""
-
-    class FakeMultiscales:
-        pass
-
-    class FakeNode:
-        specs = [FakeMultiscales()]
-
-    class MultipleReader:
-        def __init__(self, location):
-            pass
-
-        def __call__(self):
-            return [FakeNode(), FakeNode()]
-
-    # Replace metadata discovery and its marker type so this test reaches the multiple-node branch.
-    monkeypatch.setattr("sparrow.io._cosmx.Reader", MultipleReader)
-    monkeypatch.setattr("sparrow.io._cosmx.Multiscales", FakeMultiscales)
+    pyramid = {"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}]}
+    # Two pyramid descriptors leave no single answer for which one to read.
+    store = _write_multiscale_group(tmp_path / "store", multiscales=[pyramid, pyramid], level_paths=("0",))
 
     with pytest.raises(ValueError, match=r"contains 2 multiscale nodes; expected exactly one"):
-        _read_cosmx_zarr_levels(tmp_path, kind="labels")
+        _read_cosmx_zarr_levels(store, kind="labels")
+
+
+def test_cosmx_reports_pyramid_level_missing_from_store(tmp_path):
+    """Report when multiscale metadata names a level the store does not actually hold."""
+    pyramid = {"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}, {"path": "1"}]}
+    # Only level zero is written, so the metadata's second level is dangling.
+    store = _write_multiscale_group(tmp_path / "store", multiscales=[pyramid], level_paths=("0",))
+
+    with pytest.raises(ValueError, match=r"lists pyramid level '1'.*not present in the store"):
+        _read_cosmx_zarr_levels(store, kind="image")
 
 
 def test_cosmx_reads_global_transcripts_and_filters_panel_genes(tmp_path):
@@ -494,3 +492,89 @@ def test_cosmx_keeps_related_files_on_the_transcript_dataset_id(tmp_path):
     # Refuse to combine table files belonging to a different dataset prefix.
     with pytest.raises(FileNotFoundError, match="counts/metadata files"):
         _discover_files(dataset_path, dataset_id=None, cells_labels=False, cells_table=True)
+
+
+def test_cosmx_rejects_duplicate_vendor_cell_keys(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Repeat one fov+cell_ID pair, which would otherwise keep only the last colliding row and
+    # leave a non-unique observation index behind.
+    pd.DataFrame(
+        {
+            "cell_ID": [1, 1],
+            "fov": [1, 1],
+            "CenterX_global_px": [2.0, 3.0],
+            "CenterY_global_px": [5.0, 6.0],
+        }
+    ).to_csv(dataset_path / "coad_metadata_file.csv", index=False)
+
+    with pytest.raises(ValueError, match=r"duplicate fov\+cell ID key\(s\), e.g. 1_1"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
+
+
+def test_cosmx_rejects_half_global_transcript_coordinates(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Supply only one of the two global axes; the reader must name the axis it is missing rather
+    # than falling through to the local branch and complaining about a local column.
+    pd.DataFrame(
+        {
+            "fov": [1],
+            "x_global_px": [1.0],
+            "x_local_px": [1.0],
+            "y_local_px": [3.0],
+            "target": ["ACTB"],
+        }
+    ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
+
+    with pytest.raises(ValueError, match=r"missing a global y column"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+
+def test_cosmx_table_keeps_only_cells_present_in_both_counts_and_metadata(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # cell 1 is in both files, cell 2 is metadata-only and cell 99 is counts-only.
+    pd.DataFrame({"cell_ID": [1, 99], "fov": [1, 1], "ACTB": [7, 3], "SystemControl1": [0, 0]}).to_csv(
+        dataset_path / "coad_exprMat_file.csv", index=False
+    )
+    pd.DataFrame(
+        {
+            "cell_ID": [1, 2],
+            "fov": [1, 1],
+            "CenterX_global_px": [2.0, 3.0],
+            "CenterY_global_px": [5.0, 6.0],
+        }
+    ).to_csv(dataset_path / "coad_metadata_file.csv", index=False)
+
+    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
+
+    table = sdata["table_sample"]
+    # Only the intersection survives, and its counts land on the right row.
+    assert table.obs[_INSTANCE_KEY].tolist() == ["1_1"]
+    assert table[:, "ACTB"].X.toarray().ravel().tolist() == [7]
+
+
+def test_cosmx_table_keeps_cells_whose_counts_are_all_zero(tmp_path):
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # A cell with no detected transcripts is still a cell, so it must stay in the table.
+    pd.DataFrame({"cell_ID": [1, 2], "fov": [1, 1], "ACTB": [0, 4], "SystemControl1": [0, 0]}).to_csv(
+        dataset_path / "coad_exprMat_file.csv", index=False
+    )
+
+    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
+
+    table = sdata["table_sample"]
+    assert table.obs[_INSTANCE_KEY].tolist() == ["1_1", "1_2"]
+    assert table[:, "ACTB"].X.toarray().ravel().tolist() == [0, 4]
+
+
+def test_cosmx_reports_multiscale_entry_without_a_path(tmp_path):
+    """Report when a multiscale dataset entry names no pyramid level at all."""
+    # The second entry carries no "path", so it describes no array in the store.
+    pyramid = {"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}, {"scale": [2.0, 2.0]}]}
+    store = _write_multiscale_group(tmp_path / "store", multiscales=[pyramid], level_paths=("0",))
+
+    with pytest.raises(ValueError, match=r"dataset entry at position 1 with no 'path' key"):
+        _read_cosmx_zarr_levels(store, kind="image")

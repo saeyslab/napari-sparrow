@@ -84,15 +84,20 @@ There is a second classification issue for labels: `_read_multiscale(..., raster
 
 The raster-specific code in `_cosmx.py` is intentionally limited to vendor composition:
 
-### `_read_zarr_image`
+### `_process_multiscale_raster`
+
+One function handles both raster kinds, selected by its `kind` argument.
+
+For `kind="image"`:
 
 - Opens only the `CellComposite` container metadata with Zarr.
 - Sorts channel group names for deterministic `c` ordering.
 - Calls `_read_cosmx_zarr_levels()` for each channel.
+- Validates that every channel exposes the same number of pyramid levels.
 - Stacks matching native levels along `c` with Dask.
 - Passes the native arrays to `_build_multiscale_tree()` with `Image2DModel`.
 
-### `_read_zarr_labels`
+For `kind="labels"`:
 
 - Calls `_read_cosmx_zarr_levels()` for the single `CellLabels` store.
 - Lazily casts the native label arrays to `uint32`.
@@ -100,12 +105,19 @@ The raster-specific code in `_cosmx.py` is intentionally limited to vendor compo
 
 ### `_read_cosmx_zarr_levels`
 
-- Uses the OME-Zarr `Reader` and `Multiscales` specification for metadata validation and vendor dataset ordering.
-- Does not reconstruct scale paths or scale factors itself.
-- Opens the same store with `zarr.open_group()` and creates Dask arrays with `da.from_zarr()` for the dataset paths supplied by `Multiscales.datasets`.
+- Opens the store once with `zarr.open_group()`, which is the source of both the metadata and the arrays.
+- Reads the vendor dataset ordering from that group's own `multiscales` attribute; it does not reconstruct scale paths or scale factors itself.
+- Requires exactly one `multiscales` entry, a non-empty `datasets` list, and every named level to be present in the store.
+- Creates Dask arrays with `da.from_zarr()` for those dataset paths.
 - Validates that every level is 2D.
 
-The direct Zarr pixel step is deliberate for this Windows environment. A focused probe showed that Dask arrays produced through `ome_zarr.ZarrLocation`'s `FSStore` read the synthetic label fixture as zeros, while `zarr.open_group(path, mode="r")` followed by `da.from_zarr(zarr_group[dataset_path])` read the stored value correctly. OME-Zarr remains the source of metadata ordering; direct Zarr remains the source of the lazy pixel arrays.
+Direct Zarr access is deliberate, for two separate reasons.
+
+For **pixels**, a focused probe on this Windows environment showed that Dask arrays produced through `ome_zarr.ZarrLocation`'s `FSStore` read the synthetic label fixture as zeros, while `zarr.open_group(path, mode="r")` followed by `da.from_zarr(zarr_group[dataset_path])` read the stored value correctly.
+
+For **metadata ordering**, `ome_zarr.reader.Reader` was used until it was measured against reading `group.attrs["multiscales"]` directly. Both return byte-identical levels on the reference export: same ordering, shapes, dtypes, chunking and pixel content across all six stores. But `ome_zarr.reader.Multiscales.__init__` eagerly builds and then discards a Dask array for every level, which on a full read of that export produced 48 spurious `ignoring keyword argument 'read_only'` warnings (8 per store) plus one logged `Failed to parse metadata` traceback per channel, because the vendor's `omero` metadata names channel colours in words (`"red"`, `"blue"`) where OME-Zarr expects hex. Reading the attribute directly produces zero of either and is ~2.8x faster, though both are well under a tenth of a second.
+
+The trade-off accepted here: `Reader` walks child groups, so it would reject a store carrying a second multiscale pyramid in a subgroup. Reading the attribute only sees the pyramid the group itself declares. No CosMx store observed so far has such a subgroup.
 
 ### `_build_multiscale_tree`
 
@@ -130,8 +142,38 @@ Keep the following behavior stable when changing the reader:
 - Non-numeric and non-finite transcript coordinates are rejected before layer creation.
 - Stored transcript layers use Sparrow's canonical `gene`, `x`, and `y` columns and an identity transform.
 - `cells_table=True` implies `cells_labels=True` because the table region points to the global labels layer.
-- The vendor table uses one region, `labels_{coordinate_system}`, and cell instances from the vendor cell IDs.
+- The vendor table uses one region, `labels_{coordinate_system}`, and cell instances keyed by a
+  dataset-global `fov`+`cell_ID` string, because the vendor's `cell_ID` restarts at 1 in every FOV.
+- The vendor `fov`+`cell_ID` key must be unique in the metadata file; a duplicate is rejected.
+- Counts are streamed into a `scipy` CSR matrix in a single pass, never materialized dense.
 - Sparrow's `ImageLayerManager` and `LabelLayerManager` handle registration and backed output.
+
+## Known Limitation: The Table Region Link Is Nominal
+
+Everywhere else in Sparrow, `_INSTANCE_KEY` is the **integer label value** stored inside the labels
+layer, which is what lets a table be joined to its labels layer. The CosMx vendor table cannot
+satisfy that contract, and this is accepted rather than worked around.
+
+The vendor's global `CellLabels` mosaic is numbered with its own dataset-wide integer IDs that have
+no arithmetic relation to `fov`/`cell_ID`. Measured on the reference export
+(`D:\CosMx_test_datasets\CosMx_reader_test_dataset`), FOV 208 holds 1782 cells with `cell_ID`
+running 1-1782, while the mask values inside that FOV's tile span roughly 3 000 - 4 787 385. The
+export ships no mapping between the two numbering schemes: `S0_metadata_file.csv` carries `cell_ID`
+(per-FOV `int`) and `cell_id` (`c_<slide>_<fov>_<cell_ID>`, globally unique but still not the mask
+value), and `S0-polygons.csv` carries the same per-FOV `cellID`.
+
+Consequences to keep in mind:
+
+- `table_{cs}` declares `region=["labels_{cs}"]`, but that link cannot actually be resolved.
+- `_INSTANCE_KEY` is a `str` here, not an `int`. Consumers that resolve a table against a labels
+  layer through it cast with `astype(int)` (`sparrow/shape/_manager.py::filter_shapes`,
+  `sparrow/plot/_plot.py`) and will not work against this table.
+- `tb.allocate(..., append=True)` onto this table would mix `str` and `int` instance keys.
+
+Reconstructing a true integer instance key would mean sampling the label mosaic per cell. That was
+considered and deliberately not done. If it is ever revisited, note that on the probe above only
+about 1360 of 1782 cell centroids landed on a nonzero mask value, and some distinct `cell_ID`s
+sampled to the same mask label, so centroid sampling alone is not a faithful mapping.
 
 ## Do Not Reintroduce
 
@@ -144,26 +186,33 @@ Keep the following behavior stable when changing the reader:
 
 ## Dependencies and Private APIs
 
-`ome-zarr>=0.8.4` is declared explicitly because `_cosmx.py` imports `ome_zarr.io.ZarrLocation` and `ome_zarr.reader.Multiscales`/`Reader` directly. The implementation also uses SpatialData's private raster utility functions `_set_transformations` and `compute_coordinates`, matching the pinned `spatialdata==0.4.0` API. If SpatialData is upgraded, retest this adapter and revisit whether `_read_multiscale()` supports raw CosMx metadata directly.
+`_cosmx.py` no longer imports `ome_zarr` at all, so `ome-zarr` is not declared as a direct dependency of `sparrow`. It stays installed as a transitive dependency of `spatialdata`; nothing in this reader relies on it. See the `_read_cosmx_zarr_levels` notes above for why it was dropped.
+
+The implementation does use SpatialData's private raster utility functions `_set_transformations` and `compute_coordinates`, matching the pinned `spatialdata==0.4.0` API. If SpatialData is upgraded, retest this adapter and revisit whether `_read_multiscale()` supports raw CosMx metadata directly.
 
 ## Validation History
 
-The current modern fixture tests cover native multiscale loading, channel names and order, Dask laziness, identity transforms, labels, table links, backed output, local transcript placement, gene filtering, and rejection of legacy raster inputs.
+The current modern fixture tests cover native multiscale loading, channel names and order, Dask
+laziness, identity transforms, labels, table links, backed output, local transcript placement, gene
+filtering, rejection of legacy raster inputs, dangling pyramid metadata, duplicate vendor cell keys, half-specified global
+transcript coordinates, and the counts/metadata intersection.
 
 Verified commands:
 
 ```text
-uv run pytest src/sparrow/_tests/test_cosmx.py -q
-15 passed, 17 warnings
+uv run --no-sync pytest src/sparrow/_tests/test_cosmx.py -q
+25 passed, 6 warnings
 
-uv run ruff check src/sparrow/io/_cosmx.py src/sparrow/_tests/test_cosmx.py
+uv run --no-sync ruff check src/sparrow/io/_cosmx.py src/sparrow/_tests/test_cosmx.py
 All checks passed
 
-uv run ruff format --check src/sparrow/io/_cosmx.py src/sparrow/_tests/test_cosmx.py
-Both files formatted
-
-uv lock --check
-Lockfile is up-to-date and consistent
+uv run --no-sync ruff format --check src/sparrow/io/_cosmx.py src/sparrow/_tests/test_cosmx.py
+2 files already formatted
 ```
 
-A full repository test run previously exceeded the available two-minute execution window after passing/skipping progress; that timeout was not caused by a reported CosMx failure.
+The counts streaming path was additionally checked against a brute-force dense reference (matrix
+contents, the `seen` mask, gene-column ordering under a whitelist, the zero-overlap case, and cells
+whose counts are all zero).
+
+A full repository test run previously exceeded the available two-minute execution window after
+passing/skipping progress; that timeout was not caused by a reported CosMx failure.

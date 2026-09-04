@@ -174,14 +174,14 @@ since the backed and in-memory paths differ.
 
 ## Code conventions
 
-Enforced by review rather than by the linter. The authoritative version is
-[.github/instructions/sparrow-python.instructions.md](.github/instructions/sparrow-python.instructions.md);
-read it before writing Python here. Summary:
+Enforced by review rather than by the linter.
+
+Summary:
 
 - **Comment density is the house style, and the highest-priority rule.** Every non-obvious
   statement gets at least one comment line _directly above_ it explaining what the code does;
-  complex operations get several lines covering intent, each step, and any non-obvious choice.
-  Obvious lines need none. Self-explanatory one-liner utilities may use a single-line docstring instead.
+  complex operations get several lines covering intent, each step. Obvious lines need none. 
+  Self-explanatory one-liner utilities may use a single-line docstring instead.
 - `from __future__ import annotations` as the first import in every module.
 - `str | None` unions and builtin generics (`list[str]`), never `typing.Union`/`List`. Annotate all
   parameters and return types.
@@ -204,8 +204,8 @@ read it before writing Python here. Summary:
 `sparrow.io` readers adapt vendor exports into SpatialData layers. The CosMx reader
 ([io/_cosmx.py](src/sparrow/io/_cosmx.py)) is the most involved one: it reads global nested
 OME-Zarr mosaics directly rather than delegating to `spatialdata_io.cosmx`, and it depends on
-`ome-zarr` plus private `spatialdata` internals (`_set_transformations`, `compute_coordinates`)
-that match the pinned `spatialdata==0.4.0`. Before changing it, read
+private `spatialdata` internals (`_set_transformations`, `compute_coordinates`) that match the
+pinned `spatialdata==0.4.0`. Before changing it, read
 [.github/instructions/_cosmx.context.md](.github/instructions/_cosmx.context.md) — it records the
 vendor layout, why `read_zarr()`/`_read_multiscale()` are not usable entry points, and an explicit
 "do not reintroduce" list. If `spatialdata` is ever upgraded, that reader is the first thing to

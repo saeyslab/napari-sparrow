@@ -13,8 +13,6 @@ import pandas as pd
 import zarr
 from anndata import AnnData
 from dask.array import Array
-from ome_zarr.io import ZarrLocation
-from ome_zarr.reader import Multiscales, Reader
 from scipy.sparse import csr_matrix
 from spatialdata import SpatialData, read_zarr
 from spatialdata.models import Image2DModel, Labels2DModel
@@ -55,11 +53,11 @@ _CENTER_Y_GLOBAL_COLUMNS = ("CenterY_global_px",)
 
 _BLOCKSIZE = "256MB"
 
-# Row chunk size used when streaming the vendor counts CSV, and the dtypes used to accumulate
-# it into a sparse matrix.
-_COUNTS_CHUNK_ROWS = 50_000
+# Dtypes used to accumulate the vendor counts CSV into a sparse matrix, plus the byte budget for
+# one streamed chunk of it. Chunk rows are derived from that budget, since a chunk is dense.
 _COUNTS_VALUE_DTYPE = np.int32
 _COUNTS_INDEX_DTYPE = np.int32
+_COUNTS_CHUNK_BYTES = 256_000_000
 
 
 @dataclass(frozen=True)
@@ -76,14 +74,10 @@ class _CosmxFiles:
 
 @dataclass(frozen=True)
 class _CosmxDataset:
-    """Validated global Zarr stores and transcript metadata for one CosMx dataset root."""
+    """One validated CosMx dataset root: its resolved files plus its lazy transcript frame."""
 
     path: Path
-    transcripts_file: Path
-    counts_file: Path | None
-    metadata_file: Path | None
-    image_store: Path
-    labels_store: Path | None
+    files: _CosmxFiles
     transcripts: dd.DataFrame
 
 
@@ -186,7 +180,7 @@ def cosmx(
     if unsupported_image_model_keys:
         log.warning(
             "Ignoring unsupported 'image_models_kwargs' keys: %s. Supported key is 'chunks'.",
-            ", ".join(sorted(unsupported_image_model_keys))
+            ", ".join(sorted(unsupported_image_model_keys)),
         )
 
     # Vendor tables annotate label layers, so reading the table implies reading labels.
@@ -263,8 +257,8 @@ def cosmx(
         )
 
     log.info(
-        "Finished CosMx read: %d image(s), %d label(s), %d point layer(s), and %d table(s)"
-        "where added to the spatial data object.",
+        "Finished CosMx read: %d image(s), %d label(s), %d point layer(s), and %d table(s) "
+        "were added to the spatial data object.",
         len(sdata.images),
         len(sdata.labels),
         len(sdata.points),
@@ -331,15 +325,7 @@ def _prepare_dataset(
         fov_positions_path=dataset_files.fov_positions,
     )
 
-    return _CosmxDataset(
-        path=path,
-        transcripts_file=dataset_files.transcripts,
-        image_store=dataset_files.images_dir,
-        labels_store=dataset_files.labels_dir,
-        counts_file=dataset_files.counts,
-        metadata_file=dataset_files.metadata,
-        transcripts=transcripts,
-    )
+    return _CosmxDataset(path=path, files=dataset_files, transcripts=transcripts)
 
 
 def _add_dataset(
@@ -356,7 +342,7 @@ def _add_dataset(
 
     # Process the multiscale image and register it with SpatialData.
     image_tree = _process_multiscale_raster(
-        dataset.image_store,
+        dataset.files.images_dir,
         coordinate_system=coordinate_system,
         kind="image",
         chunks=chunks,
@@ -379,10 +365,11 @@ def _add_dataset(
     )
 
     if cells_labels:
-        assert dataset.labels_store is not None
+        # Guaranteed by _discover_files when labels are requested.
+        assert dataset.files.labels_dir is not None
         # Process multiscale integer label masks and register with SpatialData.
         labels_tree = _process_multiscale_raster(
-            dataset.labels_store,
+            dataset.files.labels_dir,
             coordinate_system=coordinate_system,
             kind="labels",
             chunks=chunks,
@@ -395,10 +382,12 @@ def _add_dataset(
         )
 
     if cells_table:
+        # Guaranteed by _discover_files when the table is requested.
+        assert dataset.files.counts is not None and dataset.files.metadata is not None
         sdata = _add_table(
             sdata,
-            counts_path=dataset.counts_file,
-            metadata_path=dataset.metadata_file,
+            counts_path=dataset.files.counts,
+            metadata_path=dataset.files.metadata,
             coordinate_system=coordinate_system,
             keep_genes=keep_genes,
         )
@@ -508,7 +497,7 @@ def _prepare_transcripts(
     transcripts: dd.DataFrame,
     transcripts_path: Path,
     gene_column: str,
-    fov_origins: Mapping[str, tuple[float, float]] | None,
+    fov_origins: Mapping[int, tuple[float, float]] | None,
     fov_positions_path: Path | None,
 ) -> dd.DataFrame:
     """Normalize, place, and validate CosMx transcript coordinates."""
@@ -516,51 +505,56 @@ def _prepare_transcripts(
     global_x = _optional_column(transcripts.columns, _GLOBAL_X_COLUMNS)
     global_y = _optional_column(transcripts.columns, _GLOBAL_Y_COLUMNS)
 
-    if global_x is not None and global_y is not None:
+    if global_x is not None or global_y is not None:
+        global_x = _require_column(transcripts.columns, _GLOBAL_X_COLUMNS, kind="global x")
+        global_y = _require_column(transcripts.columns, _GLOBAL_Y_COLUMNS, kind="global y")
         log.info("Using CosMx global pixel columns '%s' and '%s' for transcript coordinates.", global_x, global_y)
         # Rename global coordinate columns to canonical names for Sparrow points layers.
         transcripts = transcripts.rename(columns={gene_column: _GENES_KEY, global_x: "x", global_y: "y"})
-    else:
-        # Validate required local coordinate columns and FOV column when global coordinates are absent.
-        local_x = _require_column(transcripts.columns, _LOCAL_X_COLUMNS, kind="local x")
-        local_y = _require_column(transcripts.columns, _LOCAL_Y_COLUMNS, kind="local y")
-        fov_column = _require_column(transcripts.columns, _FOV_COLUMNS, kind="fov")
+        transcripts["x"] = transcripts["x"].astype(float)
+        transcripts["y"] = transcripts["y"].astype(float)
+        return transcripts
 
-        # Apply FOV origins to local coordinates when FOV placement metadata is available.
-        if fov_origins is not None:
-            log.info("Global transcript coordinates are absent; applying FOV translations from fov_positions.")
-            # Create meta schema with columns and dtypes returned by the partition-level coordinate transformation.
-            meta = transcripts._meta.rename(columns={gene_column: _GENES_KEY, local_x: "x", local_y: "y"})
-            meta[_GENES_KEY] = meta[_GENES_KEY].astype(str)
-            meta["x"] = meta["x"].astype(float)
-            meta["y"] = meta["y"].astype(float)
+    # Validate required local coordinate columns and FOV column when global coordinates are absent.
+    local_x = _require_column(transcripts.columns, _LOCAL_X_COLUMNS, kind="local x")
+    local_y = _require_column(transcripts.columns, _LOCAL_Y_COLUMNS, kind="local y")
+    fov_column = _require_column(transcripts.columns, _FOV_COLUMNS, kind="fov")
 
-            # Use Dask's map_partitions to apply FOV origins to local coordinates in a fully vectorized manner.
-            # Dask builds a task graph for each partition for which it needs to know some metadata
-            # about the output DataFrame, so we provide a meta DataFrame with the expected columns and dtypes.
-            transcripts = transcripts.map_partitions(
-                _apply_fov_origins,
-                gene_column=gene_column,
-                local_x=local_x,
-                local_y=local_y,
-                fov_column=fov_column,
-                fov_origins=fov_origins,
-                meta=meta,
-            )
+    # Local coordinates are unplaceable without per-FOV origins to translate them by.
+    if fov_origins is None:
+        if fov_positions_path is None:
+            positions_description = "no FOV positions file was found"
         else:
-            if fov_positions_path is None:
-                positions_description = "no FOV positions file was found"
-            else:
-                positions_description = f"FOV positions file '{fov_positions_path}' has no usable pixel origins"
-            raise ValueError(
-                f"CosMx transcript file '{transcripts_path}' contains local FOV coordinates, but "
-                f"{positions_description}; global transcript coordinates cannot be determined."
-            )
+            positions_description = f"FOV positions file '{fov_positions_path}' has no usable pixel origins"
+        raise ValueError(
+            f"CosMx transcript file '{transcripts_path}' contains local FOV coordinates, but "
+            f"{positions_description}; global transcript coordinates cannot be determined."
+        )
 
-    transcripts["x"] = transcripts["x"].astype(float)
-    transcripts["y"] = transcripts["y"].astype(float)
+    log.info("Global transcript coordinates are absent; applying FOV translations from fov_positions.")
 
-    return transcripts
+    # Build the two origin lookups and let the partition function map straight off the integer FOV column.
+    origin_x = pd.Series({fov: origin[0] for fov, origin in fov_origins.items()}, dtype=float)
+    origin_y = pd.Series({fov: origin[1] for fov, origin in fov_origins.items()}, dtype=float)
+
+    # Create meta schema with columns and dtypes returned by the partition-level coordinate transformation.
+    # Dask builds a task graph for each partition for which it needs to know some metadata about
+    # the output DataFrame, so we provide a meta DataFrame with the expected columns and dtypes.
+    meta = transcripts._meta.rename(columns={gene_column: _GENES_KEY, local_x: "x", local_y: "y"})
+    meta["x"] = meta["x"].astype(float)
+    meta["y"] = meta["y"].astype(float)
+
+    # Use Dask's map_partitions to apply FOV origins to local coordinates in a fully vectorized manner.
+    return transcripts.map_partitions(
+        _apply_fov_origins,
+        gene_column=gene_column,
+        local_x=local_x,
+        local_y=local_y,
+        fov_column=fov_column,
+        origin_x=origin_x,
+        origin_y=origin_y,
+        meta=meta,
+    )
 
 
 def _add_table(
@@ -601,6 +595,15 @@ def _add_table(
         )
     )
 
+    # The Cell ID key must be unique
+    duplicate_keys = metadata.index[metadata.index.duplicated()].unique()
+    if len(duplicate_keys):
+        raise ValueError(
+            f"CosMx metadata file '{metadata_path}' contains {len(duplicate_keys)} duplicate "
+            f"fov+cell ID key(s), e.g. {', '.join(str(key) for key in duplicate_keys[:5])}. "
+            "Every vendor cell must appear exactly once."
+        )
+
     # Read only the header row so gene columns are known up front, before any counts rows are read.
     counts_columns = pd.read_csv(counts_path, header=0, nrows=0).columns
     counts_fov = _require_column(counts_columns, _FOV_COLUMNS, kind="fov")
@@ -610,7 +613,7 @@ def _add_table(
     if keep_genes is not None:
         gene_columns = [column for column in gene_columns if str(column) in keep_genes]
 
-    # Log a memory estimate before the expensive read. So a too-large panel/cell count 
+    # Log a memory estimate before the expensive read, so a too-large panel/cell count
     # is a visible warning up front rather than a silent multi-minute hang before an OOM.
     n_genes = len(gene_columns)
     # len(metadata) is an upper bound on the final cell count (counts is intersected against it below)
@@ -680,11 +683,12 @@ def _read_counts_sparse(
 ) -> tuple[csr_matrix, np.ndarray]:
     """Stream the vendor counts CSV once and accumulate it directly into a sparse matrix.
 
-    Each counts row is placed at its cell's position in ``metadata_index``, matched on the same
-    fov+cell ID key used to build that index; a counts row whose key is not in ``metadata_index``
-    is dropped. Row order does not matter for COO construction, so counts can be streamed in
-    whatever order it is stored in. The full (cells x genes) matrix is never materialized as a
-    dense array.
+    **Each counts row is placed at its cell's position in ``metadata_index``, matched on the same
+    fov+cell ID key used to build that index.** Row order does not matter for COO construction,
+    so counts can be streamed in whatever order it is stored in.
+    A counts row whose key is not in ``metadata_index`` is dropped.
+
+    The full (cells x genes) matrix is never materialized as a dense array.
     """
     n_cells = len(metadata_index)
     n_genes = len(gene_columns)
@@ -696,39 +700,53 @@ def _read_counts_sparse(
     col_chunks: list[np.ndarray] = []
     value_chunks: list[np.ndarray] = []
 
+    # We will chunk the counts data into smaller pieces accorinding to a maximum bytes size to avoid loading
+    # the entire dataset into memory at once. The +4 covers the two int64 identifier columns.
+    chunk_rows = max(_COUNTS_CHUNK_BYTES // ((n_genes + 4) * np.dtype(_COUNTS_VALUE_DTYPE).itemsize), 1)
+    log.debug("Streaming CosMx counts in chunks of %d row(s) for %d gene column(s).", chunk_rows, n_genes)
+
     # Only read the fov, cell_ID, and (already gene-filtered) gene columns of the expression
     # matrix, streaming it in chunks to avoid a dense (cells x genes) read.
     usecols = [counts_fov, counts_cell, *gene_columns]
-    reader = pd.read_csv(counts_path, header=0, usecols=usecols, chunksize=_COUNTS_CHUNK_ROWS)
-    for chunk in reader:
-        # Build the same dataset-global fov+cell ID key used for metadata_index, since the
-        # vendor's per-FOV cell ID alone is not unique across the dataset.
-        chunk_keys = chunk[counts_fov].astype(str) + "_" + chunk[counts_cell].astype(str)
-        # a key present in row_positions (i.e., also in metadata) comes back as its integer row index
-        # a key absent from row_positions (in counts but not in metadata) comes back as NaN.
-        chunk_positions = chunk_keys.map(row_positions)
-        keep = chunk_positions.notna()
-        if not keep.any():
-            continue
-        # Drop the unmatched (NaN) rows and convert the remaining float row-positions to a plain int32 array
-        # these are the exact row indices these counts rows will occupy in the final sparse matrix.
-        metadata_filtered_positions = chunk_positions[keep].to_numpy(dtype=_COUNTS_INDEX_DTYPE)
-        seen[metadata_filtered_positions] = True
+    # Parsing the counts straight into the accumulation dtype halves each chunk versus pandas' inferred int64.
+    gene_dtypes = dict.fromkeys(gene_columns, _COUNTS_VALUE_DTYPE)
+    with pd.read_csv(counts_path, header=0, usecols=usecols, dtype=gene_dtypes, chunksize=chunk_rows) as reader:
+        for chunk in reader:
+            # Build the same dataset-global fov+cell ID key used for metadata_index, since the
+            # vendor's per-FOV cell ID alone is not unique across the dataset.
+            chunk_cell_ids = chunk[counts_fov].astype(str) + "_" + chunk[counts_cell].astype(str)
+            # A key present in row_positions (i.e., also in metadata) comes back as its integer row
+            # index; a key absent from it (in counts but not in metadata) comes back as NaN, and
+            # -1 then flags those rows
+            row_index = chunk_cell_ids.map(row_positions).fillna(-1).to_numpy().astype(_COUNTS_INDEX_DTYPE)
+            matched = row_index >= 0
+            if not matched.any():
+                continue
+            # A matched cell counts as seen even if all of its counts are zero.
+            seen[row_index[matched]] = True
 
-        # Select gene columns in gene_columns order so column positions match the final matrix.
-        chunk_values = chunk.loc[keep, gene_columns].to_numpy()
+            # gene_columns is in file order, so this is a contiguous column subset.
+            # Rows are left unfiltered; dropping unmatched COO triples below avoids a second dense copy.
+            chunk_values = chunk[gene_columns].to_numpy()
 
-        # A sparse matrix only needs to record nonzero entries.
-        # np.nonzero returns two 1D arrays of equal length,
-        # ensuring that all nonzero entries have two coupled indices (row, col)
-        nonzero_rows, nonzero_cols = np.nonzero(chunk_values)
-        if nonzero_rows.size == 0:
-            continue
+            # A sparse matrix only needs to record nonzero entries.
+            # np.nonzero returns two 1D arrays of equal length,
+            # ensuring that all nonzero entries have two coupled indices (row, col)
+            nonzero_rows, nonzero_cols = np.nonzero(chunk_values)
 
-        # Select only the 1D arrays of the row positions, column positions and values for the nonzero entries
-        row_chunks.append(metadata_filtered_positions[nonzero_rows])
-        col_chunks.append(nonzero_cols.astype(_COUNTS_INDEX_DTYPE))
-        value_chunks.append(chunk_values[nonzero_rows, nonzero_cols].astype(_COUNTS_VALUE_DTYPE))
+            # Only keep the nonzero entries that correspond to a cell that was actually seen in the
+            # metadata. Filtering before mapping through row_index avoids building a full-size
+            # array of final row positions, most of which would be discarded again here.
+            kept_entries = matched[nonzero_rows]
+            if not kept_entries.any():
+                continue
+            kept_rows = nonzero_rows[kept_entries]
+            kept_cols = nonzero_cols[kept_entries]
+
+            # Select the row positions, column positions and values for those nonzero entries.
+            row_chunks.append(row_index[kept_rows])
+            col_chunks.append(kept_cols.astype(_COUNTS_INDEX_DTYPE))
+            value_chunks.append(chunk_values[kept_rows, kept_cols])
 
     # Concatenate the accumulated COO triples into single arrays for the final sparse matrix construction.
     if value_chunks:
@@ -740,11 +758,13 @@ def _read_counts_sparse(
         cols = np.array([], dtype=_COUNTS_INDEX_DTYPE)
         values = np.array([], dtype=_COUNTS_VALUE_DTYPE)
         log.warning(
-            f"CosMx counts file '{counts_path}' contains no nonzero entries after gene filtering"
-            f"or contains no cell IDs that match the metadata. "
-            f"Check that the counts file and metadata file are compatible."
-            f"Resulting sparse expression matrix will be empty with shape ({n_cells}, {n_genes})."
-            )
+            "CosMx counts file '%s' contains no nonzero entries after gene filtering, or contains "
+            "no cell IDs that match the metadata. Check that the counts file and metadata file are "
+            "compatible. The resulting sparse expression matrix will be empty with shape (%d, %d).",
+            counts_path,
+            n_cells,
+            n_genes,
+        )
 
     # Create a sparse matrix in Compressed Sparse Row format directly from the COO triples.
     X = csr_matrix((values, (rows, cols)), shape=(n_cells, n_genes))
@@ -912,40 +932,48 @@ def _read_cosmx_zarr_levels(path: Path, kind: str) -> list[Array]:
     """
     Return native 2D OME-Zarr levels as lazy Dask arrays.
 
-    The function validates that a given CosMx Zarr group contains exactly one 2D OME-Zarr pyramid, 
-    obtains the ordered level paths from OME-Zarr metadata, 
-    and exposes those levels as lazy Dask arrays using direct Zarr access.
-    ome-zarr.Reader is used to understand the OME-Zarr metadata and dataset ordering.
-    zarr.open_group is used to access the actual arrays.
+    The function validates that a given CosMx Zarr group contains exactly one 2D OME-Zarr pyramid,
+    obtains the ordered level paths from that group's own OME-Zarr metadata, and exposes those
+    levels as lazy Dask arrays using direct Zarr access.
+
+    The group is opened once with ``zarr.open_group``, and is the source of both the metadata and
+    the arrays.
     """
-    # We start by wrapping the local filesystem path in an OME-Zarr location object with ZarrLocation.
-    # Then we parse the given Zarr instance into a collection of Nodes with the Reader
-    nodes = list(Reader(ZarrLocation(path))())
-    # Select the single multiscale node from the collection of nodes.
-    multiscale_nodes = [node for node in nodes if any(isinstance(spec, Multiscales) for spec in node.specs)]
-    # Distinguish missing multiscale metadata from an ambiguous store with multiple datasets.
-    multiscale_node_count = len(multiscale_nodes)
-    if multiscale_node_count == 0:
+    zarr_group = zarr.open_group(path, mode="r")
+
+    # OME-Zarr records its pyramid under a top-level "multiscales" attribute.
+    multiscales = zarr_group.attrs.get("multiscales")
+    if not multiscales:
+        raise ValueError(f"CosMx {kind} Zarr store '{path}' does not contain a readable multiscale OME-Zarr dataset.")
+
+    # Distinguish missing multiscale metadata from an ambiguous store describing several pyramids.
+    if len(multiscales) > 1:
         raise ValueError(
-            f"CosMx {kind} Zarr store '{path}' does not contain a readable multiscale OME-Zarr dataset."
-        )
-    if multiscale_node_count > 1:
-        raise ValueError(
-            f"CosMx {kind} Zarr store '{path}' contains {multiscale_node_count} multiscale nodes; "
-            "expected exactly one."
+            f"CosMx {kind} Zarr store '{path}' contains {len(multiscales)} multiscale nodes; expected exactly one."
         )
 
-    # Use OME-Zarr multiscale metadata (i.e. the pyramid descriptor) for native dataset ordering
-    node = multiscale_nodes[0]
-    multiscales = node.load(Multiscales)
-    # Check that the multiscale metadata was successfully loaded
-    if multiscales is None:
+    # "datasets" is the ordered pyramid descriptor, level zero first; the vendor order is used as-is.
+    datasets = multiscales[0].get("datasets")
+    if not datasets:
         raise ValueError(f"CosMx {kind} Zarr store '{path}' has no readable multiscale metadata.")
 
-    # Open the same store with Zarr so Dask reads the vendor chunks correctly on Windows.
-    zarr_group = zarr.open_group(path, mode="r")
     # Read each dataset lazily into a Dask array without changing the native pyramid levels.
-    raster_levels = [da.from_zarr(zarr_group[dataset_path]) for dataset_path in multiscales.datasets]
+    raster_levels: list[Array] = []
+    for level_index, dataset in enumerate(datasets):
+        dataset_path = dataset.get("path")
+        # An entry without a "path" names no array at all, so the descriptor itself is malformed.
+        if dataset_path is None:
+            raise ValueError(
+                f"CosMx {kind} Zarr store '{path}' has a multiscale dataset entry at position "
+                f"{level_index} with no 'path' key, so the pyramid level it describes is unknown."
+            )
+        # A level named in the metadata but absent from the store is a corrupt export, not a KeyError.
+        if dataset_path not in zarr_group:
+            raise ValueError(
+                f"CosMx {kind} Zarr store '{path}' lists pyramid level '{dataset_path}' in its multiscale "
+                "metadata, but that array is not present in the store."
+            )
+        raster_levels.append(da.from_zarr(zarr_group[dataset_path]))
 
     # Enforce that every level is a 2D array because CosMx images and labels should be 2D rasters.
     for level in raster_levels:
@@ -985,7 +1013,7 @@ def _build_multiscale_tree(
     # Build the multiscale DataTree from the Datasets
     tree = DataTree.from_dict(levels)
     # The level-zero CosMx mosaic is already in the requested global pixel coordinate system,
-    # so it receives an Identity() transform. 
+    # so it receives an Identity() transform.
     # For the lower resolution levels, SpatialData derives scale factors from the shapes.
     _set_transformations(tree, {coordinate_system: Identity()})
 
@@ -993,7 +1021,7 @@ def _build_multiscale_tree(
     return compute_coordinates(tree)
 
 
-def _load_fov_origins(fov_positions_path: Path | None) -> dict[str, tuple[float, float]] | None:
+def _load_fov_origins(fov_positions_path: Path | None) -> dict[int, tuple[float, float]] | None:
     """Read FOV translations from ``fov_positions_file.csv`` when pixel columns exist."""
     if fov_positions_path is None:
         return None
@@ -1012,29 +1040,28 @@ def _load_fov_origins(fov_positions_path: Path | None) -> dict[str, tuple[float,
         )
         return None
 
-    origins: dict[str, tuple[float, float]] = {}
-    for _, row in positions.iterrows():
-        # Normalize the FOV key before checking for duplicate vendor rows.
-        fov = _normalize_fov(row[fov_column])
-        if fov in origins:
-            raise ValueError(f"CosMx FOV positions file '{fov_positions_path}' contains duplicate FOV '{fov}'.")
+    # Normalize the FOV keys before checking for duplicate vendor rows.
+    fov_ids = _normalize_integer_ids(positions[fov_column])
+    duplicate_fovs = fov_ids[fov_ids.duplicated()].unique()
+    if duplicate_fovs.size:
+        raise ValueError(
+            f"CosMx FOV positions file '{fov_positions_path}' contains duplicate FOV(s) "
+            f"{', '.join(str(fov) for fov in sorted(duplicate_fovs))}."
+        )
 
-        try:
-            origin = (float(row[x_column]), float(row[y_column]))
-        except (TypeError, ValueError) as error:
-            raise ValueError(
-                f"CosMx FOV positions file '{fov_positions_path}' contains a non-numeric origin for FOV '{fov}'."
-            ) from error
+    # Non-numeric values become NaN, so the finiteness check below catches them too.
+    origins_x = pd.to_numeric(positions[x_column], errors="coerce").astype(float)
+    origins_y = pd.to_numeric(positions[y_column], errors="coerce").astype(float)
 
-        # Reject invalid origins before they become Translation transforms and corrupt allocation coordinates.
-        if not all(np.isfinite(value) for value in origin):
-            raise ValueError(
-                f"CosMx FOV positions file '{fov_positions_path}' contains a non-finite origin for FOV '{fov}'."
-            )
+    # Reject invalid origins before they become translations and corrupt allocation coordinates.
+    invalid = ~(np.isfinite(origins_x) & np.isfinite(origins_y))
+    if invalid.any():
+        raise ValueError(
+            f"CosMx FOV positions file '{fov_positions_path}' contains a non-numeric or non-finite "
+            f"origin for FOV(s) {', '.join(str(fov) for fov in sorted(fov_ids[invalid].unique()))}."
+        )
 
-        origins[fov] = origin
-
-    return origins
+    return dict(zip(fov_ids.tolist(), zip(origins_x.tolist(), origins_y.tolist(), strict=True), strict=True))
 
 
 def _apply_fov_origins(
@@ -1043,31 +1070,30 @@ def _apply_fov_origins(
     local_x: str,
     local_y: str,
     fov_column: str,
-    fov_origins: Mapping[str, tuple[float, float]],
+    origin_x: pd.Series,
+    origin_y: pd.Series,
 ) -> pd.DataFrame:
     """Add FOV origin translations to local transcript coordinates in a fully vectorized manner."""
-    # Create origin coordinate lookup maps to avoid row-by-row lambda evaluation in Pandas.
-    x_map = {fov: origin[0] for fov, origin in fov_origins.items()}
-    y_map = {fov: origin[1] for fov, origin in fov_origins.items()}
-
-    # Normalize FOVs vectorially and map to numeric origin offsets.
-    fov_ids = partition[fov_column].astype("int64").astype(str)
-    origin_x = fov_ids.map(x_map)
-    origin_y = fov_ids.map(y_map)
+    # Map off integers, not strings to be more efficient
+    # Stringifying the FOV column would allocate a Python string per transcript
+    fov_ids = _normalize_integer_ids(partition[fov_column])
+    partition_origin_x = fov_ids.map(origin_x)
+    partition_origin_y = fov_ids.map(origin_y)
 
     # Validate that every FOV in this partition has a corresponding FOV origin.
-    if origin_x.isna().any() or origin_y.isna().any():
-        missing_origin_fovs = sorted(fov_ids[origin_x.isna() | origin_y.isna()])
+    missing = partition_origin_x.isna() | partition_origin_y.isna()
+    if missing.any():
+        missing_origin_fovs = sorted(fov_ids[missing].unique())
         raise ValueError(
             "CosMx FOV positions metadata is incomplete; missing origins for FOVs "
-            f"{', '.join(missing_origin_fovs)}. Valid origins are required for every local transcript FOV."
+            f"{', '.join(str(fov) for fov in missing_origin_fovs)}. "
+            "Valid origins are required for every local transcript FOV."
         )
 
     # Preserve untouched vendor columns while replacing source columns with Sparrow's canonical names.
-    translated = partition.rename(columns={gene_column: _GENES_KEY, local_x: "x", local_y: "y"}).copy()
-    translated[_GENES_KEY] = partition[gene_column].astype(str)
-    translated["x"] = partition[local_x].astype(float) + origin_x.astype(float)
-    translated["y"] = partition[local_y].astype(float) + origin_y.astype(float)
+    translated = partition.rename(columns={gene_column: _GENES_KEY, local_x: "x", local_y: "y"})
+    translated["x"] = partition[local_x].astype(float) + partition_origin_x
+    translated["y"] = partition[local_y].astype(float) + partition_origin_y
 
     return translated
 
@@ -1089,6 +1115,10 @@ def _require_column(columns: Iterable[str], candidates: tuple[str, ...], kind: s
     return column
 
 
-def _normalize_fov(value: Any) -> str:
-    """Normalise FOV identifiers such as ``1``, ``1.0`` and ``001`` to ``'1'``."""
-    return str(int(float(value)))
+def _normalize_integer_ids(values: pd.Series) -> pd.Series:
+    """Normalise a vendor identifier column to plain integers, so ``1``, ``1.0`` and ``001`` all become ``1``."""
+    if pd.api.types.is_integer_dtype(values):
+        return values.astype("int64")
+
+    # Text and float encodings round-trip through a numeric dtype before being truncated to int.
+    return pd.to_numeric(values, errors="raise").astype("int64")
