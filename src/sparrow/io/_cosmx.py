@@ -51,13 +51,17 @@ _CELL_ID_COLUMNS = ("cell_ID", "cell_id")
 _CENTER_X_GLOBAL_COLUMNS = ("CenterX_global_px",)
 _CENTER_Y_GLOBAL_COLUMNS = ("CenterY_global_px",)
 
+# Obs column that keeps the vendor's per-FOV cell number once _INSTANCE_KEY (= "cell_ID")
+# has been repurposed to hold the dataset-global CellLabels mask value.
+_VENDOR_CELL_ID_COLUMN = "fov_cell_ID"
+
 _BLOCKSIZE = "256MB"
 
 # Dtypes used to accumulate the vendor counts CSV into a sparse matrix, plus the byte budget for
 # one streamed chunk of it. Chunk rows are derived from that budget, since a chunk is dense.
 _COUNTS_VALUE_DTYPE = np.int32
 _COUNTS_INDEX_DTYPE = np.int32
-_COUNTS_CHUNK_BYTES = 256_000_000
+_COUNTS_CHUNK_BYTES = 512_000_000
 
 
 @dataclass(frozen=True)
@@ -73,12 +77,24 @@ class _CosmxFiles:
 
 
 @dataclass(frozen=True)
+class _FovPositions:
+    """FOV placement read from ``fov_positions_file.csv``, in the vendor's global pixel system."""
+
+    # Per-FOV tile origin, as (x, y). The vendor's y is the tile's *top* edge, because its global
+    # pixel y axis increases upward while raster rows increase downward.
+    origins: dict[int, tuple[float, float]]
+    # Global pixel y of the mosaic's first raster row, i.e. the top edge of the topmost tile.
+    top_global_y: float
+
+
+@dataclass(frozen=True)
 class _CosmxDataset:
     """One validated CosMx dataset root: its resolved files plus its lazy transcript frame."""
 
     path: Path
     files: _CosmxFiles
     transcripts: dd.DataFrame
+    top_global_y: float | None
 
 
 def cosmx(
@@ -99,8 +115,18 @@ def cosmx(
     Gene names can be filtered to a whitelist before any coordinate work is performed.
     Vendor image and label OME-Zarr pyramids are already global dataset-level
     data and are therefore each loaded once with an identity transformation.
-    A ``fov_positions_file.csv`` is used only when local transcript coordinates
-    need to be translated into the global pixel system.
+
+    All layers are expressed in the mosaic's raster pixel space. The vendor's
+    global pixel y axis increases upward while raster rows increase downward, so
+    transcript and cell-centre y coordinates are converted using the mosaic's top
+    edge, taken from ``fov_positions_file.csv``. That file is therefore needed for
+    points and rasters to overlay, in addition to placing local FOV coordinates.
+    Transcripts with a non-finite coordinate are rejected as each partition is read.
+
+    When the vendor table is read, its instance key holds the integer value stored
+    in the ``CellLabels`` mask, reconstructed from ``fov`` and ``cell_ID``, so the
+    table can be joined against its labels layer. The vendor's per-FOV cell number
+    is preserved in the ``fov_cell_ID`` observation column.
 
     Parameters
     ----------
@@ -291,9 +317,9 @@ def _prepare_dataset(
             f"CosMx label store '{dataset_files.labels_dir}' is not an OME-Zarr group. Legacy raster inputs are not supported."
         )
 
-    # Load FOV origins from the optional FOV positions file
-    # so local transcript coordinates can be translated to global pixel coordinates.
-    fov_origins = _load_fov_origins(dataset_files.fov_positions)
+    # Load FOV placement from the optional FOV positions file. It supplies both the per-FOV tile
+    # origins and the mosaic's top edge, which is what maps vendor global pixels onto raster rows.
+    fov_positions = _load_fov_positions(dataset_files.fov_positions)
 
     # Read transcripts lazily from parquet or CSV.
     if dataset_files.transcripts.suffix.lower() == ".parquet":
@@ -321,11 +347,16 @@ def _prepare_dataset(
         transcripts=transcripts,
         transcripts_path=dataset_files.transcripts,
         gene_column=gene_column,
-        fov_origins=fov_origins,
+        fov_positions=fov_positions,
         fov_positions_path=dataset_files.fov_positions,
     )
 
-    return _CosmxDataset(path=path, files=dataset_files, transcripts=transcripts)
+    return _CosmxDataset(
+        path=path,
+        files=dataset_files,
+        transcripts=transcripts,
+        top_global_y=None if fov_positions is None else fov_positions.top_global_y,
+    )
 
 
 def _add_dataset(
@@ -390,6 +421,7 @@ def _add_dataset(
             metadata_path=dataset.files.metadata,
             coordinate_system=coordinate_system,
             keep_genes=keep_genes,
+            top_global_y=dataset.top_global_y,
         )
 
     return sdata
@@ -497,10 +529,16 @@ def _prepare_transcripts(
     transcripts: dd.DataFrame,
     transcripts_path: Path,
     gene_column: str,
-    fov_origins: Mapping[int, tuple[float, float]] | None,
+    fov_positions: _FovPositions | None,
     fov_positions_path: Path | None,
 ) -> dd.DataFrame:
-    """Normalize, place, and validate CosMx transcript coordinates."""
+    """Normalize, place, and validate CosMx transcript coordinates in raster pixel space.
+
+    Vendor global pixel coordinates are not raster coordinates: their y axis increases *upward*,
+    while the image and label mosaics are stored with rows increasing downward. The vendor image
+    and label pyramids are registered with an identity transformation, so transcripts must be
+    expressed in that same raster space or they land mirrored across the mosaic.
+    """
     # Check if global pixel coordinates are present in the transcript file.
     global_x = _optional_column(transcripts.columns, _GLOBAL_X_COLUMNS)
     global_y = _optional_column(transcripts.columns, _GLOBAL_Y_COLUMNS)
@@ -509,11 +547,35 @@ def _prepare_transcripts(
         global_x = _require_column(transcripts.columns, _GLOBAL_X_COLUMNS, kind="global x")
         global_y = _require_column(transcripts.columns, _GLOBAL_Y_COLUMNS, kind="global y")
         log.info("Using CosMx global pixel columns '%s' and '%s' for transcript coordinates.", global_x, global_y)
-        # Rename global coordinate columns to canonical names for Sparrow points layers.
-        transcripts = transcripts.rename(columns={gene_column: _GENES_KEY, global_x: "x", global_y: "y"})
-        transcripts["x"] = transcripts["x"].astype(float)
-        transcripts["y"] = transcripts["y"].astype(float)
-        return transcripts
+
+        if fov_positions is None:
+            # Without the positions file the mosaic's top edge is unknown, so the upward-increasing
+            # vendor y cannot be converted into raster rows.
+            # As a result, the points will not overlay the image and label layers.
+            log.warning(
+                "No usable CosMx FOV positions were found next to '%s', so global transcript y "
+                "coordinates cannot be converted into raster rows! Transcripts will be vertically "
+                "mirrored with respect to the image and label layers!",
+                transcripts_path,
+            )
+            top_global_y = None
+        else:
+            log.info(
+                "Converting CosMx global pixel y into raster rows using mosaic top edge y=%s.",
+                fov_positions.top_global_y,
+            )
+            top_global_y = fov_positions.top_global_y
+
+        # Place and validate each partition as it is read
+        return transcripts.map_partitions(
+            _apply_global_coordinates,
+            gene_column=gene_column,
+            global_x=global_x,
+            global_y=global_y,
+            top_global_y=top_global_y,
+            transcripts_path=transcripts_path,
+            meta=_canonical_coordinate_meta(transcripts, gene_column, global_x, global_y),
+        )
 
     # Validate required local coordinate columns and FOV column when global coordinates are absent.
     local_x = _require_column(transcripts.columns, _LOCAL_X_COLUMNS, kind="local x")
@@ -521,7 +583,7 @@ def _prepare_transcripts(
     fov_column = _require_column(transcripts.columns, _FOV_COLUMNS, kind="fov")
 
     # Local coordinates are unplaceable without per-FOV origins to translate them by.
-    if fov_origins is None:
+    if fov_positions is None:
         if fov_positions_path is None:
             positions_description = "no FOV positions file was found"
         else:
@@ -533,16 +595,14 @@ def _prepare_transcripts(
 
     log.info("Global transcript coordinates are absent; applying FOV translations from fov_positions.")
 
-    # Build the two origin lookups and let the partition function map straight off the integer FOV column.
-    origin_x = pd.Series({fov: origin[0] for fov, origin in fov_origins.items()}, dtype=float)
-    origin_y = pd.Series({fov: origin[1] for fov, origin in fov_origins.items()}, dtype=float)
-
-    # Create meta schema with columns and dtypes returned by the partition-level coordinate transformation.
-    # Dask builds a task graph for each partition for which it needs to know some metadata about
-    # the output DataFrame, so we provide a meta DataFrame with the expected columns and dtypes.
-    meta = transcripts._meta.rename(columns={gene_column: _GENES_KEY, local_x: "x", local_y: "y"})
-    meta["x"] = meta["x"].astype(float)
-    meta["y"] = meta["y"].astype(float)
+    # Local pixel coordinates already run in raster orientation (y downward from the tile's top-left
+    # corner), so placing them needs a plain translation per FOV rather than the global-y flip:
+    # the tile's first raster row is the mosaic top edge minus that tile's global origin y.
+    origin_x = pd.Series({fov: origin[0] for fov, origin in fov_positions.origins.items()}, dtype=float)
+    origin_row = pd.Series(
+        {fov: fov_positions.top_global_y - origin[1] for fov, origin in fov_positions.origins.items()},
+        dtype=float,
+    )
 
     # Use Dask's map_partitions to apply FOV origins to local coordinates in a fully vectorized manner.
     return transcripts.map_partitions(
@@ -552,9 +612,26 @@ def _prepare_transcripts(
         local_y=local_y,
         fov_column=fov_column,
         origin_x=origin_x,
-        origin_y=origin_y,
-        meta=meta,
+        origin_row=origin_row,
+        transcripts_path=transcripts_path,
+        meta=_canonical_coordinate_meta(transcripts, gene_column, local_x, local_y),
     )
+
+
+def _canonical_coordinate_meta(
+    transcripts: dd.DataFrame,
+    gene_column: str,
+    x_column: str,
+    y_column: str,
+) -> pd.DataFrame:
+    """Build the meta frame describing a placed partition, for either coordinate branch."""
+    # Dask builds a task graph per partition, for which it needs to know the columns and dtypes the
+    # partition function returns. Both branches return the same shape: vendor columns untouched,
+    # with the gene and coordinate columns renamed to Sparrow's canonical names and cast to float.
+    meta = transcripts._meta.rename(columns={gene_column: _GENES_KEY, x_column: "x", y_column: "y"})
+    meta["x"] = meta["x"].astype(float)
+    meta["y"] = meta["y"].astype(float)
+    return meta
 
 
 def _add_table(
@@ -563,6 +640,7 @@ def _add_table(
     metadata_path: Path,
     coordinate_system: str,
     keep_genes: set[str] | None,
+    top_global_y: float | None,
 ) -> SpatialData:
     """Read the optional vendor cell-by-gene table, streaming counts to avoid a dense (cells x genes) read."""
     metadata = pd.read_csv(metadata_path, header=0)
@@ -595,9 +673,26 @@ def _add_table(
         )
     )
 
-    # The Cell ID key must be unique
-    duplicate_keys = metadata.index[metadata.index.duplicated()].unique()
-    if len(duplicate_keys):
+    # Build the dataset-global label ID for every vendor cell once, here. It is the value stored in
+    # the CellLabels mask, it is what the counts rows are matched on below, and it becomes
+    # _INSTANCE_KEY further down; deriving it once keeps those three uses from drifting apart.
+    vendor_fovs = _normalize_integer_ids(metadata[metadata_fov]).to_numpy()
+    vendor_cell_ids = _normalize_integer_ids(metadata[metadata_cell]).to_numpy()
+    instance_keys = _vendor_label_ids(vendor_fovs, vendor_cell_ids)
+
+    # Uniqueness has to hold for the paired integer key rather than only for its string form, both
+    # because the key becomes the table's instance key and because the lookup below rejects a
+    # non-unique index. The two are not the same test: '1' and '01' are distinct strings that
+    # normalize to the same cell and would therefore pair to the same label.
+    duplicated = pd.Index(instance_keys).duplicated()
+    if duplicated.any():
+        # Report the offending cells the way the vendor names them. 
+        # dict.fromkeys de-duplicates while preserving file order
+        duplicate_keys = list(
+            dict.fromkeys(
+                f"{fov}_{cell}" for fov, cell in zip(vendor_fovs[duplicated], vendor_cell_ids[duplicated], strict=True)
+            )
+        )
         raise ValueError(
             f"CosMx metadata file '{metadata_path}' contains {len(duplicate_keys)} duplicate "
             f"fov+cell ID key(s), e.g. {', '.join(str(key) for key in duplicate_keys[:5])}. "
@@ -608,8 +703,11 @@ def _add_table(
     counts_columns = pd.read_csv(counts_path, header=0, nrows=0).columns
     counts_fov = _require_column(counts_columns, _FOV_COLUMNS, kind="fov")
     counts_cell = _require_column(counts_columns, _CELL_ID_COLUMNS, kind="cell ID")
-    # Drop identifier columns so remaining columns are genes, then apply the optional whitelist.
-    gene_columns = [column for column in counts_columns if column not in {counts_fov, counts_cell}]
+    # Drop every identifier alias, not only the two chosen above: an export can carry more than one
+    # alias at once (see the metadata handling above), and a leftover alias would otherwise be read
+    # as a gene column and summed into the expression matrix as a cell count.
+    identifier_columns = {column for column in (*_FOV_COLUMNS, *_CELL_ID_COLUMNS) if column in counts_columns}
+    gene_columns = [column for column in counts_columns if column not in identifier_columns]
     if keep_genes is not None:
         gene_columns = [column for column in gene_columns if str(column) in keep_genes]
 
@@ -634,19 +732,40 @@ def _add_table(
         counts_fov=counts_fov,
         counts_cell=counts_cell,
         gene_columns=gene_columns,
-        metadata_index=metadata.index,
+        match_index=pd.Index(instance_keys),
     )
 
-    # A cell belongs in the table only if it appears in both metadata and counts
+    # A cell belongs in the table only if it appears in both metadata and counts.
     # Filter the metadata to the cells that were actually seen in the counts file, preserving the original row order.
-    # This later is necessary because AnnData aligns X, obs, and var positionally, not by index label
-    metadata = metadata.loc[seen].copy()
+    # This later is necessary because AnnData aligns X, obs, and var positionally, not by index label.
+    # Skip when every cell was seen (i.e all True mask) to avoid a copy of the full metadata frame.
+    if not seen.all():
+        metadata = metadata.loc[seen].copy()
+        instance_keys = instance_keys[seen]
 
     # Point every vendor cell at the single global labels layer stored in this coordinate system.
-    metadata[_REGION_KEY] = pd.Categorical([f"labels_{coordinate_system}"] * len(metadata), ordered=False)
-    # TableLayerManager, which is called below, expects the _INSTANCE_KEY column to be present in the obs
-    # metadata; it holds the same dataset-global fov+cell ID used as the observation index above.
-    metadata[_INSTANCE_KEY] = metadata.index.to_numpy()
+    # from_codes builds the one-category column directly, without a len(metadata) Python list.
+    metadata[_REGION_KEY] = pd.Categorical.from_codes(
+        np.zeros(len(metadata), dtype=np.int8),
+        categories=[f"labels_{coordinate_system}"],
+        ordered=False,
+    )
+
+    # _INSTANCE_KEY is itself named "cell_ID", and it must hold the integer value stored in the
+    # labels layer for the table to be joinable against it. Move the vendor's per-FOV cell number
+    # aside first so that information is not lost when the instance key takes that name.
+    metadata = metadata.rename(columns={metadata_cell: _VENDOR_CELL_ID_COLUMN})
+
+    # TableLayerManager, which is called below, expects the _INSTANCE_KEY column to be present in
+    # the obs metadata; it holds the label IDs derived from the vendor identifiers above.
+    metadata[_INSTANCE_KEY] = instance_keys
+    log.info(
+        "Derived %d dataset-global CosMx cell label IDs from '%s' and '%s' for the '%s' table link.",
+        len(metadata),
+        metadata_fov,
+        _VENDOR_CELL_ID_COLUMN,
+        _INSTANCE_KEY,
+    )
 
     # Create an AnnData object for the vendor table with a sparse expression matrix and the required obs/var structure.
     # Scipy's Compressed Sparse Row format is used because count matrices are typically very sparse,
@@ -663,7 +782,18 @@ def _add_table(
     # If they are present, copy them into the obsm spatial coordinates for Sparrow, following the conventional key
     # (x, y) pair used throughout the scanpy/squidpy/spatialdata ecosystem for per-cell spatial coordinates
     if center_x is not None and center_y is not None:
-        adata.obsm[_SPATIAL] = adata.obs[[center_x, center_y]].to_numpy()
+        centres = adata.obs[[center_x, center_y]].to_numpy(dtype=float)
+        # These centres are vendor global pixels, so their y needs the same upward-to-downward
+        # conversion applied to the transcripts; otherwise the table's coordinates would sit
+        # mirrored against both the rasters and the points layer.
+        if top_global_y is None:
+            log.warning(
+                "CosMx cell centres are stored in vendor global pixels because no FOV positions "
+                "were available; they will not line up with the image and label layers."
+            )
+        else:
+            centres[:, 1] = top_global_y - centres[:, 1]
+        adata.obsm[_SPATIAL] = centres
 
     return add_table_layer(
         sdata,
@@ -679,21 +809,19 @@ def _read_counts_sparse(
     counts_fov: str,
     counts_cell: str,
     gene_columns: list[str],
-    metadata_index: pd.Index,
+    match_index: pd.Index,
 ) -> tuple[csr_matrix, np.ndarray]:
     """Stream the vendor counts CSV once and accumulate it directly into a sparse matrix.
 
-    **Each counts row is placed at its cell's position in ``metadata_index``, matched on the same
-    fov+cell ID key used to build that index.** Row order does not matter for COO construction,
-    so counts can be streamed in whatever order it is stored in.
-    A counts row whose key is not in ``metadata_index`` is dropped.
+    **Each counts row is placed at its cell's position in ``match_index``, matched on the paired
+    integer label ID rebuilt from that row's own ``(fov, cell_ID)`` values.** Row order does not
+    matter for COO construction, so counts can be streamed in whatever order it is stored in.
+    A counts row whose key is not in ``match_index`` is dropped.
 
     The full (cells x genes) matrix is never materialized as a dense array.
     """
-    n_cells = len(metadata_index)
+    n_cells = len(match_index)
     n_genes = len(gene_columns)
-    # A label -> row index lookup, built once from metadata's own row order.
-    row_positions = {cell_id: index for index, cell_id in enumerate(metadata_index)}
     seen = np.zeros(n_cells, dtype=bool)
 
     row_chunks: list[np.ndarray] = []
@@ -710,15 +838,21 @@ def _read_counts_sparse(
     usecols = [counts_fov, counts_cell, *gene_columns]
     # Parsing the counts straight into the accumulation dtype halves each chunk versus pandas' inferred int64.
     gene_dtypes = dict.fromkeys(gene_columns, _COUNTS_VALUE_DTYPE)
-    with pd.read_csv(counts_path, header=0, usecols=usecols, dtype=gene_dtypes, chunksize=chunk_rows) as reader:
+    # The identifier columns must be declared too. read_csv infers dtypes independently per chunk,
+    # so a single blank or non-numeric ID anywhere turns that chunk's identifiers into float64,
+    # which then match nothing and silently drop every cell in the chunk. Declaring them turns a
+    # malformed identifier into a hard error instead, while still accepting '1.0' as 1.
+    id_dtypes = {counts_fov: np.int64, counts_cell: np.int64}
+    with pd.read_csv(
+        counts_path, header=0, usecols=usecols, dtype={**id_dtypes, **gene_dtypes}, chunksize=chunk_rows
+    ) as reader:
         for chunk in reader:
-            # Build the same dataset-global fov+cell ID key used for metadata_index, since the
-            # vendor's per-FOV cell ID alone is not unique across the dataset.
-            chunk_cell_ids = chunk[counts_fov].astype(str) + "_" + chunk[counts_cell].astype(str)
-            # A key present in row_positions (i.e., also in metadata) comes back as its integer row
-            # index; a key absent from it (in counts but not in metadata) comes back as NaN, and
-            # -1 then flags those rows
-            row_index = chunk_cell_ids.map(row_positions).fillna(-1).to_numpy().astype(_COUNTS_INDEX_DTYPE)
+            # Rebuild the same paired integer label ID used for match_index, since the vendor's
+            # per-FOV cell ID alone is not unique across the dataset.
+            chunk_keys = _vendor_label_ids(chunk[counts_fov].to_numpy(), chunk[counts_cell].to_numpy())
+            # get_indexer resolves each key to its row position in one vectorized hash lookup, and
+            # returns -1 for a counts row whose cell the metadata never mentions.
+            row_index = match_index.get_indexer(chunk_keys).astype(_COUNTS_INDEX_DTYPE)
             matched = row_index >= 0
             if not matched.any():
                 continue
@@ -728,6 +862,9 @@ def _read_counts_sparse(
             # gene_columns is in file order, so this is a contiguous column subset.
             # Rows are left unfiltered; dropping unmatched COO triples below avoids a second dense copy.
             chunk_values = chunk[gene_columns].to_numpy()
+            # That selection already copied the gene block, so release the parsed frame before the
+            # nonzero scan rather than holding a second full-size copy of the chunk alongside it.
+            del chunk
 
             # A sparse matrix only needs to record nonzero entries.
             # np.nonzero returns two 1D arrays of equal length,
@@ -750,9 +887,14 @@ def _read_counts_sparse(
 
     # Concatenate the accumulated COO triples into single arrays for the final sparse matrix construction.
     if value_chunks:
+        # Release each list as soon as it has been concatenated: holding all three alongside their
+        # full-size copies would double the accumulated COO footprint at exactly the peak.
         rows = np.concatenate(row_chunks)
+        row_chunks.clear()
         cols = np.concatenate(col_chunks)
+        col_chunks.clear()
         values = np.concatenate(value_chunks)
+        value_chunks.clear()
     else:
         rows = np.array([], dtype=_COUNTS_INDEX_DTYPE)
         cols = np.array([], dtype=_COUNTS_INDEX_DTYPE)
@@ -769,9 +911,10 @@ def _read_counts_sparse(
     # Create a sparse matrix in Compressed Sparse Row format directly from the COO triples.
     X = csr_matrix((values, (rows, cols)), shape=(n_cells, n_genes))
     # A metadata cell that is absent in the counts file doesn't get excluded from the matrix,
-    # because of shape=(n_cells, n_genes) with n_cells = len(metadata_index)
-    # That is why we need to slice the sparse matrix down to the rows that were actually seen in counts
-    return X[seen], seen
+    # because of shape=(n_cells, n_genes) with n_cells = len(match_index).
+    # That is why the matrix is sliced down to the rows actually seen in counts, but only when some
+    # cell was in fact missing
+    return (X if seen.all() else X[seen]), seen
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -1021,8 +1164,8 @@ def _build_multiscale_tree(
     return compute_coordinates(tree)
 
 
-def _load_fov_origins(fov_positions_path: Path | None) -> dict[int, tuple[float, float]] | None:
-    """Read FOV translations from ``fov_positions_file.csv`` when pixel columns exist."""
+def _load_fov_positions(fov_positions_path: Path | None) -> _FovPositions | None:
+    """Read FOV tile origins and the mosaic top edge from ``fov_positions_file.csv``."""
     if fov_positions_path is None:
         return None
 
@@ -1035,7 +1178,7 @@ def _load_fov_origins(fov_positions_path: Path | None) -> dict[int, tuple[float,
     if fov_column is None or x_column is None or y_column is None:
         log.warning(
             "CosMx FOV positions file '%s' does not contain pixel origin columns; "
-            "global image and label rasters will use identity transformations.",
+            "transcript coordinates cannot be placed in the mosaic raster space.",
             fov_positions_path,
         )
         return None
@@ -1061,7 +1204,38 @@ def _load_fov_origins(fov_positions_path: Path | None) -> dict[int, tuple[float,
             f"origin for FOV(s) {', '.join(str(fov) for fov in sorted(fov_ids[invalid].unique()))}."
         )
 
-    return dict(zip(fov_ids.tolist(), zip(origins_x.tolist(), origins_y.tolist(), strict=True), strict=True))
+    # The vendor records each tile's *top* edge in a y-up system, so the mosaic's first raster row
+    # sits at the largest origin y. That constant is what converts global pixel y into raster rows.
+    return _FovPositions(
+        origins=dict(zip(fov_ids.tolist(), zip(origins_x.tolist(), origins_y.tolist(), strict=True), strict=True)),
+        top_global_y=float(origins_y.max()),
+    )
+
+
+def _apply_global_coordinates(
+    partition: pd.DataFrame,
+    gene_column: str,
+    global_x: str,
+    global_y: str,
+    top_global_y: float | None,
+    transcripts_path: Path,
+) -> pd.DataFrame:
+    """Place global pixel transcript coordinates in mosaic raster pixels, fully vectorized."""
+    # Preserve untouched vendor columns while replacing source columns with Sparrow's canonical names.
+    placed = partition.rename(columns={gene_column: _GENES_KEY, global_x: "x", global_y: "y"})
+    # The global pixel x axis already runs the same way as raster columns.
+    placed["x"] = partition[global_x].astype(float)
+    if top_global_y is None:
+        # The mosaic top edge is unknown, so the vendor's upward y is kept as-is; the caller has
+        # already warned that the points will not overlay the rasters.
+        placed["y"] = partition[global_y].astype(float)
+    else:
+        # Vendor global y increases upward while raster rows increase downward.
+        placed["y"] = top_global_y - partition[global_y].astype(float)
+
+    _reject_non_finite_coordinates(placed, transcripts_path)
+
+    return placed
 
 
 def _apply_fov_origins(
@@ -1071,17 +1245,18 @@ def _apply_fov_origins(
     local_y: str,
     fov_column: str,
     origin_x: pd.Series,
-    origin_y: pd.Series,
+    origin_row: pd.Series,
+    transcripts_path: Path,
 ) -> pd.DataFrame:
-    """Add FOV origin translations to local transcript coordinates in a fully vectorized manner."""
+    """Translate local transcript coordinates into mosaic raster pixels, fully vectorized."""
     # Map off integers, not strings to be more efficient
     # Stringifying the FOV column would allocate a Python string per transcript
     fov_ids = _normalize_integer_ids(partition[fov_column])
     partition_origin_x = fov_ids.map(origin_x)
-    partition_origin_y = fov_ids.map(origin_y)
+    partition_origin_row = fov_ids.map(origin_row)
 
     # Validate that every FOV in this partition has a corresponding FOV origin.
-    missing = partition_origin_x.isna() | partition_origin_y.isna()
+    missing = partition_origin_x.isna() | partition_origin_row.isna()
     if missing.any():
         missing_origin_fovs = sorted(fov_ids[missing].unique())
         raise ValueError(
@@ -1092,10 +1267,26 @@ def _apply_fov_origins(
 
     # Preserve untouched vendor columns while replacing source columns with Sparrow's canonical names.
     translated = partition.rename(columns={gene_column: _GENES_KEY, local_x: "x", local_y: "y"})
+    # Both axes are plain offsets here: local pixels already run left-to-right and top-to-bottom
+    # within their tile, and origin_row is that tile's first row in the mosaic.
     translated["x"] = partition[local_x].astype(float) + partition_origin_x
-    translated["y"] = partition[local_y].astype(float) + partition_origin_y
+    translated["y"] = partition[local_y].astype(float) + partition_origin_row
+
+    _reject_non_finite_coordinates(translated, transcripts_path)
 
     return translated
+
+
+def _reject_non_finite_coordinates(partition: pd.DataFrame, transcripts_path: Path) -> None:
+    """Raise when a placed partition holds a NaN or infinite transcript coordinate."""
+    # Checking inside the partition function keeps this in the Dask graph
+    non_finite = ~(np.isfinite(partition["x"].to_numpy()) & np.isfinite(partition["y"].to_numpy()))
+    if non_finite.any():
+        raise ValueError(
+            f"CosMx transcript file '{transcripts_path}' contains {int(non_finite.sum())} "
+            "transcript(s) with a non-finite x or y coordinate in a single partition. "
+            "Every transcript must have a finite position."
+        )
 
 
 def _optional_column(columns: Iterable[str], candidates: tuple[str, ...]) -> str | None:
@@ -1113,6 +1304,26 @@ def _require_column(columns: Iterable[str], candidates: tuple[str, ...], kind: s
     if column is None:
         raise ValueError(f"CosMx file is missing a {kind} column; expected one of {', '.join(candidates)}.")
     return column
+
+
+def _vendor_label_ids(fov_ids: np.ndarray, cell_ids: np.ndarray) -> np.ndarray:
+    """Reconstruct the CosMx ``CellLabels`` mask value for each ``(fov, cell_ID)`` pair.
+
+    The vendor numbers its global label mosaic with Szudzik's elegant pairing function, an
+    injective map from a pair of non-negative integers onto a single one:
+
+        pair(x, y) = y*y + x            if x <  y
+        pair(x, y) = x*x + x + y        if x >= y
+
+    applied as ``pair(fov, cell_ID)``. Because the pairing is injective, the resulting key is
+    unique across the dataset even though the vendor's ``cell_ID`` restarts at 1 in every FOV.
+    The key is also the integer actually stored in the label mask, so the table can be joined to
+    its labels layer without ever reading the mask.
+    """
+    # Work in int64: cell_ID squared comfortably exceeds the uint32 label range during computation.
+    fovs = np.asarray(fov_ids, dtype=np.int64)
+    cells = np.asarray(cell_ids, dtype=np.int64)
+    return np.where(fovs < cells, cells * cells + fovs, fovs * fovs + fovs + cells)
 
 
 def _normalize_integer_ids(values: pd.Series) -> pd.Series:

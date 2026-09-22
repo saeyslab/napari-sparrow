@@ -10,8 +10,11 @@ The CosMx reader must support modern global nested OME-Zarr exports while preser
 - Read one global labels mosaic from `CellLabels` when `cells_labels=True`.
 - Preserve every vendor pyramid level exactly as supplied.
 - Keep image and label arrays lazy and Dask-backed.
-- Use identity transforms for global rasters and global transcript coordinates.
-- Use FOV origin translations only when transcripts have local coordinates.
+- Use identity transforms for every layer, and express all coordinates in the mosaic's raster
+  pixel space so points, rasters and table centroids overlay.
+- Convert the vendor's upward-increasing global pixel y into downward raster rows using the
+  mosaic top edge from `fov_positions_file.csv`; use the per-FOV origins to place local
+  transcript coordinates.
 - Keep labels and the optional vendor table linked through Sparrow table metadata.
 - Do not restore the legacy TIFF/PNG fallback or generate replacement scale levels.
 
@@ -139,48 +142,99 @@ Keep the following behavior stable when changing the reader:
 - `keep_gene_names` filters transcripts before coordinate work and filters the optional vendor table. A scalar gene name is rejected; string values are interpreted as panel paths.
 - Global transcript columns (`x_global_px`, `y_global_px`) take precedence over local columns.
 - Local transcript coordinates use `fov_positions_file.csv` origins when there are usable origins. Multiple local FOVs without complete origins are rejected.
-- Non-numeric and non-finite transcript coordinates are rejected before layer creation.
+- Non-finite transcript coordinates are rejected. The check runs **inside the Dask graph**, in the
+  same partition function that places the coordinates (`_reject_non_finite_coordinates`), so a
+  transcript file holding billions of rows is never materialized just to be validated. Both
+  coordinate branches go through `map_partitions` for this reason; the error surfaces when
+  `add_points_layer` materializes, i.e. still inside the `cosmx()` call.
 - Stored transcript layers use Sparrow's canonical `gene`, `x`, and `y` columns and an identity transform.
 - `cells_table=True` implies `cells_labels=True` because the table region points to the global labels layer.
-- The vendor table uses one region, `labels_{coordinate_system}`, and cell instances keyed by a
-  dataset-global `fov`+`cell_ID` string, because the vendor's `cell_ID` restarts at 1 in every FOV.
-- The vendor `fov`+`cell_ID` key must be unique in the metadata file; a duplicate is rejected.
-- Counts are streamed into a `scipy` CSR matrix in a single pass, never materialized dense.
+- The vendor table uses one region, `labels_{coordinate_system}`, and `_INSTANCE_KEY` holds the
+  integer value actually stored in the `CellLabels` mask (see below). The vendor's per-FOV
+  `cell_ID` is preserved under `fov_cell_ID`, and the observation index stays the
+  `fov`+`cell_ID` string, because the vendor's `cell_ID` restarts at 1 in every FOV.
+- Every vendor cell must be unique, and uniqueness is checked on the **paired integer key**, not on
+  its `"<fov>_<cell_ID>"` string form. The two are different tests — `"1"` and `"01"` are distinct
+  strings that normalize to the same cell — and the paired key is what has to be unique, both
+  because it becomes `_INSTANCE_KEY` and because the counts lookup rejects a non-unique index.
+- The counts identifier columns are given explicit dtypes when the CSV is streamed. `read_csv`
+  infers dtypes independently **per chunk**, so one blank identifier anywhere turns that chunk's
+  identifier column into `float64`, whose keys then match nothing and silently drop every cell in
+  the chunk. Declaring them turns that into a hard error. Do not remove this.
+- Identifier aliases are excluded from the counts gene columns as a set, not just the two chosen
+  names, so an export carrying both `cell_ID` and `cell_id` cannot turn the unused alias into a
+  fake gene in `var`.
+- Counts are streamed into a `scipy` CSR matrix in a single pass, never materialized dense. Rows are
+  matched by `pd.Index.get_indexer` on the paired integer key, which is also what `_INSTANCE_KEY`
+  holds; the key is built once in `_add_table` and reused, rather than rebuilt as a string per chunk.
 - Sparrow's `ImageLayerManager` and `LabelLayerManager` handle registration and backed output.
 
-## Known Limitation: The Table Region Link Is Nominal
+## Raster Placement: Vendor Global Pixels Are Not Raster Coordinates
+
+The vendor's global pixel coordinate system has **y increasing upward**, while the image and label
+mosaics are stored with rows increasing downward. Registering rasters, transcripts and cell centres
+all with `Identity()` therefore left the points vertically mirrored against the rasters. Nothing in
+the export flags this: the layers simply do not overlay.
+
+The conversion is:
+
+```text
+raster column = x_global_px
+raster row     = top_global_y - y_global_px
+```
+
+where `top_global_y = max(fov_positions_file.csv["y_global_px"])`, because the vendor records each
+FOV tile's **top** edge in that y-up system, so the largest origin y is the mosaic's first row.
+On the reference export that constant is `116704`, against a level-zero raster of `(120942, 114908)`.
+
+Local transcript coordinates need no flip: local pixels already run left-to-right and top-to-bottom
+inside their tile, so each FOV is a plain translation, `row = (top_global_y - origin_y) + y_local_px`.
+Note this means the earlier `y_global_px = y_local_px + origin_y` was wrong in sign; the vendor's
+own metadata satisfies `y_global_px = origin_y - y_local_px`.
+
+`_load_fov_positions` returns both the origins and `top_global_y`. When the positions file is
+missing or has no pixel origin columns, the conversion cannot be computed; the reader logs a
+warning and leaves the coordinates in vendor global pixels rather than guessing.
+
+This placement is read from vendor metadata, not estimated from cell centroids — centroids were
+used only to verify it (0/1117 FOV-1 cell centres land on a label without the flip, 1117/1117 with
+it, and the same constant holds for FOVs spread across the mosaic).
+
+## The Table Region Link Is Real: `CellLabels` Uses Szudzik Pairing
 
 Everywhere else in Sparrow, `_INSTANCE_KEY` is the **integer label value** stored inside the labels
-layer, which is what lets a table be joined to its labels layer. The CosMx vendor table cannot
-satisfy that contract, and this is accepted rather than worked around.
+layer, which is what lets a table be joined to its labels layer. The CosMx vendor table *can*
+satisfy that contract: the global `CellLabels` mosaic numbers each cell with **Szudzik's elegant
+pairing function** applied to `(fov, cell_ID)`:
 
-The vendor's global `CellLabels` mosaic is numbered with its own dataset-wide integer IDs that have
-no arithmetic relation to `fov`/`cell_ID`. Measured on the reference export
-(`D:\CosMx_test_datasets\CosMx_reader_test_dataset`), FOV 208 holds 1782 cells with `cell_ID`
-running 1-1782, while the mask values inside that FOV's tile span roughly 3 000 - 4 787 385. The
-export ships no mapping between the two numbering schemes: `S0_metadata_file.csv` carries `cell_ID`
-(per-FOV `int`) and `cell_id` (`c_<slide>_<fov>_<cell_ID>`, globally unique but still not the mask
-value), and `S0-polygons.csv` carries the same per-FOV `cellID`.
+```text
+label = cell_ID*cell_ID + fov          if fov <  cell_ID
+label = fov*fov + fov + cell_ID        if fov >= cell_ID
+```
 
-Consequences to keep in mind:
+`_vendor_label_ids()` implements this, and `_INSTANCE_KEY` is an `int64` mask value. The pairing is
+injective, so the key stays unique across the dataset even though `cell_ID` restarts at 1 in every
+FOV. Nothing needs to read the mask to build it.
 
-- `table_{cs}` declares `region=["labels_{cs}"]`, but that link cannot actually be resolved.
-- `_INSTANCE_KEY` is a `str` here, not an `int`. Consumers that resolve a table against a labels
-  layer through it cast with `astype(int)` (`sparrow/shape/_manager.py::filter_shapes`,
-  `sparrow/plot/_plot.py`) and will not work against this table.
-- `tb.allocate(..., append=True)` onto this table would mix `str` and `int` instance keys.
+Verification on the reference export: for every FOV tile checked (1, 2, 50, 100, 200, 208, 399,
+400), **100%** of the predicted label values were present in that tile; the only extra values were
+the 10-79 labels of neighbouring FOVs bleeding over the tile edge. Sampling the mask at each cell
+centroid, 98.8% of 9510 cells returned exactly the derived key, the ~1% residual being centroids of
+concave cells that fall inside a neighbour.
 
-Reconstructing a true integer instance key would mean sampling the label mosaic per cell. That was
-considered and deliberately not done. If it is ever revisited, note that on the probe above only
-about 1360 of 1782 cell centroids landed on a nonzero mask value, and some distinct `cell_ID`s
-sampled to the same mask label, so centroid sampling alone is not a faithful mapping.
+An earlier version of this note claimed the mask had "no arithmetic relation to `fov`/`cell_ID`",
+citing FOV 208 mask values spanning 3 000 - 4 787 385. That measurement read the wrong region of
+the mosaic, because it predated the y-flip above. Both branches of the pairing are needed: a naive
+`fov*(fov+1) + cell_ID` fits FOV 400 perfectly (all its `cell_ID`s are below 400) but matches only
+~3% of FOV 1, where nearly every `cell_ID` exceeds the FOV number.
 
 ## Do Not Reintroduce
 
 - Per-FOV raster discovery or affine estimation.
 - TIFF/PNG/JPEG fallback loading.
 - Automatic generation of scale factors or downsampled levels.
-- Estimation of raster placement from cell centroids.
+- Estimation of raster placement from cell centroids. (Placement comes from
+  `fov_positions_file.csv`; centroids are for verification only.)
 - Multiple image or labels layers for FOVs when a global vendor store exists.
 - In-place modification of vendor `.zattrs` to satisfy SpatialData reader assumptions.
 
@@ -195,13 +249,21 @@ The implementation does use SpatialData's private raster utility functions `_set
 The current modern fixture tests cover native multiscale loading, channel names and order, Dask
 laziness, identity transforms, labels, table links, backed output, local transcript placement, gene
 filtering, rejection of legacy raster inputs, dangling pyramid metadata, duplicate vendor cell keys, half-specified global
-transcript coordinates, and the counts/metadata intersection.
+transcript coordinates, and the counts/metadata intersection. They also cover the global-y to
+raster-row conversion, the matching conversion of table cell centres, the warning path when no FOV
+positions are available, the Szudzik pairing behind `_INSTANCE_KEY`, rejection of non-finite
+transcript coordinates, rejection of a malformed counts identifier, and the exclusion of a
+redundant identifier alias from `var`.
+
+The four "unreadable multiscale metadata" cases and the two "incomplete coordinate columns" cases
+are parametrized rather than written as separate tests, matching the house style elsewhere in
+`src/sparrow/_tests` (bare tuples, no `ids=`/`pytest.param`, which appear nowhere in this repo).
 
 Verified commands:
 
 ```text
 uv run --no-sync pytest src/sparrow/_tests/test_cosmx.py -q
-25 passed, 6 warnings
+29 passed, 6 warnings   # 25 test functions; two of them parametrized
 
 uv run --no-sync ruff check src/sparrow/io/_cosmx.py src/sparrow/_tests/test_cosmx.py
 All checks passed

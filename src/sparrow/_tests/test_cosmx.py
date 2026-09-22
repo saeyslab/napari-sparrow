@@ -12,13 +12,15 @@ from spatialdata.transformations import Identity, get_transformation
 from xarray import DataTree
 
 from sparrow.io._cosmx import (
+    _VENDOR_CELL_ID_COLUMN,
     _discover_files,
     _load_keep_gene_names,
     _read_cosmx_zarr_levels,
+    _vendor_label_ids,
     cosmx,
 )
 from sparrow.table._allocation import allocate
-from sparrow.utils._keys import _CELL_INDEX, _GENES_KEY, _INSTANCE_KEY, _REGION_KEY
+from sparrow.utils._keys import _CELL_INDEX, _GENES_KEY, _INSTANCE_KEY, _REGION_KEY, _SPATIAL
 
 
 def _write_cosmx_dataset(root: Path) -> Path:
@@ -45,8 +47,9 @@ def _write_cosmx_dataset(root: Path) -> Path:
         }
     ).to_csv(root / "coad_tx_file.csv", index=False)
 
-    # FOV origins are translations, not estimated affines.
-    pd.DataFrame({"fov": [1], "x_global_px": [1.0], "y_global_px": [2.0]}).to_csv(
+    # FOV origins are translations, not estimated affines. The vendor records each tile's top edge
+    # in a y-up system, so y=8.0 matches the 8x8 fixture raster and makes raster row = 8.0 - y.
+    pd.DataFrame({"fov": [1], "x_global_px": [0.0], "y_global_px": [8.0]}).to_csv(
         root / "coad_fov_positions_file.csv",
         index=False,
     )
@@ -103,33 +106,43 @@ def _write_multiscale_group(path: Path, multiscales: list[dict], level_paths: tu
     return path
 
 
-def test_cosmx_reports_missing_multiscale_node(tmp_path):
-    """Report when a Zarr store has no readable multiscale dataset."""
-    # A valid Zarr group that simply carries no OME-Zarr pyramid descriptor.
-    store = _write_multiscale_group(tmp_path / "store", multiscales=None, level_paths=("0",))
-
-    with pytest.raises(ValueError, match="does not contain a readable multiscale OME-Zarr dataset"):
-        _read_cosmx_zarr_levels(store, kind="image")
+_SINGLE_LEVEL_PYRAMID = {"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}]}
 
 
-def test_cosmx_reports_multiple_multiscale_nodes(tmp_path):
-    """Report when a Zarr store contains ambiguous multiscale datasets."""
-    pyramid = {"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}]}
-    # Two pyramid descriptors leave no single answer for which one to read.
-    store = _write_multiscale_group(tmp_path / "store", multiscales=[pyramid, pyramid], level_paths=("0",))
+@pytest.mark.parametrize(
+    "multiscales, level_paths, kind, match",
+    [
+        # A valid Zarr group that simply carries no OME-Zarr pyramid descriptor.
+        (None, ("0",), "image", "does not contain a readable multiscale OME-Zarr dataset"),
+        # Two pyramid descriptors leave no single answer for which one to read.
+        (
+            [_SINGLE_LEVEL_PYRAMID, _SINGLE_LEVEL_PYRAMID],
+            ("0",),
+            "labels",
+            r"contains 2 multiscale nodes; expected exactly one",
+        ),
+        # Metadata names a second level, but only level zero is written, so it is dangling.
+        (
+            [{"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}, {"path": "1"}]}],
+            ("0",),
+            "image",
+            r"lists pyramid level '1'.*not present in the store",
+        ),
+        # The second entry carries no "path", so it describes no array in the store at all.
+        (
+            [{"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}, {"scale": [2.0, 2.0]}]}],
+            ("0",),
+            "image",
+            r"dataset entry at position 1 with no 'path' key",
+        ),
+    ],
+)
+def test_cosmx_reports_unreadable_multiscale_metadata(tmp_path, multiscales, level_paths, kind, match):
+    """Report each way a vendor Zarr group can fail to describe exactly one readable pyramid."""
+    store = _write_multiscale_group(tmp_path / "store", multiscales=multiscales, level_paths=level_paths)
 
-    with pytest.raises(ValueError, match=r"contains 2 multiscale nodes; expected exactly one"):
-        _read_cosmx_zarr_levels(store, kind="labels")
-
-
-def test_cosmx_reports_pyramid_level_missing_from_store(tmp_path):
-    """Report when multiscale metadata names a level the store does not actually hold."""
-    pyramid = {"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}, {"path": "1"}]}
-    # Only level zero is written, so the metadata's second level is dangling.
-    store = _write_multiscale_group(tmp_path / "store", multiscales=[pyramid], level_paths=("0",))
-
-    with pytest.raises(ValueError, match=r"lists pyramid level '1'.*not present in the store"):
-        _read_cosmx_zarr_levels(store, kind="image")
+    with pytest.raises(ValueError, match=match):
+        _read_cosmx_zarr_levels(store, kind=kind)
 
 
 def test_cosmx_reads_global_transcripts_and_filters_panel_genes(tmp_path):
@@ -152,40 +165,75 @@ def test_cosmx_reads_global_transcripts_and_filters_panel_genes(tmp_path):
     assert sdata.labels == {}
     assert sdata.tables == {}
 
-    # Confirm control probes are absent and global pixel columns were used as-is.
+    # Confirm control probes are absent and global pixel columns were placed in raster space.
     points = sdata["transcripts_sample"].compute()
     assert points[_GENES_KEY].tolist() == ["ACTB"]
     assert "target" not in points.columns
     assert points["fov"].tolist() == [1]
     assert points["cell_ID"].tolist() == [1]
-    assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 5.0]]
-    assert isinstance(get_transformation(sdata["transcripts_sample"], to_coordinate_system="sample"), Identity)
+    # x passes through; y is flipped about the mosaic top edge (8.0 - 5.0 = 3.0) so the points
+    # overlay the identity-registered image and label rasters instead of being mirrored.
+    assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 3.0]]
 
-    assert isinstance(get_transformation(sdata["image_sample"], to_coordinate_system="sample"), Identity)
 
-
-def test_cosmx_allows_global_zarr_without_positions(tmp_path):
+def test_cosmx_allows_global_zarr_without_positions(tmp_path, caplog):
     dataset_path = _write_cosmx_dataset(tmp_path)
     (dataset_path / "coad_fov_positions_file.csv").unlink()
 
     # Preserve the valid identity-coordinate case when the dataset contains only one FOV.
     sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
 
-    assert isinstance(get_transformation(sdata["image_sample"], to_coordinate_system="sample"), Identity)
+    # Without the positions file the mosaic top edge is unknown, so the vendor's upward y cannot
+    # be converted. That is allowed, but it must be reported rather than silently misplacing data.
+    points = sdata["transcripts_sample"].compute()
+    assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 5.0], [3.0, 6.0]]
+    assert "vertically mirrored" in caplog.text
 
 
-def test_cosmx_uses_one_global_zarr_for_multiple_fov_positions(tmp_path):
+def test_cosmx_places_global_transcripts_in_raster_rows(tmp_path):
+    """Vendor global pixel y increases upward, so it must be flipped onto downward raster rows."""
     dataset_path = _write_cosmx_dataset(tmp_path)
 
-    # Keep multiple FOV origins in the metadata without requiring image filenames to expose them.
-    pd.DataFrame({"fov": [1, 2], "x_global_px": [1.0, 100.0], "y_global_px": [2.0, 200.0]}).to_csv(
-        dataset_path / "coad_fov_positions_file.csv",
-        index=False,
-    )
+    # Two transcripts at different heights make the direction of the conversion observable.
+    pd.DataFrame(
+        {
+            "fov": [1, 1],
+            "x_global_px": [2.0, 3.0],
+            "y_global_px": [1.0, 7.0],
+            "target": ["ACTB", "ACTB"],
+        }
+    ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
 
     sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+    points = sdata["transcripts_sample"].compute()
 
-    assert list(sdata.images) == ["image_sample"]
+    # The mosaic top edge is 8.0, so the transcript high in vendor y becomes a low raster row.
+    assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 7.0], [3.0, 1.0]]
+
+
+def test_cosmx_places_table_centres_in_the_same_space_as_transcripts(tmp_path):
+    """The table's spatial coordinates must be converted exactly like the transcript coordinates."""
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
+
+    # Fixture centres are (2, 5) and (3, 6) in vendor global pixels; the mosaic top edge is 8.0.
+    assert sdata["table_sample"].obsm[_SPATIAL].tolist() == [[2.0, 3.0], [3.0, 2.0]]
+
+
+def test_cosmx_vendor_label_ids_match_szudzik_pairing():
+    """The mask ID is Szudzik's elegant pairing of (fov, cell_ID), which is injective."""
+    # fov >= cell_ID takes the fov*fov + fov + cell_ID branch.
+    assert _vendor_label_ids(np.array([1]), np.array([1])).tolist() == [3]
+    assert _vendor_label_ids(np.array([400]), np.array([382])).tolist() == [400 * 401 + 382]
+    # fov < cell_ID takes the cell_ID*cell_ID + fov branch.
+    assert _vendor_label_ids(np.array([1]), np.array([2])).tolist() == [5]
+    assert _vendor_label_ids(np.array([200]), np.array([2054])).tolist() == [2054 * 2054 + 200]
+
+    # Distinct (fov, cell_ID) pairs never collide, which is what makes the key usable as an index.
+    fovs, cells = np.meshgrid(np.arange(1, 40), np.arange(1, 40))
+    keys = _vendor_label_ids(fovs.ravel(), cells.ravel())
+    assert np.unique(keys).size == keys.size
 
 
 def test_cosmx_rejects_legacy_raster_input(tmp_path):
@@ -226,7 +274,9 @@ def test_cosmx_applies_fov_origins_to_local_transcripts(tmp_path):
     sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
     points = sdata["transcripts_sample"].compute()
 
-    assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 5.0], [102.0, 204.0]]
+    # Local pixels already run in raster orientation, so each FOV is a plain translation:
+    # column = origin_x + local_x, row = (mosaic top edge 200.0 - origin_y) + local_y.
+    assert points[["x", "y"]].to_numpy().tolist() == [[2.0, 201.0], [102.0, 4.0]]
     assert points["fov"].tolist() == [1, 2]
     assert points["quality"].tolist() == ["good", "review"]
 
@@ -249,19 +299,25 @@ def test_cosmx_includes_local_transcript_fovs_in_origin_validation(tmp_path):
         cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
 
 
-def test_cosmx_rejects_local_transcripts_without_fov_column(tmp_path):
+@pytest.mark.parametrize(
+    "transcripts, match",
+    [
+        # Local coordinates with no FOV column: nothing says which tile to translate them by.
+        ({"x_local_px": [1.0], "y_local_px": [3.0], "target": ["ACTB"]}, r"missing a fov column"),
+        # Only one of the two global axes; the reader must name the axis it is missing rather than
+        # falling through to the local branch and complaining about a local column.
+        (
+            {"fov": [1], "x_global_px": [1.0], "x_local_px": [1.0], "y_local_px": [3.0], "target": ["ACTB"]},
+            r"missing a global y column",
+        ),
+    ],
+)
+def test_cosmx_rejects_incomplete_transcript_coordinate_columns(tmp_path, transcripts, match):
+    """Name the specific coordinate column that a transcript schema is missing."""
     dataset_path = _write_cosmx_dataset(tmp_path)
+    pd.DataFrame(transcripts).to_csv(dataset_path / "coad_tx_file.csv", index=False)
 
-    # Remove global coordinates and the FOV column from the local transcript schema.
-    pd.DataFrame(
-        {
-            "x_local_px": [1.0],
-            "y_local_px": [3.0],
-            "target": ["ACTB"],
-        }
-    ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
-
-    with pytest.raises(ValueError, match=r"missing a fov column"):
+    with pytest.raises(ValueError, match=match):
         cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
 
 
@@ -284,22 +340,22 @@ def test_cosmx_rejects_local_transcripts_without_fov_origins(tmp_path):
 
 
 def test_cosmx_rejects_non_finite_transcript_coordinates(tmp_path):
+    """A transcript with no finite position would be placed arbitrarily, so it must be rejected."""
     dataset_path = _write_cosmx_dataset(tmp_path)
 
     # Keep the global coordinate schema but introduce an invalid spatial value.
     pd.DataFrame(
         {
-            "x_global_px": [np.nan],
-            "y_global_px": [2.0],
-            "target": ["ACTB"],
+            "x_global_px": [np.nan, 3.0],
+            "y_global_px": [2.0, 4.0],
+            "target": ["ACTB", "ACTB"],
         }
     ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
 
-    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
-
-    # Reject non-finite coordinates when points are evaluated.
-    points = sdata["transcripts_sample"].compute()
-    assert np.isnan(points["x"].iloc[0])
+    # The check lives inside the Dask graph, so it fires as the partition is read rather than
+    # forcing the whole transcript frame to be materialized up front.
+    with pytest.raises(ValueError, match=r"non-finite x or y coordinate"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
 
 
 def test_cosmx_warns_for_unsupported_image_model_kwargs(tmp_path, caplog):
@@ -329,14 +385,14 @@ def test_cosmx_reads_optional_labels_and_table(tmp_path):
         cells_table=True,
     )
 
-    # Confirm the vendor labels remain a single global pyramid in global coordinates.
-    assert isinstance(get_transformation(sdata["labels_sample"], to_coordinate_system="sample"), Identity)
-
     table = sdata["table_sample"]
     assert table.var_names.tolist() == ["ACTB"]
     assert table.obs[_REGION_KEY].cat.categories.tolist() == ["labels_sample"]
-    # Both fixture cells share fov=1, so the dataset-global fov+cell_ID key is "1_1"/"1_2".
-    assert table.obs[_INSTANCE_KEY].tolist() == ["1_1", "1_2"]
+    # The instance key is the integer label value the vendor stores in CellLabels, paired from
+    # (fov, cell_ID): pair(1, 1) = 1*1 + 1 + 1 = 3 and pair(1, 2) = 2*2 + 1 = 5.
+    assert table.obs[_INSTANCE_KEY].tolist() == [3, 5]
+    # The vendor's per-FOV cell number stays available under its own column.
+    assert table.obs[_VENDOR_CELL_ID_COLUMN].tolist() == [1, 2]
 
     # Confirm default Sparrow allocation consumes the canonical gene column without extra arguments.
     sdata = allocate(
@@ -374,9 +430,10 @@ def test_cosmx_disambiguates_cell_ids_repeated_across_fovs(tmp_path):
     sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
 
     table = sdata["table_sample"]
-    # Both cells are kept as distinct observations, keyed by the dataset-global fov + cell_ID.
+    # Both cells are kept as distinct observations. The pairing is injective, so two cells that
+    # share cell_ID=1 in different FOVs get different keys: pair(1, 1) = 3 and pair(2, 1) = 7.
     assert table.n_obs == 2
-    assert table.obs[_INSTANCE_KEY].tolist() == ["1_1", "2_1"]
+    assert table.obs[_INSTANCE_KEY].tolist() == [3, 7]
     assert table.obs.index.name == _CELL_INDEX
     # Counts are not merged between the two same-local-ID cells.
     assert table[:, "ACTB"].X.toarray().ravel().tolist() == [5, 9]
@@ -411,8 +468,11 @@ def test_cosmx_reads_multiscale_zarr_stores_and_keeps_table_link(tmp_path):
     assert list(labels) == ["scale0", "scale1"]
     assert labels["scale0"].data_vars["image"].dtype == np.uint32
     assert sdata["table_sample"].obs[_REGION_KEY].cat.categories.tolist() == ["labels_sample"]
-    assert isinstance(get_transformation(image, to_coordinate_system="sample"), Identity)
-    assert isinstance(get_transformation(labels, to_coordinate_system="sample"), Identity)
+
+    # Every layer is registered with an identity transform, because the reader expresses all
+    # coordinates in the mosaic's own raster pixel space rather than transforming into it.
+    for layer in ("image_sample", "labels_sample", "transcripts_sample"):
+        assert isinstance(get_transformation(sdata[layer], to_coordinate_system="sample"), Identity)
 
 
 def test_cosmx_writes_zarr_stores_to_backed_output(tmp_path):
@@ -433,17 +493,8 @@ def test_cosmx_writes_zarr_stores_to_backed_output(tmp_path):
     assert list(sdata["labels_sample"]) == ["scale0", "scale1"]
 
 
-def test_cosmx_rejects_empty_gene_panel(tmp_path):
-    # Write a panel containing only its header and no gene names.
-    panel_path = tmp_path / "empty_panel.csv"
-    panel_path.write_text("x\n", encoding="utf-8")
-
-    # Reject the empty whitelist before any CosMx data is loaded.
-    with pytest.raises(ValueError, match="does not contain any gene names"):
-        _load_keep_gene_names(panel_path)
-
-
-def test_cosmx_rejects_scalar_gene_name_and_accepts_string_panel_path(tmp_path):
+def test_cosmx_validates_gene_whitelists(tmp_path):
+    """Accept panel paths and iterables, and reject every input that would filter out everything."""
     # Require direct gene filters to be expressed as an iterable rather than a scalar string.
     with pytest.raises(ValueError, match="single gene names are not supported"):
         _load_keep_gene_names("ACTB")
@@ -453,7 +504,13 @@ def test_cosmx_rejects_scalar_gene_name_and_accepts_string_panel_path(tmp_path):
     panel_path.write_text("gene\nACTB\n", encoding="utf-8")
     assert _load_keep_gene_names(str(panel_path)) == {"ACTB"}
 
-    # Reject empty direct iterables because they would silently remove every transcript.
+    # Reject a header-only panel, which would silently remove every transcript.
+    empty_panel_path = tmp_path / "empty_panel.csv"
+    empty_panel_path.write_text("x\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="does not contain any gene names"):
+        _load_keep_gene_names(empty_panel_path)
+
+    # Reject empty direct iterables for the same reason.
     with pytest.raises(ValueError, match="at least one gene name"):
         _load_keep_gene_names([])
 
@@ -512,25 +569,6 @@ def test_cosmx_rejects_duplicate_vendor_cell_keys(tmp_path):
         cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
 
 
-def test_cosmx_rejects_half_global_transcript_coordinates(tmp_path):
-    dataset_path = _write_cosmx_dataset(tmp_path)
-
-    # Supply only one of the two global axes; the reader must name the axis it is missing rather
-    # than falling through to the local branch and complaining about a local column.
-    pd.DataFrame(
-        {
-            "fov": [1],
-            "x_global_px": [1.0],
-            "x_local_px": [1.0],
-            "y_local_px": [3.0],
-            "target": ["ACTB"],
-        }
-    ).to_csv(dataset_path / "coad_tx_file.csv", index=False)
-
-    with pytest.raises(ValueError, match=r"missing a global y column"):
-        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
-
-
 def test_cosmx_table_keeps_only_cells_present_in_both_counts_and_metadata(tmp_path):
     dataset_path = _write_cosmx_dataset(tmp_path)
 
@@ -551,8 +589,47 @@ def test_cosmx_table_keeps_only_cells_present_in_both_counts_and_metadata(tmp_pa
 
     table = sdata["table_sample"]
     # Only the intersection survives, and its counts land on the right row.
-    assert table.obs[_INSTANCE_KEY].tolist() == ["1_1"]
+    assert table.obs[_INSTANCE_KEY].tolist() == [3]
     assert table[:, "ACTB"].X.toarray().ravel().tolist() == [7]
+
+
+def test_cosmx_rejects_malformed_counts_identifiers(tmp_path):
+    """A blank identifier must fail loudly instead of silently dropping the chunk that holds it.
+
+    ``read_csv`` infers dtypes independently per chunk, so one blank value turns that chunk's
+    identifier column into float64. Its keys would then match no metadata cell and every cell in
+    the chunk would vanish from the table without any error.
+    """
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Leave the fov of the second counts row empty.
+    (dataset_path / "coad_exprMat_file.csv").write_text(
+        "cell_ID,fov,ACTB,SystemControl1\n1,1,2,4\n2,,1,3\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="Integer column has NA values"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
+
+
+def test_cosmx_does_not_read_a_redundant_id_alias_as_a_gene(tmp_path):
+    """A counts file carrying two identifier aliases must not turn the unused one into a gene."""
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Carry both 'cell_ID' and its 'cell_id' alias, as some vendor exports do.
+    pd.DataFrame(
+        {
+            "cell_ID": [1, 2],
+            "cell_id": [1, 2],
+            "fov": [1, 1],
+            "ACTB": [2, 1],
+            "SystemControl1": [4, 3],
+        }
+    ).to_csv(dataset_path / "coad_exprMat_file.csv", index=False)
+
+    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
+
+    # The unused alias is an identifier, not a measured gene, so it must not reach var.
+    assert sdata["table_sample"].var_names.tolist() == ["ACTB", "SystemControl1"]
 
 
 def test_cosmx_table_keeps_cells_whose_counts_are_all_zero(tmp_path):
@@ -566,15 +643,5 @@ def test_cosmx_table_keeps_cells_whose_counts_are_all_zero(tmp_path):
     sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample", cells_table=True)
 
     table = sdata["table_sample"]
-    assert table.obs[_INSTANCE_KEY].tolist() == ["1_1", "1_2"]
+    assert table.obs[_INSTANCE_KEY].tolist() == [3, 5]
     assert table[:, "ACTB"].X.toarray().ravel().tolist() == [0, 4]
-
-
-def test_cosmx_reports_multiscale_entry_without_a_path(tmp_path):
-    """Report when a multiscale dataset entry names no pyramid level at all."""
-    # The second entry carries no "path", so it describes no array in the store.
-    pyramid = {"axes": [{"name": "y"}, {"name": "x"}], "datasets": [{"path": "0"}, {"scale": [2.0, 2.0]}]}
-    store = _write_multiscale_group(tmp_path / "store", multiscales=[pyramid], level_paths=("0",))
-
-    with pytest.raises(ValueError, match=r"dataset entry at position 1 with no 'path' key"):
-        _read_cosmx_zarr_levels(store, kind="image")
