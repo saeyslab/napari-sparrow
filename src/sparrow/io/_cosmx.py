@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,6 +57,11 @@ _CENTER_Y_GLOBAL_COLUMNS = ("CenterY_global_px",)
 _VENDOR_CELL_ID_COLUMN = "fov_cell_ID"
 
 _BLOCKSIZE = "256MB"
+
+# Bytes read from the end of a vendor CSV to find its last line.
+# The window doubles until it holds that whole line.
+_CSV_TAIL_BYTES = 65_536
+_CSV_TAIL_MAX_BYTES = 16 * 1024 * 1024
 
 # Dtypes used to accumulate the vendor counts CSV into a sparse matrix, plus the byte budget for
 # one streamed chunk of it. Chunk rows are derived from that budget, since a chunk is dense.
@@ -121,7 +127,9 @@ def cosmx(
     transcript and cell-centre y coordinates are converted using the mosaic's top
     edge, taken from ``fov_positions_file.csv``. That file is therefore needed for
     points and rasters to overlay, in addition to placing local FOV coordinates.
-    Transcripts with a non-finite coordinate are rejected as each partition is read.
+    A vendor CSV file whose last line is incomplete, as an interrupted download
+    or copy leaves it, is rejected before any output is written. Transcripts with
+    a non-finite coordinate are rejected as each partition is read.
 
     When the vendor table is read, its instance key holds the integer value stored
     in the ``CellLabels`` mask, reconstructed from ``fov`` and ``cell_ID``, so the
@@ -171,7 +179,8 @@ def cosmx(
     ------
     ValueError
         If paths and coordinate systems are mismatched, coordinate systems are
-        duplicated, or ``keep_gene_names`` is a scalar gene name or empty whitelist.
+        duplicated, ``keep_gene_names`` is a scalar gene name or empty whitelist,
+        a vendor CSV file is truncated, or a transcript has a non-finite coordinate.
     FileNotFoundError
         If a required image directory, transcript file, requested vendor
         labels/table file, or ``Path`` gene panel cannot be found.
@@ -316,6 +325,20 @@ def _prepare_dataset(
         raise FileNotFoundError(
             f"CosMx label store '{dataset_files.labels_dir}' is not an OME-Zarr group. Legacy raster inputs are not supported."
         )
+
+    # Reject a vendor CSV that was cut off mid-line before any of it is parsed.
+    # pandas would pad its incomplete last line with NaN instead of raising
+    csv_files: list[tuple[Path | None, str]] = [
+        (dataset_files.transcripts, "transcript"),
+        (dataset_files.fov_positions, "FOV positions"),
+    ]
+    # The counts and metadata files are only parsed when the vendor table is requested.
+    if cells_table:
+        csv_files += [(dataset_files.counts, "counts"), (dataset_files.metadata, "metadata")]
+    for csv_path, kind in csv_files:
+        # Parquet transcripts and an absent positions file leave no CSV to check.
+        if csv_path is not None and csv_path.suffix.lower() == ".csv":
+            _reject_truncated_csv(csv_path, kind=kind)
 
     # Load FOV placement from the optional FOV positions file. It supplies both the per-FOV tile
     # origins and the mosaic's top edge, which is what maps vendor global pixels onto raster rows.
@@ -482,6 +505,83 @@ def _discover_files(
         counts=counts,
         metadata=metadata,
     )
+
+
+def _reject_truncated_csv(path: Path, kind: str) -> None:
+    """Raise when a vendor CSV ends in an incomplete line, i.e. it was cut off while being written or copied.
+
+    pandas pads a line with fewer fields than the header with NaN instead of raising. A truncated
+    file therefore otherwise surfaces only once the output store is being written, as a misleading
+    symptom such as a non-finite coordinate, or not at all when the cut leaves a finite but wrong
+    value (``51054`` cut to ``510``). Only the header and the last line are read, so the check is
+    cheap for a file of any size.
+    """
+    # The header defines how many fields every complete line must have. The read is capped, so a
+    # file without any line break is never read whole.
+    with path.open(newline="", encoding="utf-8", errors="replace") as handle:
+        n_header_fields = _count_csv_fields(handle.readline(_CSV_TAIL_MAX_BYTES))
+    # An empty or unparseable header leaves nothing to compare against; the regular parsing reports it.
+    if n_header_fields == 0:
+        return
+
+    last_line, ends_with_line_break = _read_last_line(path)
+    n_fields = _count_csv_fields(last_line)
+
+    # A cut can only remove fields, so fewer fields than the header means the file ends mid-line.
+    # More fields cannot come from a cut and are left to pandas.
+    if n_fields < n_header_fields:
+        line_break_note = "" if ends_with_line_break else " and the file does not end with a line break"
+        raise ValueError(
+            f"CosMx {kind} file '{path}' appears to be truncated: its last line has {n_fields} of the "
+            f"header's {n_header_fields} fields ({last_line[:80]!r}){line_break_note}. The file was "
+            "probably not completely written or copied; re-export or re-download it."
+        )
+
+    # A completed CSV write, ends in a line break, so a missing one hints at a cut that fell inside the
+    # last field. The line has every field, though, and some tools omit the break, so only warn.
+    if not ends_with_line_break:
+        log.warning(
+            "CosMx %s file '%s' does not end with a line break, so it may have been cut off while being "
+            "written or copied. Its last line has every field, so reading continues.",
+            kind,
+            path,
+        )
+
+
+def _read_last_line(path: Path) -> tuple[str, bool]:
+    """Return the last non-empty line of a text file, and whether the file ends with a line break.
+
+    A last line longer than ``_CSV_TAIL_MAX_BYTES`` is returned cut to its final bytes.
+    """
+    size = path.stat().st_size
+    window = _CSV_TAIL_BYTES
+    with path.open("rb") as handle:
+        while True:
+            start = max(size - window, 0)
+            handle.seek(start)
+            tail = handle.read()
+            # Trailing line breaks, blank lines included, do not form a last line of their own.
+            content = tail.rstrip(b"\r\n")
+            # Stop the loop when the remaining content contains a newline,
+            # meaning the start of the final line is within the window,
+            # or once the window covers the whole file or has reached its cap.
+            if b"\n" in content or start == 0 or window >= _CSV_TAIL_MAX_BYTES:
+                break
+            window *= 2
+
+    # Keep only what follows the last line break, dropping a Windows carriage return.
+    last_line = content.rsplit(b"\n", 1)[-1].rstrip(b"\r")
+    return last_line.decode("utf-8", errors="replace"), tail.endswith(b"\n")
+
+
+def _count_csv_fields(line: str) -> int:
+    """Count the fields of one CSV line, or return 0 when it cannot be parsed as CSV."""
+    # The csv module honours quoting, so a quoted comma is not miscounted as a separator.
+    try:
+        return len(next(csv.reader([line]), []))
+    except csv.Error:
+        # csv rejects a single field longer than its field size limit, such as a long run of zero padding.
+        return 0
 
 
 def _resolve_transcript_csv_dtypes(columns: Iterable[str]) -> dict[str, Any]:
@@ -686,7 +786,7 @@ def _add_table(
     # normalize to the same cell and would therefore pair to the same label.
     duplicated = pd.Index(instance_keys).duplicated()
     if duplicated.any():
-        # Report the offending cells the way the vendor names them. 
+        # Report the offending cells the way the vendor names them.
         # dict.fromkeys de-duplicates while preserving file order
         duplicate_keys = list(
             dict.fromkeys(

@@ -147,6 +147,14 @@ Keep the following behavior stable when changing the reader:
   transcript file holding billions of rows is never materialized just to be validated. Both
   coordinate branches go through `map_partitions` for this reason; the error surfaces when
   `add_points_layer` materializes, i.e. still inside the `cosmx()` call.
+- Vendor CSVs that end in an incomplete line are rejected by `_reject_truncated_csv` in
+  `_prepare_dataset`, i.e. before the output store exists. pandas pads a line with fewer fields
+  than the header with NaN instead of raising, so a file cut off by an interrupted download or copy
+  otherwise surfaces only when `add_points_layer` materializes, after the image layer has already
+  been written, as a non-finite coordinate, or not at all when the cut leaves a finite but wrong
+  value. Only the header and the last line are read (the tail window doubles up to a 16 MiB cap),
+  for the transcripts, the FOV positions and, with `cells_table=True`, the counts and metadata. A
+  complete last line without a final line break is only warned about, since some tools omit it.
 - Stored transcript layers use Sparrow's canonical `gene`, `x`, and `y` columns and an identity transform.
 - `cells_table=True` implies `cells_labels=True` because the table region points to the global labels layer.
 - The vendor table uses one region, `labels_{coordinate_system}`, and `_INSTANCE_KEY` holds the
@@ -252,18 +260,22 @@ filtering, rejection of legacy raster inputs, dangling pyramid metadata, duplica
 transcript coordinates, and the counts/metadata intersection. They also cover the global-y to
 raster-row conversion, the matching conversion of table cell centres, the warning path when no FOV
 positions are available, the Szudzik pairing behind `_INSTANCE_KEY`, rejection of non-finite
-transcript coordinates, rejection of a malformed counts identifier, and the exclusion of a
-redundant identifier alias from `var`.
+transcript coordinates, rejection of truncated transcript, FOV-positions, counts and metadata CSVs
+before any output store is created, a zero-padded transcript tail, the warning for a CSV without a
+final line break, rejection of a malformed counts identifier, and the exclusion of a redundant
+identifier alias from `var`.
 
-The four "unreadable multiscale metadata" cases and the two "incomplete coordinate columns" cases
-are parametrized rather than written as separate tests, matching the house style elsewhere in
-`src/sparrow/_tests` (bare tuples, no `ids=`/`pytest.param`, which appear nowhere in this repo).
+The four "unreadable multiscale metadata" cases, the two "incomplete coordinate columns" cases and
+the four "truncated CSV" cases are parametrized rather than written as separate tests, matching the
+house style elsewhere in `src/sparrow/_tests` (bare tuples, no `ids=`/`pytest.param`, which appear
+nowhere in this repo). The zero-padding case is a separate test because a 200 kB string parameter
+would become part of the test ID, which overflows a Windows environment variable.
 
 Verified commands:
 
 ```text
 uv run --no-sync pytest src/sparrow/_tests/test_cosmx.py -q
-29 passed, 6 warnings   # 25 test functions; two of them parametrized
+35 passed, 6 warnings   # 28 test functions; three of them parametrized
 
 uv run --no-sync ruff check src/sparrow/io/_cosmx.py src/sparrow/_tests/test_cosmx.py
 All checks passed

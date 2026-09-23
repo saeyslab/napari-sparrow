@@ -358,6 +358,67 @@ def test_cosmx_rejects_non_finite_transcript_coordinates(tmp_path):
         cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
 
 
+@pytest.mark.parametrize(
+    "file_name, kind, cells_table, tail",
+    [
+        # Cut off two fields into a new record, the way an interrupted download or copy leaves it.
+        ("coad_tx_file.csv", "transcript", False, "1,1"),
+        ("coad_fov_positions_file.csv", "FOV positions", False, "1"),
+        # Counts and metadata are only parsed, and therefore only checked, when the table is requested.
+        ("coad_exprMat_file.csv", "counts", True, "1,1"),
+        ("coad_metadata_file.csv", "metadata", True, "1,1"),
+    ],
+)
+def test_cosmx_rejects_truncated_csv_before_writing_output(tmp_path, file_name, kind, cells_table, tail):
+    """A vendor CSV cut off mid-line would be padded with NaN by pandas, so it must be rejected up front."""
+    dataset_path = _write_cosmx_dataset(tmp_path / "input")
+    output_path = tmp_path / "output.zarr"
+
+    # Append the tail without the line break that a completed write ends with.
+    with (dataset_path / file_name).open("a", encoding="utf-8", newline="") as handle:
+        handle.write(tail)
+
+    with pytest.raises(ValueError, match=rf"CosMx {kind} file .* appears to be truncated"):
+        cosmx(
+            dataset_path,
+            dataset_id="coad",
+            to_coordinate_system="sample",
+            cells_table=cells_table,
+            output=output_path,
+        )
+
+    # The check runs while inputs are validated, so no partial output store is left behind.
+    assert not output_path.exists()
+
+
+def test_cosmx_rejects_zero_padded_transcript_csv(tmp_path):
+    """A preallocated download that stopped early ends in zero padding rather than a partial line."""
+    dataset_path = _write_cosmx_dataset(tmp_path)
+
+    # Pad well past both the first tail window and the csv field size limit, so the last "line" is
+    # one oversized field that must still be recognized as incomplete.
+    with (dataset_path / "coad_tx_file.csv").open("ab") as handle:
+        handle.write(b"\x00" * 200_000)
+
+    with pytest.raises(ValueError, match=r"appears to be truncated: its last line has 0 of the header's 7 fields"):
+        cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+
+def test_cosmx_warns_for_csv_without_final_line_break(tmp_path, caplog):
+    """A complete last line without a final line break may be legitimate, so it only warns."""
+    dataset_path = _write_cosmx_dataset(tmp_path)
+    transcripts_path = dataset_path / "coad_tx_file.csv"
+
+    # Drop the final line break but keep every field of the last line.
+    transcripts_path.write_bytes(transcripts_path.read_bytes().rstrip(b"\r\n"))
+
+    sdata = cosmx(dataset_path, dataset_id="coad", to_coordinate_system="sample")
+
+    assert "does not end with a line break" in caplog.text
+    # The last transcript is still read, including its final field.
+    assert sdata["transcripts_sample"].compute()[_GENES_KEY].tolist() == ["ACTB", "SystemControl1"]
+
+
 def test_cosmx_warns_for_unsupported_image_model_kwargs(tmp_path, caplog):
     dataset_path = _write_cosmx_dataset(tmp_path)
 
